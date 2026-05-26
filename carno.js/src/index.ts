@@ -3,6 +3,7 @@ import { LogRepo } from "./services/log/internal/LogRepo";
 import { LogRepoClickHouseImpl } from "./services/log/internal/repo-impls/LogRepoClickHouseImpl";
 import { LogService } from "./services/log/LogService";
 import { LogServiceImpl } from "./services/log/internal/LogServiceImpl";
+import { ClickHouseService } from "./infra/ClickHouseService";
 
 @Controller()
 class AppController {
@@ -34,6 +35,7 @@ const app = new Carno({
 });
 
 app.services([
+  ClickHouseService,
   { token: LogRepo, useClass: LogRepoClickHouseImpl },
   { token: LogService, useClass: LogServiceImpl },
 ]);

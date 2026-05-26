@@ -18,3 +18,5 @@ export class LogRepoClickHouseImpl extends LogRepo {
     console.log(`[ClickHouse] Saving edge: ${edge.edgeType} (${edge.id})`);
   }
 }
+
+
