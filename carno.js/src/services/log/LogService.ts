@@ -1,7 +1,13 @@
-import type { Container, Node, Edge } from "./types";
+import type { ContainerInput, NodeInput, EdgeInput } from "./types";
 
 export class LogService {
-  async logContainer(container: Container): Promise<void> {}
-  async logNode(node: Node): Promise<void> {}
-  async logEdge(edge: Edge): Promise<void> {}
+  async logContainer(container: ContainerInput): Promise<void> {}
+  async logContainers(containers: ContainerInput[]): Promise<void> {}
+
+  async logNode(node: NodeInput): Promise<void> {}
+  async logNodes(nodes: NodeInput[]): Promise<void> {}
+
+  async logEdge(edge: EdgeInput): Promise<void> {}
+  async logEdges(edges: EdgeInput[]): Promise<void> {}
 }
+

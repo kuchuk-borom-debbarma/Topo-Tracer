@@ -21,7 +21,6 @@ class AppController {
       name: "web-portal-pod",
       containerType: "pod",
       createdAtLocal: new Date(),
-      createdAtRemote: new Date(),
     });
     return { ok: true, message: "Logged successfully to ClickHouse!" };
   }

@@ -33,3 +33,21 @@ export type Edge = {
   dispatchedAtLocal: Date; //when it made the connection, eg:- when it called the other container
   respondedAtLocal?: Date; //when it received the response from the other container
 };
+
+export type ContainerInput = Omit<Container, "createdAtRemote">;
+
+export type NodeInput = {
+  id: string;
+  containerId: string;
+  parentNodeId?: string;
+  name: string;
+  nodeType: string;
+  depthIndex: number;
+  metadata?: any;
+  initiatedAtLocal: Date;
+  processedAtLocal: Date;
+  completedAtLocal?: Date;
+};
+
+export type EdgeInput = Edge;
+

@@ -10,12 +10,26 @@ export class LogRepoClickHouseImpl extends LogRepo {
     );
   }
 
+  override async saveContainers(containers: Container[]): Promise<void> {
+    console.log(
+      `[ClickHouse] Saving batch of ${containers.length} containers`,
+    );
+  }
+
   override async saveNode(node: Node): Promise<void> {
     console.log(`[ClickHouse] Saving node: ${node.name} (${node.id})`);
   }
 
+  override async saveNodes(nodes: Node[]): Promise<void> {
+    console.log(`[ClickHouse] Saving batch of ${nodes.length} nodes`);
+  }
+
   override async saveEdge(edge: Edge): Promise<void> {
     console.log(`[ClickHouse] Saving edge: ${edge.edgeType} (${edge.id})`);
+  }
+
+  override async saveEdges(edges: Edge[]): Promise<void> {
+    console.log(`[ClickHouse] Saving batch of ${edges.length} edges`);
   }
 }
 
