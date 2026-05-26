@@ -65,7 +65,8 @@ export class ClickHouseService {
           metadata String,
           initiatedAtLocal Int64,
           processedAtLocal Int64,
-          completedAtLocal Nullable(Int64)
+          completedAtLocal Nullable(Int64),
+          ancestryPath Array(String)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, depthIndex, initiatedAtLocal);
       `,
@@ -83,9 +84,63 @@ export class ClickHouseService {
           toNodeId String,
           edgeType String,
           dispatchedAtLocal Int64,
-          respondedAtLocal Nullable(Int64)
+          respondedAtLocal Nullable(Int64),
+          egressAncestryPath Array(String)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, dispatchedAtLocal);
+      `,
+    });
+
+    // 5. Create Node Ancestry Cache Table (MergeTree)
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.node_ancestry (
+          node_id String,
+          trace_id String,
+          ancestryPath Array(String)
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id, node_id);
+      `,
+    });
+
+    // 6. Create Edge Egress Ancestry Cache Table (MergeTree)
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.edge_egress_ancestry (
+          edge_id String,
+          trace_id String,
+          egressAncestryPath Array(String)
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id, edge_id);
+      `,
+    });
+
+    // 7. Create Read-Optimized Multi-Resolution Edges Table (MergeTree)
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
+          id String,
+          edge_id String,
+          trace_id String,
+          visual_depth UInt32,
+          from_target_id String,
+          from_target_type String,
+          to_node_id String
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id, visual_depth, id);
+      `,
+    });
+
+    // 8. Create Read-Optimized Trace Metadata Table (MergeTree)
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.trace_metadata (
+          trace_id String,
+          is_zoom_ready UInt8,
+          max_available_depth UInt32,
+          materialized_offset UInt32
+        ) ENGINE = MergeTree()
+        ORDER BY trace_id;
       `,
     });
   }
