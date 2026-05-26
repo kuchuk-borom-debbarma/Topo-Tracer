@@ -100,4 +100,7 @@ export interface PaginatedTraceResult {
   };
 }
 
-
+export interface TraceMetadataResult {
+  isZoomReady: boolean;
+  maxAvailableDepth: number;
+}

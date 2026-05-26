@@ -161,6 +161,10 @@ export class LogRepoClickHouseImpl extends LogRepo {
     });
   }
 
+  override async fetchTraceMetadata(traceId: string): Promise<import("../../types").TraceMetadataResult> {
+    return await this.ensureMaterialized(traceId);
+  }
+
   override async fetchTracePaginated(traceId: string, params: PaginationParams): Promise<PaginatedTraceResult> {
     // 1. Ensure trace is materialized (triggers background worker if needed)
     const { isZoomReady, maxAvailableDepth } = await this.ensureMaterialized(traceId);

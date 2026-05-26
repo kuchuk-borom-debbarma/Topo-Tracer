@@ -78,5 +78,12 @@ export class LogController {
       afterId,
     });
   }
+
+  // Fetch metadata for a specific trace, such as whether zoom is fully materialized
+  @Get("/trace/:traceId/metadata")
+  async getTraceMetadata(@Param("traceId") traceId: string) {
+    console.log(`[LogController] Fetching metadata for trace ${traceId}`);
+    return await this.logService.fetchTraceMetadata(traceId);
+  }
 }
 
