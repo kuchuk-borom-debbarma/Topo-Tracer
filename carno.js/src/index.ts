@@ -4,6 +4,7 @@ import { LogRepoClickHouseImpl } from "./services/log/internal/repo-impls/LogRep
 import { LogService } from "./services/log/LogService";
 import { LogServiceImpl } from "./services/log/internal/LogServiceImpl";
 import { ClickHouseService } from "./infra/ClickHouseService";
+import { LogController } from "./routes/LogController";
 
 @Controller()
 class AppController {
@@ -39,5 +40,5 @@ app.services([
   { token: LogService, useClass: LogServiceImpl },
 ]);
 
-app.controllers([AppController]);
+app.controllers([AppController, LogController]);
 app.listen(3000);
