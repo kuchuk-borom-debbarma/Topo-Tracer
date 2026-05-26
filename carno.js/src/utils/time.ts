@@ -17,3 +17,14 @@ export function getUTCMilliseconds(date: Date = new Date()): number {
 export function getUTCDate(): Date {
   return new Date();
 }
+
+/**
+ * Converts a UTC epoch timestamp in milliseconds back into a standard JS Date.
+ * 
+ * @param ms The number of milliseconds since January 1, 1970, UTC.
+ * @returns A new Date instance.
+ */
+export function utcMillisecondsToDate(ms: number): Date {
+  return new Date(ms);
+}
+

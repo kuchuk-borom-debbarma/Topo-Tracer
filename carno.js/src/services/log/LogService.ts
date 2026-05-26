@@ -9,5 +9,18 @@ export class LogService {
 
   async logEdge(edge: EdgeInput): Promise<void> {}
   async logEdges(edges: EdgeInput[]): Promise<void> {}
+
+  async updateContainerLocalTimes(containers: ContainerInput[], newTime?: Date): Promise<ContainerInput[]> {
+    return [];
+  }
+
+  async updateNodeLocalTimes(nodes: NodeInput[], newTime?: Date): Promise<NodeInput[]> {
+    return [];
+  }
+
+  async updateEdgeLocalTimes(edges: EdgeInput[], newTime?: Date): Promise<EdgeInput[]> {
+    return [];
+  }
 }
+
 

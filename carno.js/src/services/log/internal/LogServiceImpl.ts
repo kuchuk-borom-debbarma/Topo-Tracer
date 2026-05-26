@@ -55,5 +55,60 @@ export class LogServiceImpl extends LogService {
   private async clickHouseLogRepoOverride(containers: Container[]): Promise<void> {
     await this.logRepo.saveContainers(containers);
   }
+
+  override async updateContainerLocalTimes(containers: ContainerInput[], newTime: Date = new Date()): Promise<ContainerInput[]> {
+    // Note on Columnar Storage: Since ClickHouse is an append-only columnar database, 
+    // database mutations (updates) are extremely slow and should be avoided. 
+    // We shift timestamps in-memory before ingestion to keep the database purely append-only.
+    return containers.map(c => ({
+      ...c,
+      createdAtLocal: newTime
+    }));
+  }
+
+  override async updateNodeLocalTimes(nodes: NodeInput[], newTime: Date = new Date()): Promise<NodeInput[]> {
+    // Note on Columnar Storage: Modifying timestamps inside ClickHouse requires expensive 
+    // I/O part rewrites. Shifting timescales relative to a new base time is done entirely 
+    // in-memory to preserve execution offsets and maintain high ingestion performance.
+    return nodes.map(n => {
+      const baseMs = n.initiatedAtLocal.getTime();
+      const newBaseMs = newTime.getTime();
+      const offsetProcessed = n.processedAtLocal.getTime() - baseMs;
+      const offsetCompleted = n.completedAtLocal 
+        ? n.completedAtLocal.getTime() - baseMs 
+        : null;
+
+      return {
+        ...n,
+        initiatedAtLocal: newTime,
+        processedAtLocal: new Date(newBaseMs + offsetProcessed),
+        completedAtLocal: offsetCompleted !== null 
+          ? new Date(newBaseMs + offsetCompleted) 
+          : undefined
+      };
+    });
+  }
+
+  override async updateEdgeLocalTimes(edges: EdgeInput[], newTime: Date = new Date()): Promise<EdgeInput[]> {
+    // Note on Columnar Storage: Timelines are shifted here in the service layer before 
+    // dispatching to ClickHouse to ensure that latency metrics remain accurate and 
+    // database writes stay immutable and append-only.
+    return edges.map(e => {
+      const baseMs = e.dispatchedAtLocal.getTime();
+      const newBaseMs = newTime.getTime();
+      const offsetResponded = e.respondedAtLocal 
+        ? e.respondedAtLocal.getTime() - baseMs 
+        : null;
+
+      return {
+        ...e,
+        dispatchedAtLocal: newTime,
+        respondedAtLocal: offsetResponded !== null 
+          ? new Date(newBaseMs + offsetResponded) 
+          : undefined
+      };
+    });
+  }
 }
+
 

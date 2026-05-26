@@ -44,8 +44,8 @@ export class ClickHouseService {
           id String,
           name String,
           containerType String,
-          createdAtLocal DateTime64(3, 'UTC'),
-          createdAtRemote DateTime64(3, 'UTC')
+          createdAtLocal Int64,
+          createdAtRemote Int64
         ) ENGINE = MergeTree()
         ORDER BY id;
       `,
@@ -63,9 +63,9 @@ export class ClickHouseService {
           nodeType String,
           depthIndex UInt32,
           metadata String,
-          initiatedAtLocal DateTime64(3, 'UTC'),
-          processedAtLocal DateTime64(3, 'UTC'),
-          completedAtLocal Nullable(DateTime64(3, 'UTC'))
+          initiatedAtLocal Int64,
+          processedAtLocal Int64,
+          completedAtLocal Nullable(Int64)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, depthIndex, initiatedAtLocal);
       `,
@@ -82,8 +82,8 @@ export class ClickHouseService {
           fromNodeId String,
           toNodeId String,
           edgeType String,
-          dispatchedAtLocal DateTime64(3, 'UTC'),
-          respondedAtLocal Nullable(DateTime64(3, 'UTC'))
+          dispatchedAtLocal Int64,
+          respondedAtLocal Nullable(Int64)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, dispatchedAtLocal);
       `,
