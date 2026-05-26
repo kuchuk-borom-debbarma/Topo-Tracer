@@ -1,6 +1,6 @@
 # Topo-Tracer: Core Architecture & Data Specification
 
-This document details the core features, architectural components, and data specifications for **Topo-Tracer**—a distributed tracing framework built from the ground up on graph theory, microsecond-level latency tracking, and automatic progressive zooming.
+This document details the core features, architectural primitives, and production data specifications for **Topo-Tracer**—a distributed tracing framework built on graph theory, microsecond-level latency tracking, and an asynchronous, CQRS-backed progressive topology canvas.
 
 ---
 
@@ -8,7 +8,7 @@ This document details the core features, architectural components, and data spec
 
 ### A. Multi-Resolution Edge Navigation
 
-Instead of forcing a single rigid view, Topo-Tracer implements an automated **Multi-Resolution** layout system. The engine dynamically groups or stretches code elements based on your viewport magnification.
+Instead of forcing a single rigid view, Topo-Tracer implements a backend-driven **Multi-Resolution** layout system. The engine dynamically groups or stretches code elements based on your viewport magnification.
 
 * As you zoom out, deep logical execution paths collapse into compact boxes, and network wires slide up to lock onto high-level container boundaries.
 * As you zoom in, the wires seamlessly travel down the family tree to anchor onto individual function rows or microsecond timestamp pixels.
@@ -74,11 +74,11 @@ $$\begin{aligned}
 
 ---
 
-## 4. Production Data Architecture
+## 4. Production Data Architecture (CQRS Pattern)
 
-The underlying storage layer remains fully flat and normalized, optimized for append-only, high-throughput time-series engines (like ClickHouse) to handle heavy streaming write loads without concurrency locks or document-stitching overhead.
+The underlying storage layer is segregated into a flat, append-only ingestion engine and a highly indexed, read-optimized materialized closure store to support instant scaling lookups.
 
-### A. Nodes Table Payload
+### A. Ingestion Tier: Flat Nodes Payload (ClickHouse Write Store)
 
 ```json
 {
@@ -102,7 +102,7 @@ The underlying storage layer remains fully flat and normalized, optimized for ap
 
 ```
 
-### B. Edges Table Payload
+### B. Ingestion Tier: Flat Edges Payload (ClickHouse Write Store)
 
 ```json
 {
@@ -128,41 +128,114 @@ The underlying storage layer remains fully flat and normalized, optimized for ap
 
 ```
 
+### C. Materialized Tier: Edge Closure Table (Dedicated Read Store)
+
+An asynchronous background worker processes the flat tables above to populate this model, maps the exact structural hopping points per resolution filter, and writes to the read cache.
+
+```json
+{
+  "id": "closure_edge_001a",
+  "edge_id": "edge_cross_wire_331",
+  "trace_id": "tx_987654321_kbd",
+  "visual_depth_filter": 2,
+  "from_target_id": "node_service_bar_12c",
+  "from_target_type": "node",
+  "to_node_id": "node_worker_consume_002"
+}
+
+```
+
+### D. Materialized Tier: Container Layout Bounds (Dedicated Read Store)
+
+Caches layout dimensions for container swimlanes and vertical hierarchy guide lines per resolution layer.
+
+```json
+{
+  "trace_id": "tx_987654321_kbd",
+  "container_id": "con_api_prod_7a81",
+  "visual_depth_filter": 2,
+  "max_visible_depth": 2,
+  "total_visible_rows": 3
+}
+
+```
+
 ---
 
-## 5. The Multi-Resolution Sliding Window Engine
+## 5. Progressive Capability Toggle & Synchronization
 
-Because code hierarchies can go infinitely deep, Topo-Tracer avoids fixed sizing categories. Instead, when a user changes their zoom factor on the UI canvas, the frontend sends a dynamic `depth_filter` integer threshold to the backend.
+To eliminate heavy runtime graph calculations on the query server, the system enforces a **Progressive Capability Toggle**. Until the asynchronous closure mappings sync entirely, the UI blocks multi-resolution actions and falls back gracefully to standard full-fidelity mode.
 
-The backend prunes the node array and slides the network wire to the closest visible ancestor in constant time ($O(1)$ complexity per element):
+### A. Initial Load Payload Contract
+
+The primary transactional application database serves initial metadata and tracking indicators:
+
+```json
+{
+  "trace_id": "tx_987654321_kbd",
+  "is_zoom_ready": false,
+  "max_available_depth": 4,
+  "containers": [
+    { "id": "con_api_prod_7a81", "name": "web-service" }
+  ],
+  "wires": [
+    {
+      "id": "edge_cross_wire_331",
+      "from_target": { "id": "node_kafka_pub_99a", "type": "node" },
+      "to_target": { "id": "node_worker_consume_002", "type": "node" }
+    }
+  ]
+}
+
+```
+
+### B. Resolution Materialization Engine
+
+Once `is_zoom_ready` shifts to `true`, the UI utilizes explicit zoom layer parameters. The query engine serves lookups directly from the read index in constant time ($O(1)$ complexity). A lock-protected mutex fallback guards against cache stampedes:
 
 ```typescript
-function compileTraceForZoom(
-  rawNodes: Node[], 
-  rawEdges: Edge[], 
+type ResolutionTarget = { id: string; type: 'node' | 'container' };
+
+interface VisualWirePayload {
+  id: string;
+  from_target: ResolutionTarget;
+  to_target: ResolutionTarget;
+}
+
+async function fetchWiresForResolution(
+  traceId: string,
   depthFilterThreshold: number
-) {
-  // 1. Filter out all functions deeper than the requested zoom threshold
-  const visibleNodes = rawNodes.filter(node => node.depth_index <= depthFilterThreshold);
-  const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
-
-  // 2. Slide the network lines automatically down the family tree path
-  const compiledWires = rawEdges.map(edge => {
-    // Scan the breadcrumb trail to find the first parent that is still visible on the screen
-    const resolvedFromNodeId = edge.egress_ancestry_path.find(id => visibleNodeIds.has(id));
-
-    return {
-      id: edge.id,
-      crossing_kind: edge.crossing_kind,
-      // If a parent row is visible, snap the line to it; if everything is hidden, snap to the outer Container box
-      from_target: resolvedFromNodeId 
-        ? { id: resolvedFromNodeId, type: 'node' } 
-        : { id: edge.from_container_id, type: 'container' },
+): Promise<VisualWirePayload[]> {
+  
+  // 1. O(1) Fetch from Read Store Closure Tables
+  const cachedEdges = await readStore.find({ trace_id: traceId, visual_depth_filter: depthFilterThreshold });
+  if (cachedEdges.length > 0) {
+    return cachedEdges.map(edge => ({
+      id: edge.edge_id,
+      from_target: { id: edge.from_target_id, type: edge.from_target_type },
       to_target: { id: edge.to_node_id, type: 'node' }
-    };
-  });
+    }));
+  }
 
-  return { nodes: visibleNodes, wires: compiledWires };
+  // 2. Mutex-Locked Fallback Routine to Prevent Concurrent Query Stampedes
+  return await acquireMutexLock(traceId, async () => {
+    const rawNodes = await writeStore.fetchNodes(traceId);
+    const rawEdges = await writeStore.fetchEdges(traceId);
+    
+    const visibleNodes = rawNodes.filter(node => node.depth_index <= depthFilterThreshold);
+    const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+
+    return rawEdges.map(edge => {
+      const resolvedFromNodeId = edge.egress_ancestry_path.find(id => visibleNodeIds.has(id));
+      return {
+        id: edge.id,
+        to_target: { id: edge.to_node_id, type: 'node' },
+        from_target: resolvedFromNodeId 
+          ? { id: resolvedFromNodeId, type: 'node' }
+          : { id: edge.from_container_id, type: 'container' }
+      };
+    });
+  });
 }
 
 ```
@@ -171,41 +244,41 @@ function compileTraceForZoom(
 
 ## 6. Visual Layout Specification
 
-The UI takes the backend's pre-calculated payload and plots the rows flatly onto an interactive canvas grid.
+The UI pulls the pre-computed boundaries directly onto an interactive grid tracking structural changes across view resolutions.
 
 ```text
 [ CONTAINER LANE: web-service ] ────────────────────────────────────────────────────────────
   ● DELETE /tasks/:id       [=====================Processed=====================][=Completed=]
-    └── ● controller::foo()     [==========================================]
-          └── 📤 kafka::pub           [==============]
-                                            │
-                                            │ ◄── edge.timestamps.dispatchedAt
-                                            │
-                                   - - - - -│- - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                                            │ ◄── WIRE TRANSIT GAP (Dotted line section)
-                                   - - - - -│- - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                                            ▼ ◄── edge.timestamps.reachedAt
-                                          [███]  ◄── QUEUE LAG BLOCK (Red visual highlight)
-                                            ▼ ◄── edge.timestamps.acceptedAt
+  │  └── ● controller::foo()     [==========================================]
+  │        └── 📤 kafka::pub           [==============]
+  │                                              │
+  │                                              │ ◄── edge.timestamps.dispatchedAt
+  │                                              │
+  │                                     - - - - -│- - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  │                                              │ ◄── WIRE TRANSIT GAP (Dotted line section)
+  │                                     - - - - -│- - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  │                                              ▼ ◄── edge.timestamps.reachedAt
+  │                                            [███]  ◄── QUEUE LAG BLOCK (Red visual highlight)
+  │                                              ▼ ◄── edge.timestamps.acceptedAt
 [ CONTAINER LANE: billing-worker ] ─────────────────────────────────────────────────────────
   └── ● kafka::consume                      [========================================================]
 
 ```
 
-### Macro Resolution View (Zoomed Out)
+### Macro Resolution View (`depthFilterThreshold = 0`)
 
-* **Nodes:** The backend filters out all rows where `depth_index > 0`. Containers pack down into small summary blocks.
-* **Wires:** The ancestry scan bypasses all hidden child functions and attaches the wire targets generically to the outer physical **Container boundaries**.
+* **Nodes:** The backend filters out all rows where `depth_index > 0`. Containers pack down into small summary blocks. Vertical indentation lines collapse down to their shortest configuration.
+* **Wires:** The closure index specifies `from_target_type: "container"`. Vectors completely ignore nested internal function elements and anchor directly onto outer physical **Container boundaries**.
 
-### Meso Resolution View (Mid-Zoom)
+### Meso Resolution View (`depthFilterThreshold = 2`)
 
-* **Nodes:** The backend opens the threshold filter slightly (e.g., `depth_index <= 2`). Core business logic components appear, while micro-level helper functions remain hidden.
-* **Wires:** The edge re-anchoring engine catches the first visible parent row in the array and **slides the network line down**, anchoring it directly onto that row component.
+* **Nodes:** The view opens up rows where `depth_index <= 2`. Core business components appear while deep internal leaf helpers remain folded away. The vertical indentation guide lines extend to medium length.
+* **Wires:** The read store serves pre-calculated hopping targets. The network wire **slides down the family tree**, entering container boundaries to lock onto the specific visible row component.
 
-### Micro Resolution View (Zoomed In)
+### Micro Resolution View (Full Depth / Fallback Default)
 
-* **Nodes:** The depth filter drops entirely. The complete internal call tree builds out with diagonal indentation. Sibling rows with overlapping timestamps activate vertical stacking rows to represent concurrent execution.
-* **Wires:** Wires drop straight down into the innermost sub-layers of the canvas grid, pinning their coordinates directly to the microsecond pixels of the leaf node rows (e.g., `kafka_publish()`).
+* **Nodes:** The threshold boundary is removed. The complete internal call tree maps out with diagonal stepped offsets. Sibling rows with overlapping timestamp marks activate vertical stacking rows to represent concurrent execution. Vertical indentation guidelines extend to maximum length.
+* **Wires:** Vectors drive straight through structural wrappers, pinning wire positions directly onto the microsecond execution pixels of individual leaf rows (`kafka_publish()`).
 
 ---
 
@@ -213,4 +286,4 @@ The UI takes the backend's pre-calculated payload and plots the rows flatly onto
 
 * **Ingestion Tier (Go or Rust):** A high-concurrency, stateless server layer. It parses inbound UDP, gRPC, or HTTP POST tracking batches, runs basic schema validation, and fires an immediate `202 Accepted` network response to eliminate profiling latency overhead from production code threads.
 * **Transit Tier (Redis):** Incoming out-of-order packets drop into an in-memory sliding hash matched by `trace_id`. The engine sets a temporary staging window TTL (5 to 10 seconds) to collect slow asynchronous packets before flushing the trace down to permanent storage.
-* **Analytics Tier (ClickHouse):** A column-oriented database engine. It packs and compresses data strictly by column arrays rather than rows, providing fast storage compression, zero concurrency locks, and sub-millisecond trace reconstructions.
+* **Analytics & Read Tier (ClickHouse):** A column-oriented database engine split into flat write-heavy tables and pre-computed read-heavy closure partitions. Storing variables strictly by column arrays permits high storage data compression, zero transaction locking mechanisms, and sub-millisecond trace reconstructions.
