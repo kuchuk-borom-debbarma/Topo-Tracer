@@ -17,4 +17,18 @@ export class LogRepo {
   async fetchTraceMetadata(traceId: string): Promise<import("../types").TraceMetadataResult> {
     return { isZoomReady: false, maxAvailableDepth: 0 };
   }
+
+  // --- Materialization Engine Methods ---
+  async fetchNodesForMaterialization(traceId: string, limit: number, offset: number): Promise<import("../types").NodeMaterializationDTO[]> { return []; }
+  async fetchNodeAncestry(traceId: string, nodeIds: string[]): Promise<import("../types").NodeAncestryRecord[]> { return []; }
+  async fetchNodesByIds(traceId: string, nodeIds: string[]): Promise<import("../types").NodeMaterializationDTO[]> { return []; }
+  async saveNodeAncestryBatch(traceId: string, records: import("../types").NodeAncestryRecord[]): Promise<void> {}
+  
+  async fetchEdgesForMaterialization(traceId: string, limit: number, offset: number): Promise<import("../types").EdgeMaterializationDTO[]> { return []; }
+  async saveEdgeEgressAncestryBatch(traceId: string, records: import("../types").EdgeEgressAncestryRecord[]): Promise<void> {}
+  async fetchEdgeEgressAncestry(traceId: string, edgeIds: string[]): Promise<import("../types").EdgeEgressAncestryRecord[]> { return []; }
+  
+  async saveVisualWiresBatch(traceId: string, wires: any[]): Promise<void> {}
+  
+  async updateTraceMaterializationMetadata(traceId: string, updates: import("../types").TraceMetadataUpdate): Promise<void> {}
 }

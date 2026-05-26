@@ -1,5 +1,6 @@
 import { Service, OnApplicationInit } from "@carno.js/core";
 import { MessageBroker } from "../../../../infra/message/MessageBroker";
+import { LogRepo } from "../../LogRepo";
 import { TraceNodeResolver } from "./operators/TraceNodeResolver";
 import { TraceEdgeResolver } from "./operators/TraceEdgeResolver";
 import { TraceClosureBuilder } from "./operators/TraceClosureBuilder";
@@ -17,12 +18,19 @@ import { TraceClosureBuilder } from "./operators/TraceClosureBuilder";
  */
 @Service()
 export class TraceMaterializationListener {
+  private nodeResolver: TraceNodeResolver;
+  private edgeResolver: TraceEdgeResolver;
+  private closureBuilder: TraceClosureBuilder;
+
   constructor(
     private messageBroker: MessageBroker,
-    private nodeResolver: TraceNodeResolver,
-    private edgeResolver: TraceEdgeResolver,
-    private closureBuilder: TraceClosureBuilder
-  ) {}
+    private logRepo: LogRepo
+  ) {
+    // Initialize operators with repository abstractions
+    this.nodeResolver = new TraceNodeResolver(this.logRepo, this.messageBroker);
+    this.edgeResolver = new TraceEdgeResolver(this.logRepo, this.messageBroker);
+    this.closureBuilder = new TraceClosureBuilder(this.logRepo, this.messageBroker);
+  }
 
   @OnApplicationInit()
   async init(): Promise<void> {

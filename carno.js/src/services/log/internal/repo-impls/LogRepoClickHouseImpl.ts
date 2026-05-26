@@ -343,13 +343,136 @@ export class LogRepoClickHouseImpl extends LogRepo {
       isZoomReady,
       maxAvailableDepth,
       pagination: {
-        prevTimeCursor,
-        prevIdCursor,
-        nextTimeCursor,
-        nextIdCursor,
+        prevTimeCursor: hasPrev ? nodes[0].initiatedAtLocal.getTime() : null,
+        prevIdCursor: hasPrev ? nodes[0].id : null,
+        nextTimeCursor: hasNext ? nodes[nodes.length - 1].initiatedAtLocal.getTime() : null,
+        nextIdCursor: hasNext ? nodes[nodes.length - 1].id : null,
         hasPrev,
         hasNext,
       },
     };
+  }
+
+  // --- Materialization Engine Methods ---
+
+  override async fetchNodesForMaterialization(traceId: string, limit: number, offset: number): Promise<import("../../types").NodeMaterializationDTO[]> {
+    const rs = await this.clickHouse.client.query({
+      query: `
+        SELECT id, parentNodeId, depthIndex FROM toco_tracer.nodes
+        WHERE trace_id = {traceId: String}
+        ORDER BY initiatedAtLocal ASC, id ASC
+        LIMIT {limit: UInt32} OFFSET {offset: UInt32}
+      `,
+      query_params: { traceId, limit, offset },
+      format: "JSONEachRow",
+    });
+    return (await rs.json() as any).data;
+  }
+
+  override async fetchNodeAncestry(traceId: string, nodeIds: string[]): Promise<import("../../types").NodeAncestryRecord[]> {
+    if (!nodeIds.length) return [];
+    const rs = await this.clickHouse.client.query({
+      query: `
+        SELECT node_id, ancestryPath FROM toco_tracer.node_ancestry
+        WHERE trace_id = {traceId: String} AND node_id IN ({nodeIds: Array(String)})
+      `,
+      query_params: { traceId, nodeIds },
+      format: "JSONEachRow",
+    });
+    return (await rs.json() as any).data;
+  }
+
+  override async fetchNodesByIds(traceId: string, nodeIds: string[]): Promise<import("../../types").NodeMaterializationDTO[]> {
+    if (!nodeIds.length) return [];
+    const rs = await this.clickHouse.client.query({
+      query: `
+        SELECT id, parentNodeId, depthIndex FROM toco_tracer.nodes
+        WHERE trace_id = {traceId: String} AND id IN ({missingIds: Array(String)})
+      `,
+      query_params: { traceId, missingIds: nodeIds },
+      format: "JSONEachRow",
+    });
+    return (await rs.json() as any).data;
+  }
+
+  override async saveNodeAncestryBatch(traceId: string, records: import("../../types").NodeAncestryRecord[]): Promise<void> {
+    if (!records.length) return;
+    const values = records.map(r => ({
+      node_id: r.node_id,
+      trace_id: traceId,
+      ancestryPath: r.ancestryPath
+    }));
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.node_ancestry",
+      values,
+      format: "JSONEachRow"
+    });
+  }
+
+  override async fetchEdgesForMaterialization(traceId: string, limit: number, offset: number): Promise<import("../../types").EdgeMaterializationDTO[]> {
+    const rs = await this.clickHouse.client.query({
+      query: `
+        SELECT id, fromNodeId, toNodeId, fromContainerId, toContainerId FROM toco_tracer.edges
+        WHERE trace_id = {traceId: String}
+        ORDER BY dispatchedAtLocal ASC, id ASC
+        LIMIT {limit: UInt32} OFFSET {offset: UInt32}
+      `,
+      query_params: { traceId, limit, offset },
+      format: "JSONEachRow",
+    });
+    return (await rs.json() as any).data;
+  }
+
+  override async saveEdgeEgressAncestryBatch(traceId: string, records: import("../../types").EdgeEgressAncestryRecord[]): Promise<void> {
+    if (!records.length) return;
+    const values = records.map(r => ({
+      edge_id: r.edge_id,
+      trace_id: traceId,
+      egressAncestryPath: r.egressAncestryPath
+    }));
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.edge_egress_ancestry",
+      values,
+      format: "JSONEachRow"
+    });
+  }
+
+  override async fetchEdgeEgressAncestry(traceId: string, edgeIds: string[]): Promise<import("../../types").EdgeEgressAncestryRecord[]> {
+    if (!edgeIds.length) return [];
+    const rs = await this.clickHouse.client.query({
+      query: `
+        SELECT edge_id, egressAncestryPath FROM toco_tracer.edge_egress_ancestry
+        WHERE trace_id = {traceId: String} AND edge_id IN ({edgeIds: Array(String)})
+      `,
+      query_params: { traceId, edgeIds },
+      format: "JSONEachRow",
+    });
+    return (await rs.json() as any).data;
+  }
+
+  override async saveVisualWiresBatch(traceId: string, wires: any[]): Promise<void> {
+    if (!wires.length) return;
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.read_edges",
+      values: wires,
+      format: "JSONEachRow"
+    });
+  }
+
+  override async updateTraceMaterializationMetadata(traceId: string, updates: import("../../types").TraceMetadataUpdate): Promise<void> {
+    // Only max_available_depth and is_zoom_ready are mutated. Since CH prefers immutable data, 
+    // we use ReplacingMergeTree on trace_metadata to allow updates by re-inserting the new row.
+    // In our schema, we should insert the updated state.
+    // First, let's fetch current state
+    const current = await this.fetchTraceMetadata(traceId);
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.trace_metadata",
+      values: [{
+        trace_id: traceId,
+        max_available_depth: updates.max_available_depth !== undefined ? updates.max_available_depth : current.maxAvailableDepth,
+        is_zoom_ready: updates.is_zoom_ready !== undefined ? (updates.is_zoom_ready ? 1 : 0) : (current.isZoomReady ? 1 : 0)
+      }],
+      format: "JSONEachRow"
+    });
   }
 }

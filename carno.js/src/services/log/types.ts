@@ -94,13 +94,39 @@ export interface PaginatedTraceResult {
     prevTimeCursor: number | null;
     prevIdCursor: string | null;
     nextTimeCursor: number | null;
-    nextIdCursor: string | null;
-    hasPrev: boolean;
-    hasNext: boolean;
   };
 }
 
 export interface TraceMetadataResult {
   isZoomReady: boolean;
   maxAvailableDepth: number;
+}
+
+export interface NodeMaterializationDTO {
+  id: string;
+  parentNodeId: string;
+  depthIndex: number;
+}
+
+export interface EdgeMaterializationDTO {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  fromContainerId: string;
+  toContainerId: string;
+}
+
+export interface NodeAncestryRecord {
+  node_id: string;
+  ancestryPath: string[];
+}
+
+export interface EdgeEgressAncestryRecord {
+  edge_id: string;
+  egressAncestryPath: string[];
+}
+
+export interface TraceMetadataUpdate {
+  max_available_depth?: number;
+  is_zoom_ready?: boolean;
 }

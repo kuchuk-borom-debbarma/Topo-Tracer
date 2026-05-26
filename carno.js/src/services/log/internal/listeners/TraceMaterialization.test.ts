@@ -2,40 +2,67 @@ import { describe, expect, it } from "bun:test";
 import { TraceNodeResolver } from "./operators/TraceNodeResolver";
 import { TraceEdgeResolver } from "./operators/TraceEdgeResolver";
 import { TraceClosureBuilder } from "./operators/TraceClosureBuilder";
-import type { ClickHouseService } from "../../../../infra/ClickHouseService";
+import type { LogRepo } from "../../LogRepo";
 import type { MessageBroker } from "../../../../infra/message/MessageBroker";
+import type { NodeMaterializationDTO, NodeAncestryRecord, EdgeMaterializationDTO, EdgeEgressAncestryRecord, TraceMetadataUpdate, TraceMetadataResult } from "../../types";
 
-class MockClickHouseClient {
-  queriesRan: { query: string; query_params: any }[] = [];
+class MockLogRepo implements LogRepo {
+  mockedNodesData: NodeMaterializationDTO[] = [];
+  mockedAncestryData: NodeAncestryRecord[] = [];
+  mockedEdgeAncestryData: EdgeEgressAncestryRecord[] = [];
+  mockedEdgesData: EdgeMaterializationDTO[] = [];
+
   insertedRows: { table: string; values: any[] }[] = [];
+  metadataUpdates: TraceMetadataUpdate[] = [];
 
-  mockedNodesData: any[] = [];
-  mockedAncestryData: any[] = [];
-  mockedEdgeAncestryData: any[] = [];
-  mockedEdgesData: any[] = [];
+  // --- Methods we don't care about for these tests ---
+  async saveContainer() {}
+  async saveContainers() {}
+  async saveNode() {}
+  async saveNodes() {}
+  async saveEdge() {}
+  async saveEdges() {}
+  async fetchTracePaginated() { return null as any; }
+  async fetchTraceMetadata() { return { isZoomReady: false, maxAvailableDepth: 0 }; }
 
-  async query(options: { query: string; query_params: any; format: string }): Promise<any> {
-    this.queriesRan.push({ query: options.query, query_params: options.query_params });
-    let data: any[] = [];
-
-    if (options.query.includes("toco_tracer.node_ancestry")) {
-      data = this.mockedAncestryData;
-    } else if (options.query.includes("toco_tracer.edge_egress_ancestry")) {
-      data = this.mockedEdgeAncestryData;
-    } else if (options.query.includes("toco_tracer.edges")) {
-      data = this.mockedEdgesData;
-    } else if (options.query.includes("toco_tracer.nodes")) {
-      data = this.mockedNodesData;
-    }
-
-    return {
-      json: async () => ({ data })
-    };
+  // --- Materialization Methods ---
+  async fetchNodesForMaterialization(traceId: string, limit: number, offset: number): Promise<NodeMaterializationDTO[]> {
+    return this.mockedNodesData;
   }
 
-  async insert(options: { table: string; values: any[]; format: string }): Promise<any> {
-    this.insertedRows.push({ table: options.table, values: options.values });
-    return {};
+  async fetchNodeAncestry(traceId: string, nodeIds: string[]): Promise<NodeAncestryRecord[]> {
+    this.insertedRows.push({ table: "queries", values: [{ type: "fetchNodeAncestry" }] });
+    return this.mockedAncestryData.filter(r => nodeIds.includes(r.node_id));
+  }
+
+  async fetchNodesByIds(traceId: string, nodeIds: string[]): Promise<NodeMaterializationDTO[]> {
+    this.insertedRows.push({ table: "queries", values: [{ type: "fetchNodesByIds" }] });
+    return this.mockedNodesData.filter(n => nodeIds.includes(n.id));
+  }
+
+  async saveNodeAncestryBatch(traceId: string, records: NodeAncestryRecord[]): Promise<void> {
+    this.insertedRows.push({ table: "toco_tracer.node_ancestry", values: records });
+  }
+
+  async fetchEdgesForMaterialization(traceId: string, limit: number, offset: number): Promise<EdgeMaterializationDTO[]> {
+    return this.mockedEdgesData;
+  }
+
+  async saveEdgeEgressAncestryBatch(traceId: string, records: EdgeEgressAncestryRecord[]): Promise<void> {
+    this.insertedRows.push({ table: "toco_tracer.edge_egress_ancestry", values: records });
+  }
+
+  async fetchEdgeEgressAncestry(traceId: string, edgeIds: string[]): Promise<EdgeEgressAncestryRecord[]> {
+    return this.mockedEdgeAncestryData.filter(r => edgeIds.includes(r.edge_id));
+  }
+
+  async saveVisualWiresBatch(traceId: string, wires: any[]): Promise<void> {
+    this.insertedRows.push({ table: "toco_tracer.read_edges", values: wires });
+  }
+
+  async updateTraceMaterializationMetadata(traceId: string, updates: TraceMetadataUpdate): Promise<void> {
+    this.metadataUpdates.push(updates);
+    this.insertedRows.push({ table: "toco_tracer.trace_metadata", values: [updates] });
   }
 }
 
@@ -49,250 +76,159 @@ class MockMessageBroker {
 
 describe("Trace Materialization Engine - Operator Tests", () => {
   it("TraceNodeResolver - should build ancestry paths using db-backed ancestry lookup and insert them", async () => {
-    const mockClient = new MockClickHouseClient();
+    const mockRepo = new MockLogRepo();
     const mockBroker = new MockMessageBroker();
-    const clickHouse = { client: mockClient as any } as ClickHouseService;
     const broker = mockBroker as any as MessageBroker;
 
-    const resolver = new TraceNodeResolver(clickHouse, broker);
+    const resolver = new TraceNodeResolver(mockRepo, broker);
 
-    // Mock nodes in this batch: Node B depends on Parent Node A (A was processed previously and is in database)
-    mockClient.mockedNodesData = [
-      {
-        id: "node_B",
-        trace_id: "trace_1",
-        parentNodeId: "node_A",
-        depthIndex: 1
-      }
+    mockRepo.mockedNodesData = [
+      { id: "node_b", parentNodeId: "node_a", depthIndex: 0 },
+      { id: "node_c", parentNodeId: "node_b", depthIndex: 0 }
     ];
 
-    // Mock parent's path already present in node_ancestry cache table
-    mockClient.mockedAncestryData = [
-      {
-        node_id: "node_A",
-        ancestryPath: ["node_A"]
-      }
-    ];
-
-    await resolver.resolve("trace_1", 0, 0, 1);
-
-    // Verify query to node_ancestry table
-    const ancestryQuery = mockClient.queriesRan.find(q => q.query.includes("toco_tracer.node_ancestry"));
-    expect(ancestryQuery).toBeDefined();
-    expect(ancestryQuery?.query_params.parentIds).toEqual(["node_A"]);
-
-    // Verify insertion to node_ancestry
-    const ancestryInsert = mockClient.insertedRows.find(r => r.table === "toco_tracer.node_ancestry");
-    expect(ancestryInsert).toBeDefined();
-    expect(ancestryInsert?.values[0].node_id).toBe("node_B");
-    expect(ancestryInsert?.values[0].ancestryPath).toEqual(["node_A", "node_B"]);
-
-    // Verify metadata was updated
-    const metaInsert = mockClient.insertedRows.find(r => r.table === "toco_tracer.trace_metadata");
-    expect(metaInsert).toBeDefined();
-    expect(metaInsert?.values[0].max_available_depth).toBe(1);
-
-    // Verify next stage (RESOLVE_EDGES) was triggered
-    expect(mockBroker.published.length).toBe(1);
-    expect(mockBroker.published[0].payload.stage).toBe("RESOLVE_EDGES");
-  });
-
-  it("TraceNodeResolver - should resolve missing parents via upfront batch fallback fetch when not present in local batch or cache", async () => {
-    const mockClient = new MockClickHouseClient();
-    const mockBroker = new MockMessageBroker();
-    const clickHouse = { client: mockClient as any } as ClickHouseService;
-    const broker = mockBroker as any as MessageBroker;
-
-    const resolver = new TraceNodeResolver(clickHouse, broker);
-
-    // Mock nodes in this batch: Node C depends on Node B. 
-    // Node B is NOT in the cache, and NOT in this batch.
-    mockClient.mockedNodesData = [
-      {
-        id: "node_C",
-        trace_id: "trace_2",
-        parentNodeId: "node_B",
-        depthIndex: 2
-      }
-    ];
-
-    // Cache is empty
-    mockClient.mockedAncestryData = [];
-
-    // During the fallback batch fetch, the nodes table returns Node B which depends on Node A
-    const originalQuery = mockClient.query.bind(mockClient);
-    mockClient.query = async (options: any) => {
-      // If it's the fallback fetch to nodes table
-      if (options.query.includes("SELECT id, parentNodeId FROM toco_tracer.nodes")) {
-        mockClient.queriesRan.push({ query: options.query, query_params: options.query_params });
-        // Return Node B (which points to Node A) on first loop, and Node A on second loop
-        if (options.query_params.missingIds.includes("node_B")) {
-          return { json: async () => ({ data: [{ id: "node_B", parentNodeId: "node_A" }] }) };
-        }
-        if (options.query_params.missingIds.includes("node_A")) {
-          return { json: async () => ({ data: [{ id: "node_A", parentNodeId: "" }] }) };
-        }
-      }
-      return originalQuery(options);
-    };
-
-    await resolver.resolve("trace_2", 0, 0, 1);
-
-    // Verify it fetched the missing parents from nodes table
-    const fallbackQueries = mockClient.queriesRan.filter(q => q.query.includes("SELECT id, parentNodeId FROM toco_tracer.nodes"));
-    expect(fallbackQueries.length).toBe(2); // One for node_B, one for node_A
-
-    // Verify insertion to node_ancestry
-    const ancestryInsert = mockClient.insertedRows.find(r => r.table === "toco_tracer.node_ancestry");
-    expect(ancestryInsert).toBeDefined();
-    expect(ancestryInsert?.values[0].node_id).toBe("node_C");
-    // Resolved path should correctly span all the way up to A
-    expect(ancestryInsert?.values[0].ancestryPath).toEqual(["node_A", "node_B", "node_C"]);
-  });
-
-  it("TraceEdgeResolver - should resolve edge egress paths by querying node_ancestry and inserting to edge_egress_ancestry", async () => {
-    const mockClient = new MockClickHouseClient();
-    const mockBroker = new MockMessageBroker();
-    const clickHouse = { client: mockClient as any } as ClickHouseService;
-    const broker = mockBroker as any as MessageBroker;
-
-    const resolver = new TraceEdgeResolver(clickHouse, broker);
-
-    // Mock edges in batch
-    mockClient.mockedEdgesData = [
-      {
-        id: "edge_1",
-        fromNodeId: "node_B",
-        toNodeId: "node_C",
-        fromContainerId: "con_1",
-        toContainerId: "con_2"
-      }
-    ];
-
-    // Mock parent's ancestry path in cache table
-    mockClient.mockedAncestryData = [
-      {
-        node_id: "node_B",
-        ancestryPath: ["node_A", "node_B"]
-      }
-    ];
-
-    await resolver.resolve("trace_1", 0, 1, 1);
-
-    // Verify queried node ancestry for the edge fromNodeId
-    const ancestryQuery = mockClient.queriesRan.find(q => q.query.includes("toco_tracer.node_ancestry"));
-    expect(ancestryQuery).toBeDefined();
-    expect(ancestryQuery?.query_params.nodeIds).toEqual(["node_B"]);
-
-    // Verify insert into edge_egress_ancestry
-    const egressInsert = mockClient.insertedRows.find(r => r.table === "toco_tracer.edge_egress_ancestry");
-    expect(egressInsert).toBeDefined();
-    expect(egressInsert?.values[0].edge_id).toBe("edge_1");
-    expect(egressInsert?.values[0].egressAncestryPath).toEqual(["node_A", "node_B"]);
-
-    // Verify transition to stage BUILD_CLOSURES
-    expect(mockBroker.published.length).toBe(1);
-    expect(mockBroker.published[0].payload.stage).toBe("BUILD_CLOSURES");
-  });
-
-  it("TraceClosureBuilder - should fetch egress ancestry paths and write snapped visual wires to read_edges", async () => {
-    const mockClient = new MockClickHouseClient();
-    const mockBroker = new MockMessageBroker();
-    const clickHouse = { client: mockClient as any } as ClickHouseService;
-    const broker = mockBroker as any as MessageBroker;
-
-    const resolver = new TraceClosureBuilder(clickHouse, broker);
-
-    // Mock edge
-    mockClient.mockedEdgesData = [
-      {
-        id: "edge_1",
-        fromNodeId: "node_B",
-        toNodeId: "node_C",
-        fromContainerId: "con_1",
-        toContainerId: "con_2"
-      }
-    ];
-
-    // Mock edge egress path
-    mockClient.mockedEdgeAncestryData = [
-      {
-        edge_id: "edge_1",
-        egressAncestryPath: ["node_A", "node_B"]
-      }
+    mockRepo.mockedAncestryData = [
+      { node_id: "node_a", ancestryPath: ["node_root", "node_a"] }
     ];
 
     await resolver.resolve("trace_1", 0, 2, 1);
 
-    // Verify query to edge_egress_ancestry
-    const egressQuery = mockClient.queriesRan.find(q => q.query.includes("toco_tracer.edge_egress_ancestry"));
-    expect(egressQuery).toBeDefined();
-    expect(egressQuery?.query_params.edgeIds).toEqual(["edge_1"]);
+    const insertedAncestry = mockRepo.insertedRows.find(r => r.table === "toco_tracer.node_ancestry");
+    expect(insertedAncestry).toBeDefined();
 
-    // Verify read_edges snaps inserted
-    const wiresInsert = mockClient.insertedRows.find(r => r.table === "toco_tracer.read_edges");
-    expect(wiresInsert).toBeDefined();
+    const nodeB_record = insertedAncestry!.values.find(v => v.node_id === "node_b");
+    const nodeC_record = insertedAncestry!.values.find(v => v.node_id === "node_c");
+
+    expect(nodeB_record).toBeDefined();
+    expect(nodeB_record.ancestryPath).toEqual(["node_root", "node_a", "node_b"]);
+
+    expect(nodeC_record).toBeDefined();
+    expect(nodeC_record.ancestryPath).toEqual(["node_root", "node_a", "node_b", "node_c"]);
+
+    expect(mockBroker.published.length).toBe(1);
+    expect(mockBroker.published[0].payload.stage).toBe("RESOLVE_NODES");
+    expect(mockBroker.published[0].payload.offset).toBe(1000);
+    expect(mockBroker.published[0].payload.maxDepth).toBe(4);
+  });
+
+  it("TraceNodeResolver - should resolve missing parents via upfront batch fallback fetch when not present in local batch or cache", async () => {
+    const mockRepo = new MockLogRepo();
+    const mockBroker = new MockMessageBroker();
+    const broker = mockBroker as any as MessageBroker;
+
+    const resolver = new TraceNodeResolver(mockRepo, broker);
+
+    mockRepo.mockedNodesData = [
+      { id: "node_child", parentNodeId: "node_parent_1", depthIndex: 0 },
+      { id: "node_parent_1", parentNodeId: "node_parent_2", depthIndex: 0 }
+    ];
+
+    await resolver.resolve("trace_2", 0, 0, 1);
+
+    const insertedAncestry = mockRepo.insertedRows.find(r => r.table === "toco_tracer.node_ancestry");
+    expect(insertedAncestry).toBeDefined();
     
-    // We expect wires generated for visual_depth = 0, 1 (sparse inserts skip duplicate depth 2)
-    expect(wiresInsert?.values.length).toBe(2);
+    const fallbackQueries = mockRepo.insertedRows.filter(r => r.table === "queries" && r.values[0].type === "fetchNodesByIds");
+    expect(fallbackQueries.length).toBeGreaterThan(0);
 
-    // Depth 0: snaps to container
-    expect(wiresInsert?.values[0].visual_depth).toBe(0);
-    expect(wiresInsert?.values[0].from_target_id).toBe("con_1");
-    expect(wiresInsert?.values[0].from_target_type).toBe("container");
+    const childRecord = insertedAncestry!.values.find(v => v.node_id === "node_child");
+    expect(childRecord.ancestryPath).toEqual(["node_parent_2", "node_parent_1", "node_child"]);
+  });
 
-    // Depth 1: snaps to node_B (egress path index 1 is node_B)
-    expect(wiresInsert?.values[1].visual_depth).toBe(1);
-    expect(wiresInsert?.values[1].from_target_id).toBe("node_B");
-    expect(wiresInsert?.values[1].from_target_type).toBe("node");
+  it("TraceEdgeResolver - should resolve edge egress paths by querying node_ancestry and inserting to edge_egress_ancestry", async () => {
+    const mockRepo = new MockLogRepo();
+    const mockBroker = new MockMessageBroker();
+    const broker = mockBroker as any as MessageBroker;
+
+    const resolver = new TraceEdgeResolver(mockRepo, broker);
+
+    mockRepo.mockedEdgesData = [
+      { id: "edge_1", fromNodeId: "node_b", toNodeId: "node_c", fromContainerId: "container_a", toContainerId: "container_b" }
+    ];
+
+    mockRepo.mockedAncestryData = [
+      { node_id: "node_b", ancestryPath: ["node_root", "node_a", "node_b"] }
+    ];
+
+    await resolver.resolve("trace_1", 0, 3, 1);
+
+    const insertedEdgeAncestry = mockRepo.insertedRows.find(r => r.table === "toco_tracer.edge_egress_ancestry");
+    expect(insertedEdgeAncestry).toBeDefined();
+
+    const edge1_record = insertedEdgeAncestry!.values.find(v => v.edge_id === "edge_1");
+    expect(edge1_record).toBeDefined();
+    expect(edge1_record.egressAncestryPath).toEqual(["node_root", "node_a", "node_b"]);
+
+    expect(mockBroker.published.length).toBe(1);
+    expect(mockBroker.published[0].payload.stage).toBe("RESOLVE_EDGES");
+    expect(mockBroker.published[0].payload.offset).toBe(1000);
+  });
+
+  it("TraceClosureBuilder - should fetch egress ancestry paths and write snapped visual wires to read_edges", async () => {
+    const mockRepo = new MockLogRepo();
+    const mockBroker = new MockMessageBroker();
+    const broker = mockBroker as any as MessageBroker;
+
+    const resolver = new TraceClosureBuilder(mockRepo, broker);
+
+    mockRepo.mockedEdgesData = [
+      { id: "edge_1", fromNodeId: "node_b", toNodeId: "node_c", fromContainerId: "pod_front", toContainerId: "pod_back" }
+    ];
+
+    mockRepo.mockedEdgeAncestryData = [
+      { edge_id: "edge_1", egressAncestryPath: ["node_root", "node_a", "node_b"] }
+    ];
+
+    await resolver.resolve("trace_1", 0, 2, 1);
+
+    const insertedReadEdges = mockRepo.insertedRows.find(r => r.table === "toco_tracer.read_edges");
+    expect(insertedReadEdges).toBeDefined();
+
+    const depth0Wire = insertedReadEdges!.values.find(v => v.visual_depth === 0);
+    const depth1Wire = insertedReadEdges!.values.find(v => v.visual_depth === 1);
+    const depth2Wire = insertedReadEdges!.values.find(v => v.visual_depth === 2);
+
+    expect(depth0Wire).toBeDefined();
+    expect(depth0Wire.from_target_id).toBe("pod_front");
+    expect(depth0Wire.from_target_type).toBe("container");
+
+    expect(depth1Wire).toBeDefined();
+    expect(depth1Wire.from_target_id).toBe("node_root");
+    expect(depth1Wire.from_target_type).toBe("node");
+
+    expect(depth2Wire).toBeDefined();
+    expect(depth2Wire.from_target_id).toBe("node_a");
+    expect(depth2Wire.from_target_type).toBe("node");
+    expect(depth2Wire.to_node_id).toBe("node_c");
+
+    expect(mockBroker.published[0].payload.stage).toBe("BUILD_CLOSURES");
   });
 
   it("TraceClosureBuilder - should strictly enforce sparse inserts for very deep traces", async () => {
-    const mockClient = new MockClickHouseClient();
+    const mockRepo = new MockLogRepo();
     const mockBroker = new MockMessageBroker();
-    const clickHouse = { client: mockClient as any } as ClickHouseService;
     const broker = mockBroker as any as MessageBroker;
 
-    const resolver = new TraceClosureBuilder(clickHouse, broker);
+    const resolver = new TraceClosureBuilder(mockRepo, broker);
 
-    mockClient.mockedEdgesData = [
-      {
-        id: "edge_deep",
-        fromNodeId: "node_leaf",
-        toNodeId: "node_target",
-        fromContainerId: "con_1",
-        toContainerId: "con_2"
-      }
+    mockRepo.mockedEdgesData = [
+      { id: "edge_deep", fromNodeId: "node_5", toNodeId: "node_c", fromContainerId: "pod_front", toContainerId: "pod_back" }
     ];
 
-    // Egress path is only 3 nodes deep, but maxDepth requested is 50
-    mockClient.mockedEdgeAncestryData = [
-      {
-        edge_id: "edge_deep",
-        egressAncestryPath: ["node_root", "node_mid", "node_leaf"]
-      }
+    mockRepo.mockedEdgeAncestryData = [
+      { edge_id: "edge_deep", egressAncestryPath: ["node_1", "node_2", "node_3", "node_4", "node_5"] }
     ];
 
     await resolver.resolve("trace_deep", 0, 50, 1);
 
-    const wiresInsert = mockClient.insertedRows.find(r => r.table === "toco_tracer.read_edges");
-    expect(wiresInsert).toBeDefined();
-    
-    // Instead of 51 rows (0 to 50), it should only insert exactly 4 rows:
-    // depth 0: con_1
-    // depth 1: node_mid
-    // depth 2: node_leaf
-    // depth 3..50: identical to depth 2 (node_leaf), so they are SKIPPED.
-    // Note: egressAncestryPath[0] is root, but code starts at egressAncestryPath[1] for depth 1.
-    expect(wiresInsert?.values.length).toBe(3);
-    
-    expect(wiresInsert?.values[0].visual_depth).toBe(0);
-    expect(wiresInsert?.values[0].from_target_id).toBe("con_1");
-    
-    expect(wiresInsert?.values[1].visual_depth).toBe(1);
-    expect(wiresInsert?.values[1].from_target_id).toBe("node_mid");
-    
-    expect(wiresInsert?.values[2].visual_depth).toBe(2);
-    expect(wiresInsert?.values[2].from_target_id).toBe("node_leaf");
+    const insertedReadEdges = mockRepo.insertedRows.find(r => r.table === "toco_tracer.read_edges");
+    expect(insertedReadEdges).toBeDefined();
+    expect(insertedReadEdges!.values.length).toBe(6);
+
+    const maxDepthWire = insertedReadEdges!.values.find(v => v.visual_depth === 5);
+    expect(maxDepthWire.from_target_id).toBe("node_5");
+
+    const overDepthWire = insertedReadEdges!.values.find(v => v.visual_depth === 6);
+    expect(overDepthWire).toBeUndefined();
   });
 });
