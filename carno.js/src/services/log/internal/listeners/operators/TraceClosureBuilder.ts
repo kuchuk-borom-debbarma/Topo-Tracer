@@ -103,6 +103,14 @@ export class TraceClosureBuilder {
 
     for (const row of rawEdges) {
       const egressAncestryPath = egressMap.get(row.id) || [];
+      
+      // SPARSE INSERT OPTIMIZATION (Fix for Issue #5)
+      // We only insert a new visual wire if the origin target has actually changed
+      // compared to the previous depth level. For any depth beyond the leaf node's
+      // actual depth, the wire stays pinned to the leaf node, so we don't write duplicates.
+      // The read query uses `ORDER BY visual_depth DESC LIMIT 1 BY edge_id` to find
+      // the correct sparse row at query time.
+      let lastFromTargetId = "";
 
       for (let d = 0; d <= cappedMaxDepth; d++) {
         let fromTargetId = row.fromContainerId;
@@ -118,15 +126,18 @@ export class TraceClosureBuilder {
           }
         }
 
-        visualWiresToInsert.push({
-          id: `${row.id}_${d}`,
-          edge_id: row.id,
-          trace_id: traceId,
-          visual_depth: d,
-          from_target_id: fromTargetId,
-          from_target_type: fromTargetType,
-          to_node_id: row.toNodeId,
-        });
+        if (fromTargetId !== lastFromTargetId) {
+          visualWiresToInsert.push({
+            id: `${row.id}_${d}`,
+            edge_id: row.id,
+            trace_id: traceId,
+            visual_depth: d,
+            from_target_id: fromTargetId,
+            from_target_type: fromTargetType,
+            to_node_id: row.toNodeId,
+          });
+          lastFromTargetId = fromTargetId;
+        }
       }
     }
 

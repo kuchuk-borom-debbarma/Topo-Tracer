@@ -311,7 +311,9 @@ export class LogRepoClickHouseImpl extends LogRepo {
         query: `
           SELECT * FROM toco_tracer.read_edges
           WHERE trace_id = {traceId: String}
-            AND visual_depth = {depth: UInt32}
+            AND visual_depth <= {depth: UInt32}
+          ORDER BY visual_depth DESC
+          LIMIT 1 BY edge_id
         `,
         query_params: {
           traceId,

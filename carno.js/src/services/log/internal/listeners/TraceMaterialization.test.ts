@@ -180,8 +180,8 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     const wiresInsert = mockClient.insertedRows.find(r => r.table === "toco_tracer.read_edges");
     expect(wiresInsert).toBeDefined();
     
-    // We expect wires generated for visual_depth = 0, 1, 2
-    expect(wiresInsert?.values.length).toBe(3);
+    // We expect wires generated for visual_depth = 0, 1 (sparse inserts skip duplicate depth 2)
+    expect(wiresInsert?.values.length).toBe(2);
 
     // Depth 0: snaps to container
     expect(wiresInsert?.values[0].visual_depth).toBe(0);
@@ -192,10 +192,5 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     expect(wiresInsert?.values[1].visual_depth).toBe(1);
     expect(wiresInsert?.values[1].from_target_id).toBe("node_B");
     expect(wiresInsert?.values[1].from_target_type).toBe("node");
-
-    // Depth 2: snaps to node_B
-    expect(wiresInsert?.values[2].visual_depth).toBe(2);
-    expect(wiresInsert?.values[2].from_target_id).toBe("node_B");
-    expect(wiresInsert?.values[2].from_target_type).toBe("node");
   });
 });
