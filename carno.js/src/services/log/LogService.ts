@@ -1,4 +1,4 @@
-import type { ContainerInput, NodeInput, EdgeInput } from "./types";
+import type { ContainerInput, NodeInput, EdgeInput, PaginationParams, PaginatedResult, PaginatedTraceResult } from "./types";
 
 export class LogService {
   async logContainer(container: ContainerInput): Promise<void> {}
@@ -20,6 +20,10 @@ export class LogService {
 
   async updateEdgeLocalTimes(edges: EdgeInput[], newTime?: Date): Promise<EdgeInput[]> {
     return [];
+  }
+
+  async logTracePaginated(traceId: string, params: PaginationParams): Promise<PaginatedTraceResult> {
+    return { nodes: [], edges: [], pagination: { prevTimeCursor: null, prevIdCursor: null, nextTimeCursor: null, nextIdCursor: null, hasPrev: false, hasNext: false } };
   }
 }
 

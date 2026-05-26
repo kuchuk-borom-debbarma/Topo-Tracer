@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from "@carno.js/core";
+import { Controller, Post, Body, Get, Param, Query } from "@carno.js/core";
 import { LogService } from "../services/log/LogService";
 import type { ContainerInput, NodeInput, EdgeInput } from "../services/log/types";
 
@@ -49,6 +49,31 @@ export class LogController {
   async updateEdgeTimes(@Body() edges: EdgeInput[]) {
     console.log(`[LogController] Shifting times for ${edges.length} edges`);
     return await this.logService.updateEdgeLocalTimes(edges);
+  }
+
+  // Fetch a paginated chunk of nodes and matching edges for a given trace sequentially
+  @Get("/trace/:traceId")
+  async getTrace(
+    @Param("traceId") traceId: string,
+    @Query("limit") limit?: string,
+    @Query("beforeTime") beforeTime?: string,
+    @Query("beforeId") beforeId?: string,
+    @Query("afterTime") afterTime?: string,
+    @Query("afterId") afterId?: string
+  ) {
+    const rawLimit = limit ? parseInt(limit, 10) : undefined;
+    const rawBeforeTime = beforeTime ? parseInt(beforeTime, 10) : undefined;
+    const rawAfterTime = afterTime ? parseInt(afterTime, 10) : undefined;
+
+    console.log(`[LogController] Paginated unified fetch request for trace ${traceId} (limit: ${rawLimit})`);
+
+    return await this.logService.logTracePaginated(traceId, {
+      limit: rawLimit,
+      beforeTime: rawBeforeTime,
+      beforeId,
+      afterTime: rawAfterTime,
+      afterId,
+    });
   }
 }
 

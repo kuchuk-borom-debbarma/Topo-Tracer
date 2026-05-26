@@ -1,7 +1,7 @@
 import { Service } from "@carno.js/core";
 import { LogService } from "../LogService";
 import { LogRepo } from "./LogRepo";
-import type { Container, Node, Edge, ContainerInput, NodeInput, EdgeInput } from "../types";
+import type { Container, Node, Edge, ContainerInput, NodeInput, EdgeInput, PaginationParams, PaginatedTraceResult } from "../types";
 
 @Service()
 export class LogServiceImpl extends LogService {
@@ -109,6 +109,8 @@ export class LogServiceImpl extends LogService {
       };
     });
   }
+
+  override async logTracePaginated(traceId: string, params: PaginationParams): Promise<PaginatedTraceResult> {
+    return await this.logRepo.fetchTracePaginated(traceId, params);
+  }
 }
-
-

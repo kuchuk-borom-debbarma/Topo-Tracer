@@ -51,3 +51,37 @@ export type NodeInput = {
 
 export type EdgeInput = Edge;
 
+export interface PaginationParams {
+  limit?: number;
+  beforeTime?: number;
+  beforeId?: string;
+  afterTime?: number;
+  afterId?: string;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    prevTimeCursor: number | null;
+    prevIdCursor: string | null;
+    nextTimeCursor: number | null;
+    nextIdCursor: string | null;
+    hasPrev: boolean;
+    hasNext: boolean;
+  };
+}
+
+export interface PaginatedTraceResult {
+  nodes: Node[];
+  edges: Edge[];
+  pagination: {
+    prevTimeCursor: number | null;
+    prevIdCursor: string | null;
+    nextTimeCursor: number | null;
+    nextIdCursor: string | null;
+    hasPrev: boolean;
+    hasNext: boolean;
+  };
+}
+
+
