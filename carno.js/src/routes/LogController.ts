@@ -56,19 +56,22 @@ export class LogController {
   async getTrace(
     @Param("traceId") traceId: string,
     @Query("limit") limit?: string,
+    @Query("depth") depth?: string,
     @Query("beforeTime") beforeTime?: string,
     @Query("beforeId") beforeId?: string,
     @Query("afterTime") afterTime?: string,
     @Query("afterId") afterId?: string
   ) {
     const rawLimit = limit ? parseInt(limit, 10) : undefined;
+    const rawDepth = depth ? parseInt(depth, 10) : undefined;
     const rawBeforeTime = beforeTime ? parseInt(beforeTime, 10) : undefined;
     const rawAfterTime = afterTime ? parseInt(afterTime, 10) : undefined;
 
-    console.log(`[LogController] Paginated unified fetch request for trace ${traceId} (limit: ${rawLimit})`);
+    console.log(`[LogController] Paginated unified fetch request for trace ${traceId} (limit: ${rawLimit}, depth: ${rawDepth})`);
 
     return await this.logService.logTracePaginated(traceId, {
       limit: rawLimit,
+      depth: rawDepth,
       beforeTime: rawBeforeTime,
       beforeId,
       afterTime: rawAfterTime,
