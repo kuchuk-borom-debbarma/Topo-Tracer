@@ -1,0 +1,61 @@
+name: toco-tracer-services
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: toco-tracer-clickhouse
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9000:9000" # Native/TCP protocol
+      - "9440:9440" # Native/TCP with SSL
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    restart: always
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: toco-tracer-redpanda
+    command:
+      - redpanda start
+      - --smp=1
+      - --memory=1G
+      - --overprovisioned
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      - --pandaproxy-addr=0.0.0.0:8082
+      - --advertise-pandaproxy-addr=localhost:8082
+      - --schema-registry-addr=0.0.0.0:8081
+    ports:
+      - "9092:9092" # Kafka external protocol
+      - "8082:8082" # Redpanda HTTP Proxy
+      - "8081:8081" # Schema Registry
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    restart: always
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: toco-tracer-redpanda-console
+    environment:
+      - KAFKA_BROKERS=redpanda:29092
+    ports:
+      - "8080:8080" # Web Console interface
+    depends_on:
+      - redpanda
+    restart: always
+
+volumes:
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local
+  redpanda_data:
+    driver: local
