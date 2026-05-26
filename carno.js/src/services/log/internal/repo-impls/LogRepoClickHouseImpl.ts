@@ -165,6 +165,107 @@ export class LogRepoClickHouseImpl extends LogRepo {
     return await this.ensureMaterialized(traceId);
   }
 
+  override async fetchTraceFull(traceId: string, depth?: number): Promise<import("../../types").FullTraceResult> {
+    const { isZoomReady, maxAvailableDepth } = await this.ensureMaterialized(traceId);
+
+    const hasDepthFilter = depth !== undefined;
+    const depthFilterClause = hasDepthFilter ? "AND depthIndex <= {depth: UInt32}" : "";
+
+    const query = `
+      SELECT * FROM toco_tracer.nodes
+      WHERE trace_id = {traceId: String}
+        ${depthFilterClause}
+      ORDER BY initiatedAtLocal ASC, id ASC
+    `;
+
+    const queryParams: Record<string, any> = { traceId };
+    if (hasDepthFilter) {
+      queryParams.depth = depth;
+    }
+
+    const resultSet = await this.clickHouse.client.query({
+      query,
+      query_params: queryParams,
+      format: "JSONEachRow",
+    });
+
+    const rawRows = (await resultSet.json()) as any[];
+
+    const nodes: Node[] = rawRows.map(row => ({
+      id: row.id,
+      traceId: row.trace_id,
+      containerId: row.containerId,
+      parentNodeId: row.parentNodeId,
+      name: row.name,
+      nodeType: row.nodeType,
+      depthIndex: Number(row.depthIndex),
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      initiatedAtLocal: new Date(Number(row.initiatedAtLocal)),
+      processedAtLocal: new Date(Number(row.processedAtLocal)),
+      completedAtLocal: row.completedAtLocal ? new Date(Number(row.completedAtLocal)) : undefined,
+    }));
+
+    let edges: Edge[] = [];
+    if (nodes.length > 0) {
+      const nodeIds = nodes.map(n => n.id);
+      const edgesResultSet = await this.clickHouse.client.query({
+        query: `
+          SELECT * FROM toco_tracer.edges
+          WHERE trace_id = {traceId: String}
+            AND fromNodeId IN {nodeIds: Array(String)}
+            AND toNodeId IN {nodeIds: Array(String)}
+        `,
+        query_params: { traceId, nodeIds },
+        format: "JSONEachRow",
+      });
+
+      const rawEdges = (await edgesResultSet.json()) as any[];
+
+      edges = rawEdges.map(row => ({
+        id: row.id,
+        traceId: row.trace_id,
+        fromContainerId: row.fromContainerId,
+        toContainerId: row.toContainerId,
+        fromNodeId: row.fromNodeId,
+        toNodeId: row.toNodeId,
+        edgeType: row.edgeType,
+        dispatchedAtLocal: new Date(Number(row.dispatchedAtLocal)),
+        respondedAtLocal: row.respondedAtLocal ? new Date(Number(row.respondedAtLocal)) : undefined,
+      }));
+    }
+
+    let visualWires: VisualWire[] | undefined = undefined;
+    if (hasDepthFilter) {
+      const readEdgesResultSet = await this.clickHouse.client.query({
+        query: `
+          SELECT * FROM toco_tracer.read_edges
+          WHERE trace_id = {traceId: String}
+            AND visual_depth <= {depth: UInt32}
+          ORDER BY visual_depth DESC
+          LIMIT 1 BY edge_id
+        `,
+        query_params: { traceId, depth: depth! },
+        format: "JSONEachRow",
+      });
+
+      const rawReadEdges = (await readEdgesResultSet.json()) as any[];
+
+      visualWires = rawReadEdges.map(row => ({
+        id: row.id,
+        fromTarget: { id: row.from_target_id, type: row.from_target_type as "node" | "container" },
+        toTarget: { id: row.to_node_id, type: "node" },
+      }));
+    }
+
+    return {
+      nodes,
+      edges,
+      visualWires,
+      isZoomReady,
+      maxAvailableDepth,
+    };
+  }
+
   override async fetchTracePaginated(traceId: string, params: PaginationParams): Promise<PaginatedTraceResult> {
     // 1. Ensure trace is materialized (triggers background worker if needed)
     const { isZoomReady, maxAvailableDepth } = await this.ensureMaterialized(traceId);

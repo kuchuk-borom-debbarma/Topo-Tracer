@@ -79,6 +79,18 @@ export class LogController {
     });
   }
 
+  // Fetch all nodes and matching edges for a given trace up to a specific depth without pagination limits
+  @Get("/trace/:traceId/full")
+  async getTraceFull(
+    @Param("traceId") traceId: string,
+    @Query("depth") depth?: string
+  ) {
+    const rawDepth = depth ? parseInt(depth, 10) : undefined;
+    console.log(`[LogController] Full unified fetch request for trace ${traceId} (depth: ${rawDepth})`);
+    
+    return await this.logService.logTraceFull(traceId, rawDepth);
+  }
+
   // Fetch metadata for a specific trace, such as whether zoom is fully materialized
   @Get("/trace/:traceId/metadata")
   async getTraceMetadata(@Param("traceId") traceId: string) {

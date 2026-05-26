@@ -21,8 +21,15 @@ class MockLogRepo implements LogRepo {
   async saveNodes() {}
   async saveEdge() {}
   async saveEdges() {}
-  async fetchTracePaginated() { return null as any; }
-  async fetchTraceMetadata() { return { isZoomReady: false, maxAvailableDepth: 0 }; }
+  async fetchTracePaginated(traceId: string, params: any): Promise<any> {
+    return { nodes: [], edges: [], pagination: { prevTimeCursor: null, prevIdCursor: null, nextTimeCursor: null, nextIdCursor: null, hasPrev: false, hasNext: false }, isZoomReady: false, maxAvailableDepth: 0 };
+  }
+
+  async fetchTraceFull(traceId: string, depth?: number): Promise<any> {
+    return { nodes: [], edges: [], isZoomReady: false, maxAvailableDepth: 0 };
+  }
+
+  async fetchTraceMetadata(traceId: string): Promise<TraceMetadataResult> { return { isZoomReady: false, maxAvailableDepth: 0 }; }
 
   async fetchNodesForMaterialization(traceId: string, limit: number, offset: number): Promise<NodeMaterializationDTO[]> {
     return this.mockedNodesData;

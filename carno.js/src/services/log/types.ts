@@ -100,6 +100,14 @@ export interface PaginatedTraceResult {
   };
 }
 
+export interface FullTraceResult {
+  nodes: Node[];
+  edges: Edge[];
+  visualWires?: VisualWire[]; // Snapped coordinates matching zoom depth
+  isZoomReady: boolean;        // True if read_edges are fully pre-computed
+  maxAvailableDepth: number;   // Maximum stack depth index in this trace
+}
+
 export interface TraceMetadataResult {
   isZoomReady: boolean;
   maxAvailableDepth: number;

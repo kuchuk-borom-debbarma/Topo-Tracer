@@ -114,6 +114,10 @@ export class LogServiceImpl extends LogService {
     return await this.logRepo.fetchTracePaginated(traceId, params);
   }
 
+  override async logTraceFull(traceId: string, depth?: number): Promise<import("../types").FullTraceResult> {
+    return await this.logRepo.fetchTraceFull(traceId, depth);
+  }
+
   override async fetchTraceMetadata(traceId: string): Promise<import("../types").TraceMetadataResult> {
     return await this.logRepo.fetchTraceMetadata(traceId);
   }
