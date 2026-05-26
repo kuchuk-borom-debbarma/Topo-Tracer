@@ -287,20 +287,17 @@ LIMIT 1000 OFFSET :offset
 ```
 Since nodes are fetched in chronological order, and distributed traces are typically recorded in execution order, parents will almost always appear before their children in this sequence.
 
-**Step 2 — Identify external parent IDs.**
-Build a `localNodeMap` of all nodes in this batch. For any node whose `parentNodeId` is NOT in the local batch (i.e. the parent was processed in a previous batch), collect it into `externalParentIds`.
+**Step 2 — Iterative Batch Parent Fetch.**
+Instead of lazy, one-by-one recursive DB queries, we resolve all missing parents upfront:
+1. Build a `localNodeMap` and identify all `parentNodeId`s missing from the batch.
+2. Query `node_ancestry` for these missing parents using a single `IN (...)` query.
+3. For any parents still missing, query the `nodes` table using a single `IN (...)` query and add them to the local map.
+4. Repeat this layer-by-layer up to `MAX_DEPTH_LIMIT` until no parents are missing.
 
-**Step 3 — Query `node_ancestry` for external parent paths.**
-```sql
-SELECT node_id, ancestryPath FROM toco_tracer.node_ancestry
-WHERE trace_id = :traceId AND node_id IN (:parentIds)
-```
-Because Stage 1 processes batches sequentially and writes to `node_ancestry` after each batch, previous batches' results are always available in the database when the next batch runs.
+This bounds DB fallback queries strictly to the stack depth (typically 1 or 2 batch queries) rather than 100 sequential individual queries per out-of-order span.
 
-**Step 4 — Resolve paths for all 1000 nodes.**
-Using the local map and the DB-fetched ancestry map, compute the full ancestry path for each node recursively. A `resolvedPaths` cache avoids redundant work within the same batch call.
-
-**Fallback:** If a parent is missing from both the local map and `node_ancestry` (e.g. due to out-of-order telemetry ingestion), a direct query is made to the primary `nodes` table. The traversal is capped at `MAX_DEPTH_LIMIT = 100` to guard against malformed cycles.
+**Step 3 — Resolve paths for all 1000 nodes (100% In-Memory).**
+Since step 2 ensures all ancestors are pre-fetched into the `localNodeMap` or `dbAncestryMap`, the actual path traversal is now purely synchronous and in-memory. A `resolvedPaths` cache avoids redundant tree-climbing within the same batch.
 
 **Step 5 — Bulk insert into `node_ancestry`.**
 ```sql
@@ -405,6 +402,11 @@ The generated visual wires for this edge would be:
 | `2` | `span_auth` | `node` |
 | `3` | `span_db_query` (leaf fallback) | `node` |
 
+**Sparse Inserts (Row Explosion Prevention):**
+Notice that for any depth `≥ 3`, the origin node stays exactly the same (`span_db_query`). Rather than inserting 97 identical duplicate rows for depths 4 through 100, the builder tracks the origin target and **only inserts a new row if the origin target changes from the previous depth**. 
+
+This slashes `read_edges` storage by 95% for deep traces.
+
 #### Algorithm (per batch of 1000 edges)
 
 **Step 1 — Fetch 1000 edges chronologically from `toco_tracer.edges`.**
@@ -415,8 +417,8 @@ SELECT edge_id, egressAncestryPath FROM toco_tracer.edge_egress_ancestry
 WHERE trace_id = :traceId AND edge_id IN (:edgeIds)
 ```
 
-**Step 3 — Generate visual wires.**
-For each edge, iterate `d` from `0` to `min(maxDepth, 100)` and apply the snapping logic above. Each wire becomes one row in `read_edges`.
+**Step 3 — Generate sparse visual wires.**
+For each edge, iterate `d` from `0` to `min(maxDepth, 100)` and apply the snapping logic above. If the computed target differs from the target at `d - 1`, a new wire row is added to the insert batch.
 
 **Step 4 — Bulk insert into `read_edges`.**
 ```sql
@@ -502,14 +504,16 @@ WHERE trace_id = :traceId
   AND toNodeId IN (:nodeIds)
 ```
 
-**4. Pre-computed visual wires (only if depth param is provided)**
+**4. Pre-computed visual wires (Sparse Read via `LIMIT BY`)**
 ```sql
 SELECT * FROM toco_tracer.read_edges
 WHERE trace_id = :traceId
-  AND visual_depth = :depth
+  AND visual_depth <= :depth
+ORDER BY visual_depth DESC
+LIMIT 1 BY edge_id
 ```
 
-Query 4 is a direct primary key index seek on `(trace_id, visual_depth, id)` — it returns results in sub-millisecond time regardless of how many edges exist in the trace.
+Because `read_edges` uses sparse inserts, we don't query for an exact `visual_depth`. We query for the closest available pre-computed depth up to the requested depth, and use ClickHouse's native `LIMIT 1 BY` to pick the single highest depth row per edge. This sub-millisecond query seamlessly resolves the exact wire endpoints without storing massive duplicates.
 
 ---
 
