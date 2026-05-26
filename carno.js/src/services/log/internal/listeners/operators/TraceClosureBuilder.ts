@@ -22,6 +22,12 @@ export class TraceClosureBuilder {
     private messageBroker: MessageBroker
   ) {}
 
+  /**
+   * @param traceId Unique identifier for the trace.
+   * @param offset Starting position for batch processing edges.
+   * @param maxDepth Maximum stack depth level for the trace.
+   * @param iteration Current step count in the materialization process.
+   */
   async resolve(
     traceId: string,
     offset: number,

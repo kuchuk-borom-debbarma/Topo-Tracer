@@ -22,6 +22,12 @@ export class TraceNodeResolver {
     private messageBroker: MessageBroker
   ) {}
 
+  /**
+   * @param traceId Unique identifier for the trace.
+   * @param offset Starting position for batch processing nodes.
+   * @param currentMaxDepth Highest depth level found so far in trace hierarchy.
+   * @param iteration Current step count in the materialization process.
+   */
   async resolve(
     traceId: string,
     offset: number,
