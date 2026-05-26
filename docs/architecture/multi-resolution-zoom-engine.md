@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0  
 **Branch:** `feat/multi-resolution-zoom`  
-**Status:** Implemented (Idempotency deferred)
+**Status:** Implemented — Idempotency delegated to Message Broker
 
 ---
 
@@ -22,6 +22,7 @@ Its primary goal is to enable **instant, zero-join, sub-millisecond visual zoom 
 | **Constant Memory Footprint** | The background engine processes records in fixed batches of 1000. At no point does it hold more than 1000 records in RAM, regardless of trace size. |
 | **Database-Backed Caching** | Instead of passing large in-memory maps across message broker payloads, resolved ancestry paths are persisted in dedicated ClickHouse cache tables between processing stages. |
 | **Non-Blocking Event Loop** | Each batch yields the server event loop by publishing a broker event to process the next chunk rather than running a synchronous loop. |
+| **Broker-Owned Idempotency** | The message broker implementation is responsible for ensuring each materialization event is delivered and processed exactly once per `traceId`. The application layer makes no idempotency assumptions beyond that contract. |
 
 ---
 
@@ -203,13 +204,25 @@ ORDER BY trace_id;
 
 The message broker is the backbone of the event-driven background system. It enables the three stages to execute non-blocking and independently, with the event loop able to handle other server requests between each batch.
 
+### Idempotency Contract
+
+The broker implementation owns the idempotency guarantee for the entire materialization system:
+
+> **The broker MUST guarantee that for any given message key (`traceId`), at most one consumer processes a specific `stage` + `offset` combination at any point in time — even across multiple horizontally-scaled application instances.**
+
+This means the application layer — operators, listener, repository — makes **zero idempotency assumptions**. The operators are purely stateless processors. They fetch, compute, and write. Deduplication is entirely the broker's responsibility.
+
+In practice this maps to well-known broker semantics:
+- **Kafka / Redpanda**: partition by `traceId` as the message key, use a single consumer group. Kafka guarantees at-most-once delivery per partition per consumer group, so only one instance ever processes events for a given `traceId`.
+- **InMemoryMessageBroker** (current dev/test implementation): single-process, naturally serialised — no concurrent processing of the same key is possible.
+
 ### Message Payload Schema
 
 Every message published to the `trace_materialization` topic carries a **constant-size, tiny payload**:
 
 ```typescript
 {
-  traceId: string;    // The trace being processed
+  traceId: string;    // The trace being processed — also used as the broker partition key
   stage:
     | "RESOLVE_NODES"   // Stage 1: resolve node ancestry paths
     | "RESOLVE_EDGES"   // Stage 2: resolve edge egress paths
@@ -253,7 +266,7 @@ offset=2000   → process rows 2000–2749 → batch < 1000, stage complete
 | `BATCH_SIZE` | `1000` | Maximum rows loaded into RAM per invocation |
 | `MAX_DEPTH_LIMIT` | `100` | Maximum depth traversal in the fallback path to prevent infinite loops on cyclic/malformed traces |
 | `iteration` cap | `100` | Absolute maximum broker re-emissions per trace to prevent runaway processing |
-| Debounce lock | `15 seconds` | Prevents duplicate materialization triggers for the same traceId within a 15-second window |
+| Debounce lock | `15 seconds` | **Best-effort local optimisation** — prevents flooding the broker with duplicate trigger events during rapid ingestion bursts within a single process. Not a correctness guarantee; correctness is owned by the broker. |
 
 ---
 
@@ -433,9 +446,9 @@ for (const traceId of distinctTraceIds) {
 
 This is a **fire-and-forget async call** that does not block the write response to the client.
 
-### 15-Second Debounce Lock
+### 15-Second Debounce Lock (Best-Effort Local Optimisation)
 
-To prevent the same trace from triggering multiple overlapping materialization runs during rapid ingestion bursts, a static in-memory `Set` tracks recently triggered trace IDs with a 15-second cooldown:
+To avoid flooding the broker with redundant trigger events during rapid burst ingestion of the same trace, a static in-memory `Set` suppresses re-triggers within a 15-second window per process:
 
 ```typescript
 private static triggeredTraces = new Set<string>();
@@ -444,6 +457,8 @@ if (LogRepoClickHouseImpl.triggeredTraces.has(traceId)) return;
 LogRepoClickHouseImpl.triggeredTraces.add(traceId);
 setTimeout(() => triggeredTraces.delete(traceId), 15000);
 ```
+
+> **This is not the idempotency mechanism.** It is purely a broker traffic optimisation. Correctness under concurrent multi-instance deployments is guaranteed by the broker's partition-by-key delivery semantics, not by this Set.
 
 ### Read-Time Fallback Trigger
 
@@ -531,7 +546,7 @@ carno.js/src/
 
 | Feature | Description |
 |---|---|
-| **Idempotency / Re-materialization** | Add `ReplacingMergeTree(version)` engine and timestamp-based versioning to all cache and read tables so re-triggering a trace safely overwrites stale data. |
-| **Real Message Broker** | Replace `InMemoryMessageBroker` with a Kafka/Redpanda implementation (infrastructure already provisioned in `docker-compose.yml`). |
+| **Real Message Broker** | Replace `InMemoryMessageBroker` with a Kafka/Redpanda implementation keyed by `traceId` to enforce the broker idempotency contract in production (infrastructure already provisioned in `docker-compose.yml`). |
+| **Fallback Path Optimisation** | Replace the recursive one-node-at-a-time DB fallback in `TraceNodeResolver` with a single batch ancestor traversal query for out-of-order span scenarios. |
 | **Partial Trace Updates** | Support appending late-arriving spans to an already-materialized trace without full re-processing. |
 | **Visual Wire Pagination** | Apply cursor-based pagination to `read_edges` queries for traces with extreme depth × edge counts. |
