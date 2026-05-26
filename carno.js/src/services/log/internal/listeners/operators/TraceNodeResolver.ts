@@ -76,23 +76,28 @@ export class TraceNodeResolver {
       return;
     }
 
-    // 2. Identify parents that are NOT in the current batch
+    // 2. Build local map and identify initial missing parents
     const localNodeMap = new Map<string, any>(rawNodes.map(n => [n.id, n]));
-    const externalParentIds = new Set<string>();
+    const dbAncestryMap = new Map<string, string[]>();
+    let currentMissingParents = new Set<string>();
 
     for (const row of rawNodes) {
       const depthIndex = Number(row.depthIndex);
       maxDepth = Math.max(maxDepth, depthIndex);
 
       if (row.parentNodeId && !localNodeMap.has(row.parentNodeId)) {
-        externalParentIds.add(row.parentNodeId);
+        currentMissingParents.add(row.parentNodeId);
       }
     }
 
-    // 3. Query node_ancestry for external parent paths
-    const dbAncestryMap = new Map<string, string[]>();
-    if (externalParentIds.size > 0) {
-      const parentIdsArray = Array.from(externalParentIds);
+    // 3. Iteratively resolve missing parents via batch queries (max depth protected)
+    let resolutionDepth = 0;
+    while (currentMissingParents.size > 0 && resolutionDepth < MAX_DEPTH_LIMIT) {
+      resolutionDepth++;
+      const missingArray = Array.from(currentMissingParents);
+      currentMissingParents.clear();
+
+      // First, try to fetch from node_ancestry cache
       const ancestryResultSet = await this.clickHouse.client.query({
         query: `
           SELECT node_id, ancestryPath FROM toco_tracer.node_ancestry
@@ -101,22 +106,53 @@ export class TraceNodeResolver {
         `,
         query_params: {
           traceId,
-          parentIds: parentIdsArray,
+          parentIds: missingArray,
         },
         format: "JSONEachRow",
       });
-
       const ancestryResponse = (await ancestryResultSet.json()) as unknown as { data: { node_id: string; ancestryPath: string[] }[] };
+      
+      const foundInCache = new Set<string>();
       for (const row of ancestryResponse.data) {
         dbAncestryMap.set(row.node_id, row.ancestryPath);
+        foundInCache.add(row.node_id);
+      }
+
+      // Identify parents still missing after cache lookup
+      const stillMissing = missingArray.filter(id => !foundInCache.has(id));
+
+      if (stillMissing.length > 0) {
+        // Fallback: Query primary nodes table for the missing nodes in batch
+        const nodesResultSet = await this.clickHouse.client.query({
+          query: `
+            SELECT id, parentNodeId FROM toco_tracer.nodes
+            WHERE trace_id = {traceId: String} AND id IN ({missingIds: Array(String)})
+          `,
+          query_params: {
+            traceId,
+            missingIds: stillMissing,
+          },
+          format: "JSONEachRow",
+        });
+        const nodesResponse = (await nodesResultSet.json()) as unknown as { data: { id: string; parentNodeId: string }[] };
+        
+        for (const row of nodesResponse.data) {
+          // Add them to localNodeMap so resolvePath can traverse them in-memory
+          localNodeMap.set(row.id, { id: row.id, parentNodeId: row.parentNodeId });
+          
+          if (row.parentNodeId && !localNodeMap.has(row.parentNodeId) && !dbAncestryMap.has(row.parentNodeId)) {
+            // Queue the parent for the next iteration
+            currentMissingParents.add(row.parentNodeId);
+          }
+        }
       }
     }
 
     // Cache of resolved paths in this call (both local and newly fetched/resolved)
     const resolvedPaths = new Map<string, string[]>();
 
-    // Helper to get or resolve path for a node ID with max depth protection
-    const resolvePath = async (nodeId: string, currentDepth: number = 0): Promise<string[]> => {
+    // Helper to resolve path for a node ID with max depth protection (fully synchronous now)
+    const resolvePath = (nodeId: string, currentDepth: number = 0): string[] => {
       if (currentDepth > MAX_DEPTH_LIMIT) {
         return [nodeId];
       }
@@ -140,40 +176,13 @@ export class TraceNodeResolver {
           resolvedPaths.set(nodeId, path);
           return path;
         }
-        const parentPath = await resolvePath(nodeObj.parentNodeId, currentDepth + 1);
+        const parentPath = resolvePath(nodeObj.parentNodeId, currentDepth + 1);
         const path = [...parentPath, nodeId];
         resolvedPaths.set(nodeId, path);
         return path;
       }
 
-      // Fallback: Query primary nodes table for the parent hierarchy
-      const fallbackResultSet = await this.clickHouse.client.query({
-        query: `
-          SELECT id, parentNodeId FROM toco_tracer.nodes
-          WHERE trace_id = {traceId: String} AND id = {nodeId: String}
-          LIMIT 1
-        `,
-        query_params: {
-          traceId,
-          nodeId,
-        },
-        format: "JSONEachRow",
-      });
-      const fallbackResponse = (await fallbackResultSet.json()) as unknown as { data: { id: string; parentNodeId: string }[] };
-      if (fallbackResponse.data.length > 0) {
-        const row = fallbackResponse.data[0]!;
-        if (!row.parentNodeId) {
-          const path = [nodeId];
-          resolvedPaths.set(nodeId, path);
-          return path;
-        }
-        const parentPath = await resolvePath(row.parentNodeId, currentDepth + 1);
-        const path = [...parentPath, nodeId];
-        resolvedPaths.set(nodeId, path);
-        return path;
-      }
-
-      // Default fallback if node is completely missing
+      // Default fallback if node is completely missing from both DBs
       const path = [nodeId];
       resolvedPaths.set(nodeId, path);
       return path;
@@ -182,7 +191,7 @@ export class TraceNodeResolver {
     // 4. Resolve path for all nodes in the batch
     const nodeAncestryToInsert: any[] = [];
     for (const row of rawNodes) {
-      const path = await resolvePath(row.id);
+      const path = resolvePath(row.id);
       nodeAncestryToInsert.push({
         node_id: row.id,
         trace_id: traceId,
