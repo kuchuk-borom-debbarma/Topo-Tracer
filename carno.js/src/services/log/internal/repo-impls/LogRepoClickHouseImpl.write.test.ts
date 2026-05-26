@@ -32,6 +32,7 @@ describe("LogRepoClickHouseImpl - Writes Unit Tests", () => {
     const inputNodes: Node[] = [
       {
         id: "node_test_123",
+        traceId: "trace_1",
         containerId: "con_1",
         parentNodeId: "node_parent",
         name: "DatabaseQuery",

@@ -10,17 +10,17 @@ export interface SubscribeOptions {
   [key: string]: any; // Additional backend-specific parameters
 }
 
-export abstract class MessageBroker {
+export class MessageBroker {
   // Publishes a single message envelope or a batch of envelopes to the broker
-  abstract publish(
+  async publish(
     envelopes: MessageEnvelope | MessageEnvelope[], 
     options?: any
-  ): Promise<void>;
+  ): Promise<void> { throw new Error("Method not implemented."); }
 
   // Subscribes to a topic, delivering events in batches to the handler
-  abstract subscribe(
+  async subscribe(
     topic: string,
     handler: (payloads: any[], options?: any) => Promise<void> | void,
     options?: SubscribeOptions
-  ): Promise<void>;
+  ): Promise<void> { throw new Error("Method not implemented."); }
 }

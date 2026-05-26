@@ -11,6 +11,8 @@ describe("LogServiceImpl - Reads Unit Tests", () => {
     const expectedEnvelope: PaginatedTraceResult = {
       nodes: [],
       edges: [],
+      isZoomReady: false,
+      maxAvailableDepth: 0,
       pagination: {
         prevTimeCursor: 100,
         prevIdCursor: "A",

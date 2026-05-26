@@ -1,4 +1,4 @@
-import type { MessageBroker } from "../../../../infra/message/MessageBroker";
+import type { MessageBroker } from "../../../../../infra/message/MessageBroker";
 import type { LogRepo } from "../../LogRepo";
 
 export class TraceClosureBuilder {
@@ -55,7 +55,7 @@ export class TraceClosureBuilder {
 
         if (d > 0) {
           if ((d - 1) < egressAncestryPath.length) {
-            fromTargetId = egressAncestryPath[d - 1];
+            fromTargetId = egressAncestryPath[d - 1]!;
             fromTargetType = "node";
           } else {
             fromTargetId = row.fromNodeId;

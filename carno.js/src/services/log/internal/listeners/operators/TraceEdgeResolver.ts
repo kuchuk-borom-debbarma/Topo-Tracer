@@ -1,6 +1,6 @@
-import type { MessageBroker } from "../../../../infra/message/MessageBroker";
+import type { MessageBroker } from "../../../../../infra/message/MessageBroker";
 import type { LogRepo } from "../../LogRepo";
-import type { EdgeEgressAncestryRecord } from "../../types";
+import type { EdgeEgressAncestryRecord } from "../../../types";
 
 export class TraceEdgeResolver {
   constructor(

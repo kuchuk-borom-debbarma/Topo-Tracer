@@ -1,6 +1,6 @@
 import { Service, OnApplicationInit } from "@carno.js/core";
 import { MessageBroker } from "../../../../infra/message/MessageBroker";
-import { LogRepo } from "../../LogRepo";
+import { LogRepo } from "../LogRepo";
 import { TraceNodeResolver } from "./operators/TraceNodeResolver";
 import { TraceEdgeResolver } from "./operators/TraceEdgeResolver";
 import { TraceClosureBuilder } from "./operators/TraceClosureBuilder";

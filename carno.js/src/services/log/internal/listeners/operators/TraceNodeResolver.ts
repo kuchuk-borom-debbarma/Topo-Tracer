@@ -1,6 +1,6 @@
-import type { MessageBroker } from "../../../../infra/message/MessageBroker";
+import type { MessageBroker } from "../../../../../infra/message/MessageBroker";
 import type { LogRepo } from "../../LogRepo";
-import type { NodeAncestryRecord } from "../../types";
+import type { NodeAncestryRecord } from "../../../types";
 
 export class TraceNodeResolver {
   constructor(

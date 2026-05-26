@@ -11,6 +11,7 @@ describe("LogServiceImpl - Writes Unit Tests", () => {
 
     const inputNode: NodeInput = {
       id: "node_1",
+      traceId: "t_1",
       containerId: "con_1",
       name: "GatewayAPI",
       nodeType: "handler",
@@ -54,9 +55,10 @@ describe("LogServiceImpl - Writes Unit Tests", () => {
 
     const nodes: NodeInput[] = [
       {
-        id: "node_1",
-        containerId: "con_1",
-        name: "GatewayAPI",
+        id: "n_1",
+        traceId: "t_1",
+        containerId: "c_1",
+        name: "test_node_1",
         nodeType: "handler",
         depthIndex: 0,
         initiatedAtLocal: originalInit,

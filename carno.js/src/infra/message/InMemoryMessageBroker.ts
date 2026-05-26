@@ -1,5 +1,6 @@
 import { Service } from "@carno.js/core";
-import { MessageBroker, MessageEnvelope, SubscribeOptions } from "./MessageBroker";
+import { MessageBroker } from "./MessageBroker";
+import type { MessageEnvelope, SubscribeOptions } from "./MessageBroker";
 
 @Service()
 export class InMemoryMessageBroker extends MessageBroker {

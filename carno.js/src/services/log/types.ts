@@ -94,6 +94,9 @@ export interface PaginatedTraceResult {
     prevTimeCursor: number | null;
     prevIdCursor: string | null;
     nextTimeCursor: number | null;
+    nextIdCursor: string | null;
+    hasPrev: boolean;
+    hasNext: boolean;
   };
 }
 
