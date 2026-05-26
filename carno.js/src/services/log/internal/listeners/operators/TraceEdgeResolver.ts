@@ -41,7 +41,7 @@ export class TraceEdgeResolver {
     // 1. Fetch edges in chunks
     const edgesResultSet = await this.clickHouse.client.query({
       query: `
-        SELECT * FROM toco_tracer.edges
+        SELECT id, fromNodeId, toNodeId, fromContainerId, toContainerId FROM toco_tracer.edges
         WHERE trace_id = {traceId: String}
         ORDER BY dispatchedAtLocal ASC, id ASC
         LIMIT {limit: UInt32} OFFSET {offset: UInt32}

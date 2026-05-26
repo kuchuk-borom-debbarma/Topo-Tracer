@@ -43,7 +43,7 @@ export class TraceNodeResolver {
     // 1. Fetch nodes chronologically
     const nodesResultSet = await this.clickHouse.client.query({
       query: `
-        SELECT * FROM toco_tracer.nodes
+        SELECT id, parentNodeId, depthIndex FROM toco_tracer.nodes
         WHERE trace_id = {traceId: String}
         ORDER BY initiatedAtLocal ASC, id ASC
         LIMIT {limit: UInt32} OFFSET {offset: UInt32}
