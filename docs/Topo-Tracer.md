@@ -49,26 +49,23 @@ To find exactly where a system is slowing down, Topo-Tracer splits timestamps cl
 
 ### Node Timestamps (Internal Code Performance)
 
-* `initiatedAt`: When the function block starts running locally.
-* `processedAt`: When the core internal calculation logic finishes.
-* `completedAt`: When the function completely wraps up (after all its child functions or outbound network lines finish executing and return strings).
+* `initiatedAtLocal`: When the function block starts running locally.
+* `processedAtLocal`: When the core internal calculation logic finishes.
+* `completedAtLocal`: When the function completely wraps up.
 
 ### Edge Timestamps (Network & Transport Performance)
 
-* `dispatchedAt`: When the serialized data leaves the sender's network card or memory buffer.
-* `reachedAt`: When the data physically arrives at the receiver container's boundary interface.
-* `acceptedAt`: When the receiver's execution runtime engine actually plucks the item from the queue or socket to boot up its thread context.
+* `dispatchedAtLocal`: When the serialized data leaves the sender's network card or memory buffer.
+* `respondedAtLocal`: When the caller receives the response back from the network.
 
 ### The Calculus
 
 $$\begin{aligned}
-\mathbf{Wire\ Transit\ (Network\ Delay)} &\quad=\quad \text{edge.reachedAt} - \text{edge.dispatchedAt} \
-&\quad\quad\quad \textit{(Exposes network drops, proxy routing, or service mesh overhead)} \
-\mathbf{Queue\ Lag\ (Worker\ Starvation)} &\quad=\quad \text{edge.acceptedAt} - \text{edge.reachedAt} \
-&\quad\quad\quad \textit{(Exposes "Lost Time" spent waiting for an available executor thread)} \
-\mathbf{Pure\ Processing\ Time} &\quad=\quad \text{node.processedAt} - \text{node.initiatedAt} \
+\mathbf{Total\ Network\ Turnaround\ (RTT)} &\quad=\quad \text{edge.respondedAtLocal} - \text{edge.dispatchedAtLocal} \
+&\quad\quad\quad \textit{(Exposes full network transit and downstream processing latency)} \
+\mathbf{Pure\ Processing\ Time} &\quad=\quad \text{node.processedAtLocal} - \text{node.initiatedAtLocal} \
 &\quad\quad\quad \textit{(Isolates execution time spent inside the actual application logic)} \
-\mathbf{Callback\ Cascade\ Delay} &\quad=\quad \text{node.completedAt} - \text{node.processedAt} \
+\mathbf{Callback\ Cascade\ Delay} &\quad=\quad \text{node.completedAtLocal} - \text{node.processedAtLocal} \
 &\quad\quad\quad \textit{(Exposes time spent waiting for nested child hierarchies to unwind)}
 \end{aligned}$$
 
@@ -83,23 +80,17 @@ The underlying storage layer is segregated into a flat, append-only ingestion en
 ```json
 {
   "id": "node_kafka_pub_99a",
-  "trace_id": "tx_987654321_kbd",
-  "container_id": "con_api_prod_7a81",
-  "parent_node_id": "node_controller_foo_44b",
-  "depth_index": 4,
-  "kind": "publish",
+  "traceId": "tx_987654321_kbd",
+  "containerId": "con_api_prod_7a81",
+  "parentNodeId": "node_controller_foo_44b",
+  "depthIndex": 4,
+  "nodeType": "publish",
   "name": "kafka::publish_event",
-  "meta": {
-    "topic": "task.events",
-    "payload_bytes": 512
-  },
-  "timestamps": {
-    "initiatedAt": 1779905412010200,
-    "processedAt": 1779905412015100,
-    "completedAt": 1779905412015200
-  }
+  "metadata": "{\"topic\":\"task.events\",\"payload_bytes\":512}",
+  "initiatedAtLocal": 1779905412010200,
+  "processedAtLocal": 1779905412015100,
+  "completedAtLocal": 1779905412015200
 }
-
 ```
 
 ### B. Ingestion Tier: Flat Edges Payload (ClickHouse Write Store)
@@ -107,25 +98,21 @@ The underlying storage layer is segregated into a flat, append-only ingestion en
 ```json
 {
   "id": "edge_cross_wire_331",
-  "trace_id": "tx_987654321_kbd",
-  "from_container_id": "con_api_prod_7a81",
-  "to_container_id": "con_worker_prod_11b2",
-  "from_node_id": "node_kafka_pub_99a",
-  "to_node_id": "node_worker_consume_002",
-  "egress_ancestry_path": [
+  "traceId": "tx_987654321_kbd",
+  "fromContainerId": "con_api_prod_7a81",
+  "toContainerId": "con_worker_prod_11b2",
+  "fromNodeId": "node_kafka_pub_99a",
+  "toNodeId": "node_worker_consume_002",
+  "egressAncestryPath": [
     "node_kafka_pub_99a",
     "node_func_b_33a",
     "node_service_bar_12c",
     "node_controller_foo_44b"
   ],
-  "crossing_kind": "queue",
-  "timestamps": {
-    "dispatchedAt": 1779905412015150,
-    "reachedAt": 1779905412015170,
-    "acceptedAt": 1779905412015186
-  }
+  "edgeType": "queue",
+  "dispatchedAtLocal": 1779905412015150,
+  "respondedAtLocal": 1779905412015186
 }
-
 ```
 
 ### C. Materialized Tier: Edge Closure Table (Dedicated Read Store)
@@ -284,6 +271,6 @@ The UI pulls the pre-computed boundaries directly onto an interactive grid track
 
 ## 7. Server Infrastructure Stack
 
-* **Ingestion Tier (Go or Rust):** A high-concurrency, stateless server layer. It parses inbound UDP, gRPC, or HTTP POST tracking batches, runs basic schema validation, and fires an immediate `202 Accepted` network response to eliminate profiling latency overhead from production code threads.
-* **Transit Tier (Redis):** Incoming out-of-order packets drop into an in-memory sliding hash matched by `trace_id`. The engine sets a temporary staging window TTL (5 to 10 seconds) to collect slow asynchronous packets before flushing the trace down to permanent storage.
-* **Analytics & Read Tier (ClickHouse):** A column-oriented database engine split into flat write-heavy tables and pre-computed read-heavy closure partitions. Storing variables strictly by column arrays permits high storage data compression, zero transaction locking mechanisms, and sub-millisecond trace reconstructions.
+* **Ingestion Tier (Node.js & `@carno.js/core`):** A high-concurrency, stateless TypeScript server layer. It exposes REST endpoints (`LogController`) to receive tracking batches and validates payloads.
+* **Storage & Analytics Tier (ClickHouse):** A column-oriented database engine split into flat write-heavy tables (`nodes`, `edges`) and pre-computed read-heavy cache tables (`node_ancestry`, `read_edges`). Storing variables strictly by column arrays permits high data compression and zero transaction locking mechanisms.
+* **Background Materialization Worker (In-Memory Broker):** An asynchronous event-driven worker built on an `InMemoryMessageBroker` (simulating SQS/Kafka locally). As soon as raw logs hit ClickHouse, it iteratively processes missing parent ancestries and computes deep cross-container visual wires without blocking the HTTP ingestion endpoints.

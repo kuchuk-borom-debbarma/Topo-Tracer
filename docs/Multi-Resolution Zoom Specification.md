@@ -87,21 +87,20 @@ When a trace is first loaded, the query server drops the flat lines and injects 
 
 ```json
 {
-  "trace_id": "tx_987654321_kbd",
-  "is_zoom_ready": false,
-  "max_available_depth": 4,
+  "traceId": "tx_987654321_kbd",
+  "isZoomReady": false,
+  "maxAvailableDepth": 4,
   "containers": [
     { "id": "c_web", "name": "web-service" }
   ],
   "wires": [
     {
       "id": "e_wire",
-      "from_target": { "id": "node_kafka_pub_4", "type": "node" },
-      "to_target": { "id": "node_worker_consume_0", "type": "node" }
+      "fromTarget": { "id": "node_kafka_pub_4", "type": "node" },
+      "toTarget": { "id": "node_worker_consume_0", "type": "node" }
     }
   ]
 }
-
 ```
 
 ---

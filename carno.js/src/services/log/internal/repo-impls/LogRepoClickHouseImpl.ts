@@ -25,8 +25,8 @@ export class LogRepoClickHouseImpl extends LogRepo {
     // Map dates to milliseconds (Int64 in database)
     const mappedContainers = containers.map(c => ({
       ...c,
-      createdAtLocal: c.createdAtLocal.getTime(),
-      createdAtRemote: c.createdAtRemote.getTime(),
+      createdAtLocal: new Date(c.createdAtLocal).getTime(),
+      createdAtRemote: new Date(c.createdAtRemote).getTime(),
     }));
 
     await this.clickHouse.client.insert({
@@ -48,9 +48,9 @@ export class LogRepoClickHouseImpl extends LogRepo {
       ...n,
       trace_id: n.traceId,
       metadata: typeof n.metadata === "object" ? JSON.stringify(n.metadata) : String(n.metadata || ""),
-      initiatedAtLocal: n.initiatedAtLocal.getTime(),
-      processedAtLocal: n.processedAtLocal.getTime(),
-      completedAtLocal: n.completedAtLocal ? n.completedAtLocal.getTime() : null,
+      initiatedAtLocal: new Date(n.initiatedAtLocal).getTime(),
+      processedAtLocal: new Date(n.processedAtLocal).getTime(),
+      completedAtLocal: n.completedAtLocal ? new Date(n.completedAtLocal).getTime() : null,
       ancestryPath: n.ancestryPath || [],
     }));
 
@@ -80,8 +80,8 @@ export class LogRepoClickHouseImpl extends LogRepo {
     const mappedEdges = edges.map(e => ({
       ...e,
       trace_id: e.traceId,
-      dispatchedAtLocal: e.dispatchedAtLocal.getTime(),
-      respondedAtLocal: e.respondedAtLocal ? e.respondedAtLocal.getTime() : null,
+      dispatchedAtLocal: new Date(e.dispatchedAtLocal).getTime(),
+      respondedAtLocal: e.respondedAtLocal ? new Date(e.respondedAtLocal).getTime() : null,
       egressAncestryPath: e.egressAncestryPath || [],
     }));
 
@@ -111,10 +111,10 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    const metadataResponse = (await metadataResultSet.json()) as unknown as { data: { is_zoom_ready: number; max_available_depth: number }[] };
+    const metadataResponse = (await metadataResultSet.json()) as unknown as { is_zoom_ready: number; max_available_depth: number }[];
     
-    if (metadataResponse.data.length > 0) {
-      const meta = metadataResponse.data[0]!;
+    if (metadataResponse.length > 0) {
+      const meta = metadataResponse[0]!;
       const isZoomReady = meta.is_zoom_ready === 1;
       
       if (!isZoomReady) {
@@ -230,8 +230,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       format: "JSONEachRow",
     });
 
-    const response = (await resultSet.json()) as unknown as { data: any[] };
-    const rawRows = response.data;
+    const rawRows = (await resultSet.json()) as any[];
 
     // 4. Map returned fields and convert timestamps back to Date instances
     const mappedRows: Node[] = rawRows.map(row => ({
@@ -292,8 +291,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
         format: "JSONEachRow",
       });
 
-      const edgesResponse = (await edgesResultSet.json()) as unknown as { data: any[] };
-      const rawEdges = edgesResponse.data;
+      const rawEdges = (await edgesResultSet.json()) as any[];
 
       edges = rawEdges.map(row => ({
         id: row.id,
@@ -326,8 +324,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
         format: "JSONEachRow",
       });
 
-      const readEdgesResponse = (await readEdgesResultSet.json()) as unknown as { data: any[] };
-      const rawReadEdges = readEdgesResponse.data;
+      const rawReadEdges = (await readEdgesResultSet.json()) as any[];
 
       visualWires = rawReadEdges.map(row => ({
         id: row.id,
@@ -366,7 +363,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId, limit, offset },
       format: "JSONEachRow",
     });
-    return (await rs.json() as any).data;
+    return (await rs.json()) as any[];
   }
 
   override async fetchNodeAncestry(traceId: string, nodeIds: string[]): Promise<import("../../types").NodeAncestryRecord[]> {
@@ -379,7 +376,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId, nodeIds },
       format: "JSONEachRow",
     });
-    return (await rs.json() as any).data;
+    return (await rs.json()) as any[];
   }
 
   override async fetchNodesByIds(traceId: string, nodeIds: string[]): Promise<import("../../types").NodeMaterializationDTO[]> {
@@ -392,7 +389,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId, missingIds: nodeIds },
       format: "JSONEachRow",
     });
-    return (await rs.json() as any).data;
+    return (await rs.json()) as any[];
   }
 
   override async saveNodeAncestryBatch(traceId: string, records: import("../../types").NodeAncestryRecord[]): Promise<void> {
@@ -420,7 +417,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId, limit, offset },
       format: "JSONEachRow",
     });
-    return (await rs.json() as any).data;
+    return (await rs.json()) as any[];
   }
 
   override async saveEdgeEgressAncestryBatch(traceId: string, records: import("../../types").EdgeEgressAncestryRecord[]): Promise<void> {
@@ -447,7 +444,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId, edgeIds },
       format: "JSONEachRow",
     });
-    return (await rs.json() as any).data;
+    return (await rs.json()) as any[];
   }
 
   override async saveVisualWiresBatch(traceId: string, wires: any[]): Promise<void> {

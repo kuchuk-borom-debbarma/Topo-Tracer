@@ -16,9 +16,9 @@ export class ClickHouseService {
     console.log("[ClickHouseService] Initializing ClickHouse Connection...");
     
     this.clientInstance = createClient({
-      host: process.env.CLICKHOUSE_HOST || "http://localhost:8123",
+      url: process.env.CLICKHOUSE_HOST || "http://localhost:8123",
       username: process.env.CLICKHOUSE_USER || "default",
-      password: process.env.CLICKHOUSE_PASSWORD || "",
+      password: process.env.CLICKHOUSE_PASSWORD || "password",
     });
 
     try {
