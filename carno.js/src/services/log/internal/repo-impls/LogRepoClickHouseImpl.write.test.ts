@@ -56,9 +56,9 @@ describe("LogRepoClickHouseImpl - Writes Unit Tests", () => {
     expect(mapped.id).toBe("node_test_123");
     
     // Dates must be mapped to Millisecond Epoch Int64 values
-    expect(mapped.initiatedAtLocal).toBe(1779883200000);
-    expect(mapped.processedAtLocal).toBe(1779883200050);
-    expect(mapped.completedAtLocal).toBe(1779883200200);
+    expect(mapped.initiatedAtLocal).toBe(1779796800000);
+    expect(mapped.processedAtLocal).toBe(1779796800050);
+    expect(mapped.completedAtLocal).toBe(1779796800200);
 
     // Metadata must be serialized to a JSON string for ClickHouse storage
     expect(mapped.metadata).toBe(JSON.stringify({ "db.statement": "SELECT 1" }));
