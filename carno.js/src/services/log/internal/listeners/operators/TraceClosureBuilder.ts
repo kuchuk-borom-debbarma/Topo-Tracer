@@ -25,7 +25,6 @@ export class TraceClosureBuilder {
   async resolve(
     traceId: string,
     offset: number,
-    _ancestryCache: Record<string, string[]>,
     maxDepth: number,
     iteration: number
   ): Promise<void> {

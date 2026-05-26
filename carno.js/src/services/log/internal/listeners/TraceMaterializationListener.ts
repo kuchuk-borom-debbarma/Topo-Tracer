@@ -4,6 +4,17 @@ import { TraceNodeResolver } from "./operators/TraceNodeResolver";
 import { TraceEdgeResolver } from "./operators/TraceEdgeResolver";
 import { TraceClosureBuilder } from "./operators/TraceClosureBuilder";
 
+/**
+ * TraceMaterializationListener
+ * The single, centralized subscriber for all background trace materialization events.
+ *
+ * Responsibilities:
+ * - Subscribes to the "trace_materialization" broker topic on application boot.
+ * - Routes each incoming job to the correct isolated operator based on the `stage` flag.
+ * - Enforces a hard iteration cap (100) to prevent runaway processing loops.
+ *
+ * This listener is intentionally thin. All materialization logic lives in isolated operators.
+ */
 @Service()
 export class TraceMaterializationListener {
   constructor(
@@ -30,12 +41,12 @@ export class TraceMaterializationListener {
     traceId: string;
     stage: "RESOLVE_NODES" | "RESOLVE_EDGES" | "BUILD_CLOSURES";
     offset: number;
-    ancestryCache: Record<string, string[]>;
     maxDepth: number;
     iteration: number;
   }): Promise<void> {
     const iteration = payload.iteration || 1;
-    // Hard limit to prevent infinite recursion loop
+
+    // Hard limit to prevent infinite recursion loop in case of unexpected repeated re-publishing
     if (iteration > 100) {
       console.warn(`[TraceMaterializationListener] Aborting trace ${payload.traceId} due to exceeding max iterations (100)`);
       return;
@@ -43,11 +54,11 @@ export class TraceMaterializationListener {
 
     try {
       if (payload.stage === "RESOLVE_NODES") {
-        await this.nodeResolver.resolve(payload.traceId, payload.offset || 0, payload.ancestryCache || {}, payload.maxDepth || 0, iteration);
+        await this.nodeResolver.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, iteration);
       } else if (payload.stage === "RESOLVE_EDGES") {
-        await this.edgeResolver.resolve(payload.traceId, payload.offset || 0, payload.ancestryCache || {}, payload.maxDepth || 0, iteration);
+        await this.edgeResolver.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, iteration);
       } else if (payload.stage === "BUILD_CLOSURES") {
-        await this.closureBuilder.resolve(payload.traceId, payload.offset || 0, payload.ancestryCache || {}, payload.maxDepth || 0, iteration);
+        await this.closureBuilder.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, iteration);
       }
     } catch (error) {
       console.error(`[TraceMaterializationListener] Failed stage "${payload.stage}" for trace ${payload.traceId} at offset ${payload.offset}:`, error);

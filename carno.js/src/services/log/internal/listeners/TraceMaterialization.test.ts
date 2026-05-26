@@ -48,7 +48,7 @@ class MockMessageBroker {
 }
 
 describe("Trace Materialization Engine - Operator Tests", () => {
-  it("TraceNodeResolver - should build ancestry paths using db-backed ReplacingMergeTree lookup and insert them", async () => {
+  it("TraceNodeResolver - should build ancestry paths using db-backed ancestry lookup and insert them", async () => {
     const mockClient = new MockClickHouseClient();
     const mockBroker = new MockMessageBroker();
     const clickHouse = { client: mockClient as any } as ClickHouseService;
@@ -74,7 +74,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
       }
     ];
 
-    await resolver.resolve("trace_1", 0, {}, 0, 1);
+    await resolver.resolve("trace_1", 0, 0, 1);
 
     // Verify query to node_ancestry table
     const ancestryQuery = mockClient.queriesRan.find(q => q.query.includes("toco_tracer.node_ancestry"));
@@ -124,7 +124,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
       }
     ];
 
-    await resolver.resolve("trace_1", 0, {}, 1, 1);
+    await resolver.resolve("trace_1", 0, 1, 1);
 
     // Verify queried node ancestry for the edge fromNodeId
     const ancestryQuery = mockClient.queriesRan.find(q => q.query.includes("toco_tracer.node_ancestry"));
@@ -169,7 +169,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
       }
     ];
 
-    await resolver.resolve("trace_1", 0, {}, 2, 1);
+    await resolver.resolve("trace_1", 0, 2, 1);
 
     // Verify query to edge_egress_ancestry
     const egressQuery = mockClient.queriesRan.find(q => q.query.includes("toco_tracer.edge_egress_ancestry"));

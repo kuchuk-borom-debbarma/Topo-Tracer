@@ -14,8 +14,6 @@ import { MessageBroker } from "../../../../../infra/message/MessageBroker";
  * 3. Event-Driven Non-Blocking Chunking: If there are more than 1000 nodes, it resolves the
  *    first 1000, writes them, and publishes a new message to the broker with an incremented
  *    offset. This yields back to the main event loop, preventing execution starvation.
- * 4. ReplacingMergeTree: Writes use timestamp-based versions, making operations fully
- *    idempotent and crash-resilient without duplicating records.
  */
 @Service()
 export class TraceNodeResolver {
@@ -27,7 +25,6 @@ export class TraceNodeResolver {
   async resolve(
     traceId: string,
     offset: number,
-    _ancestryCacheData: Record<string, string[]>,
     currentMaxDepth: number,
     iteration: number
   ): Promise<void> {
