@@ -60,6 +60,7 @@ export class TraceClosureBuilder {
       const buildWires = (depthType: 'global' | 'local', depthsArrayEgress: number[], depthsArrayIngress: number[], maxIterDepth: number) => {
         let lastFromTargetId = "";
         let lastToTargetId = "";
+        // Cap iterations at 100 to prevent runaway loops on extremely deep traces
         const cappedDepth = Math.min(maxIterDepth, 100);
 
         for (let d = 0; d <= cappedDepth; d++) {
@@ -69,8 +70,12 @@ export class TraceClosureBuilder {
           let toTargetType = "container";
 
           if (d > 0 || depthType === 'local') {
-            // For global depth, d=0 snaps to container. For local depth, d=0 can snap to the root node (0).
+            // For global depth, d=0 strictly collapses everything into container boxes (macro infra view).
+            // For local depth, d=0 drills directly into the root node of every container (API blueprint view).
             let egressNodeAtDepth: string | null = null;
+            
+            // Search backward through the parallel depths array to find the deepest ancestor 
+            // whose absolute nesting depth is less than or equal to the current visual depth layer.
             for (let i = depthsArrayEgress.length - 1; i >= 0; i--) {
               if (depthsArrayEgress[i]! <= d) {
                 egressNodeAtDepth = egressInfo.path[i]!;
@@ -78,6 +83,8 @@ export class TraceClosureBuilder {
               }
             }
 
+            // If we found a valid ancestor node at this visual depth, the UI wire snaps to it.
+            // Otherwise, it falls back to snapping to the outer container bounding box.
             if (egressNodeAtDepth) {
               fromTargetId = egressNodeAtDepth;
               fromTargetType = "node";
@@ -97,6 +104,10 @@ export class TraceClosureBuilder {
             }
           }
 
+          // Optimization: Sparse Array Caching
+          // Instead of writing a row for every single visual depth integer (which scales linearly), 
+          // we only insert a row into the database when the snap targets *change*.
+          // The UI will query with `< d ORDER BY visual_depth DESC LIMIT 1` to find the closest applicable wire.
           if (fromTargetId !== lastFromTargetId || toTargetId !== lastToTargetId || d === 0) {
             visualWiresToInsert.push({
               id: `${row.id}_${depthType}_${d}`,

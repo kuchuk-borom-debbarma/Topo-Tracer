@@ -105,6 +105,14 @@ export class TraceNodeResolver {
       if (!node) return { path: [nodeId], depths: [0], localDepths: [0] };
 
       const parentInfo = resolvePath(node.parentNodeId, currentDepth + 1);
+      
+      // We build three parallel arrays:
+      // 1. The literal path of node IDs from the root up to this node
+      // 2. The absolute global depth index of each node in that path
+      // 3. The local (container-scoped) depth index of each node in that path
+      // 
+      // The materializer uses these parallel arrays to safely execute O(1) fallback lookups 
+      // when zooming out the UI, bypassing the need for recursive database joins on every query.
       const fullPath = [...parentInfo.path, nodeId];
       const fullDepths = [...parentInfo.depths, Number(node.depthIndex)];
       const fullLocalDepths = [...parentInfo.localDepths, Number(node.localDepthIndex || 0)];
