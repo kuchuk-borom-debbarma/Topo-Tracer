@@ -92,10 +92,10 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     ];
 
     mockRepo.mockedAncestryData = [
-      { node_id: "node_a", ancestryPath: ["node_root", "node_a"] }
+      { node_id: "node_a", ancestryPath: ["node_root", "node_a"], ancestryDepths: [0, 0], ancestryLocalDepths: [0, 0] }
     ];
 
-    await resolver.resolve("trace_1", 0, 2, 1);
+    await resolver.resolve("trace_1", 0, 2, 2, 1);
 
     const insertedAncestry = mockRepo.insertedRows.find(r => r.table === "toco_tracer.node_ancestry") as any;
     // @ts-ignore
@@ -121,7 +121,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
       { id: "node_parent_1", parentNodeId: "node_parent_2", depthIndex: 0 }
     ];
 
-    await resolver.resolve("trace_2", 0, 0, 1);
+    await resolver.resolve("trace_2", 0, 0, 0, 1);
 
     const insertedAncestry = mockRepo.insertedRows.find(r => r.table === "toco_tracer.node_ancestry") as any;
     // @ts-ignore
@@ -142,10 +142,10 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     ];
 
     mockRepo.mockedAncestryData = [
-      { node_id: "node_b", ancestryPath: ["node_root", "node_a", "node_b"] }
+      { node_id: "node_b", ancestryPath: ["node_root", "node_a", "node_b"], ancestryDepths: [0, 1, 2], ancestryLocalDepths: [0, 1, 2] }
     ];
 
-    await resolver.resolve("trace_1", 0, 3, 1);
+    await resolver.resolve("trace_1", 0, 3, 3, 1);
 
     const insertedEdgeAncestry = mockRepo.insertedRows.find(r => r.table === "toco_tracer.edge_egress_ancestry") as any;
     // @ts-ignore
@@ -166,10 +166,10 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     ];
 
     mockRepo.mockedEdgeAncestryData = [
-      { edge_id: "edge_1", egressAncestryPath: ["node_root", "node_a", "node_b"] }
+      { edge_id: "edge_1", egressAncestryPath: ["node_root", "node_a", "node_b"], egressAncestryDepths: [0, 1, 2], egressAncestryLocalDepths: [0, 1, 2] }
     ];
 
-    await resolver.resolve("trace_1", 0, 2, 1);
+    await resolver.resolve("trace_1", 0, 2, 2, 1);
 
     const insertedReadEdges = mockRepo.insertedRows.find(r => r.table === "toco_tracer.read_edges") as any;
     // @ts-ignore
@@ -180,9 +180,9 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     const depth2Wire = insertedReadEdges.values.find((v: any) => v.visual_depth === 2);
 
     // @ts-ignore
-    expect(depth1Wire.from_target_id).toBe("node_root");
+    expect(depth1Wire.from_target_id).toBe("node_a");
     // @ts-ignore
-    expect(depth2Wire.from_target_id).toBe("node_a");
+    expect(depth2Wire.from_target_id).toBe("node_b");
   });
 
   it("TraceClosureBuilder - should strictly enforce sparse inserts for very deep traces", async () => {
@@ -197,13 +197,13 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     ];
 
     mockRepo.mockedEdgeAncestryData = [
-      { edge_id: "edge_deep", egressAncestryPath: ["node_1", "node_2", "node_3", "node_4", "node_5"] }
+      { edge_id: "edge_deep", egressAncestryPath: ["node_1", "node_2", "node_3", "node_4", "node_5"], egressAncestryDepths: [0, 1, 2, 3, 4], egressAncestryLocalDepths: [0, 1, 2, 3, 4] }
     ];
 
-    await resolver.resolve("trace_deep", 0, 50, 1);
+    await resolver.resolve("trace_deep", 0, 50, 50, 1);
 
     const insertedReadEdges = mockRepo.insertedRows.find(r => r.table === "toco_tracer.read_edges") as any;
-    // @ts-ignore
-    expect(insertedReadEdges.values.length).toBe(6);
+    // 5 unique wires for global, 5 for local
+    expect(insertedReadEdges.values.length).toBe(10);
   });
 });

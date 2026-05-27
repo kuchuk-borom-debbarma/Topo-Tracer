@@ -24,7 +24,7 @@ class MockClickHouseClient {
     }
     
     return {
-      json: async () => ({ data })
+      json: async () => data
     };
   }
 }
