@@ -29,11 +29,12 @@ async function runSophisticatedSimulation() {
   await delay(15);
   rootNode.markProcessed();
 
-  // 1. Concurrent / Parallel Execution
-  // We want to fetch the User Account and their Fraud Score simultaneously.
-  console.log(`   [Service A] Executing concurrent queries...`);
-  const userQueryNode = rootNode.startChild("DB: Fetch User", "database");
-  const fraudScoreNode = rootNode.startChild("API: Fraud Check", "http_client");
+  // 1. Linear Step 1: Validation
+  const validationNode = rootNode.startChild("validateOrder()", "function");
+  validationNode.markProcessed();
+  console.log(`   [Service A] Executing concurrent queries in validation...`);
+  const userQueryNode = validationNode.startChild("DB: Fetch User", "database");
+  const fraudScoreNode = validationNode.startChild("API: Fraud Check", "http_client");
   
   await Promise.all([
     (async () => {
@@ -47,9 +48,13 @@ async function runSophisticatedSimulation() {
       fraudScoreNode.markCompleted({ score: 0.05 });
     })()
   ]);
+  validationNode.markCompleted({ valid: true });
 
-  // 2. Remote HTTP Call to Payment Service
-  const paymentClientNode = rootNode.startChild("HTTP POST /payments/charge", "http_client");
+  // 2. Linear Step 2: Payment Processing
+  const processPaymentNode = rootNode.startChild("processPayment()", "function");
+  processPaymentNode.markProcessed();
+  
+  const paymentClientNode = processPaymentNode.startChild("HTTP POST /payments/charge", "http_client");
   await delay(5);
   paymentClientNode.markProcessed();
   
@@ -64,9 +69,13 @@ async function runSophisticatedSimulation() {
   };
   
   paymentClientNode.markCompleted({ status: 500 }); // We'll simulate a failure downstream
+  processPaymentNode.markCompleted({ status: "payment_failed_fallback" });
 
-  // 3. Async Event Publishing to Inventory Service
-  const eventPublisherNode = rootNode.startChild("Kafka Produce: OrderCreated", "message_producer");
+  // 3. Linear Step 3: Dispatch & Reporting
+  const dispatchOrderNode = rootNode.startChild("dispatchOrder()", "function");
+  dispatchOrderNode.markProcessed();
+
+  const eventPublisherNode = dispatchOrderNode.startChild("Kafka Produce: OrderCreated", "message_producer");
   await delay(5);
   eventPublisherNode.markProcessed();
 
@@ -85,16 +94,17 @@ async function runSophisticatedSimulation() {
 
   eventPublisherNode.markCompleted({ topic: "orders.events" });
 
-  // 4. Send to Reporting Queue for Fan-out batching
-  // We push this trace's context onto a simulated queue for a batch worker to pull later
+  // 4. Send to Reporting Queue for Fan-out batching (Also nested under Dispatch)
   const reportingTargetNodeId = uuidv4();
-  rootNode.recordEgressEdge(reportSvcId, reportingTargetNodeId, "sqs_message");
+  dispatchOrderNode.recordEgressEdge(reportSvcId, reportingTargetNodeId, "sqs_message");
   batchQueuePayloads.push({
     traceId: rootNode.traceId,
-    parentNodeId: rootNode.id, // Direct child of root for reporting
+    parentNodeId: dispatchOrderNode.id,
     targetNodeId: reportingTargetNodeId,
-    depthIndex: rootNode.depthIndex
+    depthIndex: dispatchOrderNode.depthIndex
   });
+
+  dispatchOrderNode.markCompleted({ dispatched: true });
 
   rootNode.markCompleted({ status: 200, message: "Checkout complete" });
   
