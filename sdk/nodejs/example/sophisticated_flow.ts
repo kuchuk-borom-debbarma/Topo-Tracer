@@ -162,13 +162,43 @@ async function runSophisticatedSimulation() {
   inventoryRootNode.id = cTraceCtx.targetNodeId;
 
   console.log(`   [Service C] Processing Event for Trace: ${inventoryRootNode.traceId}`);
-  await delay(15);
+  await delay(5);
   inventoryRootNode.markProcessed();
 
-  const inventoryDbNode = inventoryRootNode.startChild("DB: Decrement Stock", "database");
-  await delay(25);
-  inventoryDbNode.markProcessed();
-  inventoryDbNode.markCompleted({ item: "widget", newStock: 42 });
+  // DEEP NESTING: processInventoryUpdate -> validateStock -> DB Check
+  const processInventoryNode = inventoryRootNode.startChild("processInventoryUpdate()", "function");
+  await delay(2);
+  processInventoryNode.markProcessed();
+
+  const validateStockNode = processInventoryNode.startChild("validateStock()", "function");
+  const dbCheckNode = validateStockNode.startChild("DB: Check Current Stock", "database");
+  await delay(10);
+  dbCheckNode.markProcessed();
+  dbCheckNode.markCompleted({ stock: 15 });
+  validateStockNode.markProcessed();
+  validateStockNode.markCompleted({ valid: true });
+
+  const decrementNode = processInventoryNode.startChild("DB: Decrement Stock", "database");
+  await delay(15);
+  decrementNode.markProcessed();
+  decrementNode.markCompleted({ item: "widget", newStock: 14 });
+
+  // DEEP NESTING: calculateRestock -> Restock Logic & Kafka Produce
+  const restockCheckNode = processInventoryNode.startChild("calculateRestock()", "function");
+  await delay(2);
+  restockCheckNode.markProcessed();
+  
+  const restockDecisionNode = restockCheckNode.startChild("evaluateThreshold()", "function");
+  restockDecisionNode.markProcessed();
+  restockDecisionNode.markCompleted({ threshold: 20, current: 14, needsRestock: true });
+  
+  const reorderEventNode = restockCheckNode.startChild("Kafka Produce: ReorderItem", "message_producer");
+  await delay(5);
+  reorderEventNode.markProcessed();
+  reorderEventNode.markCompleted({ topic: "inventory.reorder", quantity: 100 });
+  
+  restockCheckNode.markCompleted();
+  processInventoryNode.markCompleted({ status: "success", logs: ["Inventory updated successfully"] });
 
   inventoryRootNode.markCompleted({ status: "consumed" });
 
@@ -193,20 +223,47 @@ async function runSophisticatedSimulation() {
 
   console.log(`   [Service D] Polled queue, received batch of ${batchQueuePayloads.length} items.`);
 
-  // 6. Fan-out / Batch Processing
-  // A single cron job iteration loops over many disparate trace contexts
+  // 6. Fan-out / Batch Processing with extremely deep nesting
   const batchRootNode = Tracer.startTrace("Cron: Process Nightly Reports", "batch_job");
   batchRootNode.markProcessed();
 
   for (const item of batchQueuePayloads) {
-    // For each item, we continue its specific distributed trace
     const itemNode = Tracer.continueTrace(item.traceId, item.parentNodeId, "Process Report Item", "function", item.depthIndex);
-    itemNode.id = item.targetNodeId; // Match edge if provided
+    itemNode.id = item.targetNodeId; 
     
-    await delay(10);
+    await delay(5);
     itemNode.markProcessed();
     
-    // We can link the trace back to the batch runner using metadata or custom edges if desired.
+    // DEEP NESTING: generatePdfReport -> render -> sanitize
+    const generatePdfNode = itemNode.startChild("generatePdfReport()", "function");
+    generatePdfNode.markProcessed();
+    
+    const fetchTemplateNode = generatePdfNode.startChild("S3: Fetch Template", "http_client");
+    await delay(15);
+    fetchTemplateNode.markProcessed();
+    fetchTemplateNode.markCompleted({ bucket: "reports-templates" });
+
+    const renderNode = generatePdfNode.startChild("renderTemplate()", "function");
+    renderNode.markProcessed();
+    
+    const sanitizeNode = renderNode.startChild("sanitizeData()", "function");
+    sanitizeNode.markProcessed();
+    sanitizeNode.markCompleted({ sanitizedFields: 4 });
+    
+    renderNode.markCompleted({ status: "rendered" });
+    generatePdfNode.markCompleted({ status: "success", fileSize: "45KB" });
+
+    // DEEP NESTING: sendEmail -> SMTP
+    const emailNode = itemNode.startChild("sendEmail()", "function");
+    emailNode.markProcessed();
+    
+    const smtpNode = emailNode.startChild("SMTP: Deliver", "http_client");
+    await delay(10);
+    smtpNode.markProcessed();
+    smtpNode.markCompleted({ delivered: true, recipient: "admin@example.com" });
+    
+    emailNode.markCompleted({ method: "smtp" });
+    
     itemNode.markCompleted({ batchJobTraceId: batchRootNode.traceId });
   }
 

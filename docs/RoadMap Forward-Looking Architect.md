@@ -96,7 +96,8 @@ To construct a live, fleet-wide service map that aggregates transit latencies ac
 SELECT 
     from_container_id,
     from_target_id,
-    to_node_id,
+    to_target_id,
+    to_target_type,
     crossing_kind,
     count() AS total_transaction_volume,
     quantile(0.95)(edge_transit_ms) AS p95_wire_transit_latency,
@@ -107,7 +108,8 @@ WHERE distributed_timestamp >= now() - INTERVAL 5 MINUTE
 GROUP BY 
     from_container_id, 
     from_target_id, 
-    to_node_id, 
+    to_target_id, 
+    to_target_type,
     crossing_kind;
 
 ```

@@ -272,7 +272,8 @@
           const data = JSON.parse(e.target.result);
           renderDashboard(data, file.name);
         } catch (err) {
-          alert('Invalid JSON file!');
+          console.error("Error processing file:", err);
+          alert('Error: ' + err.message);
         }
       };
       reader.readAsText(file);
@@ -326,7 +327,11 @@
       document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
 
       // Render Mermaid Diagram
-      renderMermaidDiagram(data);
+      if (typeof window.renderMermaidDiagram === 'function') {
+        window.renderMermaidDiagram(data);
+      } else {
+        document.getElementById('mermaid-view').innerHTML = '<p style="color: var(--text-muted);">Mermaid visualizer is still loading or blocked by your browser...</p>';
+      }
     }
   </script>
   <script type="module">
@@ -337,7 +342,7 @@
       const container = document.getElementById('mermaid-view');
       container.innerHTML = '';
       
-      let mm = "flowchart LR\\n";
+      let mm = "flowchart LR\n";
       
       // Group nodes by container
       const containers = {};
@@ -351,7 +356,7 @@
       // Draw subgraphs
       for (const [cId, nodes] of Object.entries(containers)) {
         const safeCId = cId.replace(/-/g, '_');
-        mm += \`  subgraph \${safeCId} ["\${cId}"]\\n\`;
+        mm += `  subgraph ${safeCId} ["${cId}"]\n`;
         nodes.forEach(n => {
           const safeId = n.id.replace(/-/g, '_');
           // Add metadata summary to node text if available
@@ -359,9 +364,9 @@
           if (n.metadata) {
             extra = "<br/>" + JSON.stringify(n.metadata).replace(/"/g, "'");
           }
-          mm += \`    \${safeId}["\${n.name}\${extra}"]\\n\`;
+          mm += `    ${safeId}["${n.name}${extra}"]\n`;
         });
-        mm += \`  end\\n\`;
+        mm += `  end\n`;
       }
 
       // Hidden containers targeted by visual wires
@@ -369,7 +374,7 @@
         [wire.fromTarget, wire.toTarget].forEach(t => {
           if (t.type === 'container' && !renderedContainers.has(t.id)) {
             const safeId = t.id.replace(/-/g, '_');
-            mm += \`  \${safeId}["\${t.id} (Collapsed)"]:::container\\n\`;
+            mm += `  ${safeId}["${t.id} (Collapsed)"]:::container\n`;
             renderedContainers.add(t.id);
           }
         });
@@ -379,7 +384,7 @@
       (data.visualWires || []).forEach((wire, i) => {
         const fromSafe = wire.fromTarget.id.replace(/-/g, '_');
         const toSafe = wire.toTarget.id.replace(/-/g, '_');
-        mm += \`  \${fromSafe} ==>|network| \${toSafe}\\n\`;
+        mm += `  ${fromSafe} ==>|network| ${toSafe}\n`;
       });
 
       // Draw internal flow (Parent -> Child inside same container)
@@ -389,7 +394,7 @@
           if (parentVisible && parentVisible.containerId === n.containerId) {
             const fromSafe = n.parentNodeId.replace(/-/g, '_');
             const toSafe = n.id.replace(/-/g, '_');
-            mm += \`  \${fromSafe} -.->|internal| \${toSafe}\\n\`;
+            mm += `  ${fromSafe} -.->|internal| ${toSafe}\n`;
           }
         }
       });
@@ -398,7 +403,7 @@
         const { svg } = await mermaid.render('mermaid-graph-' + Date.now(), mm);
         container.innerHTML = svg;
       } catch (e) {
-        container.innerHTML = \`<p style="color: #ef4444;">Error rendering diagram: \${e.message}</p>\`;
+        container.innerHTML = `<p style="color: #ef4444;">Error rendering diagram: ${e.message}</p>`;
         console.error("Mermaid error:", e, mm);
       }
     };

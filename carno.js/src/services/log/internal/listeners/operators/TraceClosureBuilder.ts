@@ -40,20 +40,34 @@ export class TraceClosureBuilder {
       egressMap.set(row.edge_id, row.egressAncestryPath);
     }
 
+    // 2b. Batch lookup ingress ancestry
+    const ingressNodeIds = Array.from(new Set(rawEdges.map(e => e.toNodeId)));
+    const ingressAncestryRecords = await this.logRepo.fetchNodeAncestry(traceId, ingressNodeIds);
+
+    const ingressMap = new Map<string, string[]>();
+    for (const row of ingressAncestryRecords) {
+      ingressMap.set(row.node_id, row.ancestryPath);
+    }
+
     // 3. Generate Sparse Visual Wires
     const visualWiresToInsert: any[] = [];
     const cappedMaxDepth = Math.min(maxDepth, 100);
 
     for (const row of rawEdges) {
       const egressAncestryPath = egressMap.get(row.id) || [];
+      const ingressAncestryPath = ingressMap.get(row.toNodeId) || [];
       
       let lastFromTargetId = "";
+      let lastToTargetId = "";
 
       for (let d = 0; d <= cappedMaxDepth; d++) {
         let fromTargetId = row.fromContainerId;
         let fromTargetType = "container";
+        let toTargetId = row.toContainerId;
+        let toTargetType = "container";
 
         if (d > 0) {
+          // If a parent node exists at this depth, snap to it. Otherwise, point to the exact target node.
           if ((d - 1) < egressAncestryPath.length) {
             fromTargetId = egressAncestryPath[d - 1]!;
             fromTargetType = "node";
@@ -61,9 +75,18 @@ export class TraceClosureBuilder {
             fromTargetId = row.fromNodeId;
             fromTargetType = "node";
           }
+
+          // Same logic for ingress: collapse to the highest visible parent or target the exact node
+          if ((d - 1) < ingressAncestryPath.length) {
+            toTargetId = ingressAncestryPath[d - 1]!;
+            toTargetType = "node";
+          } else {
+            toTargetId = row.toNodeId;
+            toTargetType = "node";
+          }
         }
 
-        if (fromTargetId !== lastFromTargetId) {
+        if (fromTargetId !== lastFromTargetId || toTargetId !== lastToTargetId) {
           visualWiresToInsert.push({
             id: `${row.id}_${d}`,
             edge_id: row.id,
@@ -71,9 +94,11 @@ export class TraceClosureBuilder {
             visual_depth: d,
             from_target_id: fromTargetId,
             from_target_type: fromTargetType,
-            to_node_id: row.toNodeId,
+            to_target_id: toTargetId,
+            to_target_type: toTargetType,
           });
           lastFromTargetId = fromTargetId;
+          lastToTargetId = toTargetId;
         }
       }
     }

@@ -56,7 +56,8 @@ interface MaterializedClosureEdge {
   visual_depth: number;          // The UI depth threshold where this row is active
   from_target_id: string;        // Pre-computed visual origin ID
   from_target_type: 'node' | 'container';
-  to_node_id: string;            // Direct ingress row on destination container
+  to_target_id: string;          // Pre-computed visual destination ID (Bidirectional ingress support)
+  to_target_type: 'node' | 'container';
 }
 
 ```
@@ -131,7 +132,7 @@ async function getTraceWiresForResolution(
     return cachedEdges.map(edge => ({
       id: edge.edge_id,
       from_target: { id: edge.from_target_id, type: edge.from_target_type },
-      to_target: { id: edge.to_node_id, type: 'node' }
+      to_target: { id: edge.to_target_id, type: edge.to_target_type }
     }));
   }
 
@@ -146,12 +147,15 @@ async function getTraceWiresForResolution(
 
     return rawEdges.map(edge => {
       const resolvedFromNodeId = edge.egress_ancestry_path.find(id => visibleNodeIds.has(id));
+      const resolvedToNodeId = edge.ingress_ancestry_path.find(id => visibleNodeIds.has(id));
       return {
         id: edge.id,
-        to_target: { id: edge.to_node_id, type: 'node' },
         from_target: resolvedFromNodeId 
           ? { id: resolvedFromNodeId, type: 'node' }
-          : { id: edge.from_container_id, type: 'container' }
+          : { id: edge.from_container_id, type: 'container' },
+        to_target: resolvedToNodeId
+          ? { id: resolvedToNodeId, type: 'node' }
+          : { id: edge.to_container_id, type: 'container' }
       };
     });
   });

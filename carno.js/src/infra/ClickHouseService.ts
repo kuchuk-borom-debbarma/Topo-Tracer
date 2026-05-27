@@ -55,18 +55,18 @@ export class ClickHouseService {
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS toco_tracer.nodes (
-          id String,
-          trace_id String,
-          containerId String,
-          parentNodeId String,
-          name String,
-          nodeType String,
-          depthIndex UInt32,
-          metadata String,
-          initiatedAtLocal Int64,
-          processedAtLocal Int64,
-          completedAtLocal Nullable(Int64),
-          ancestryPath Array(String)
+          id String,                        -- Unique identifier for the node (e.g. UUID)
+          trace_id String,                  -- The globally unique trace ID this node belongs to
+          containerId String,               -- The physical container/service where this node ran
+          parentNodeId String,              -- Parent node ID for intra-container hierarchical nesting
+          name String,                      -- Human-readable name (e.g. 'POST /v1/checkout' or 'DB Query')
+          nodeType String,                  -- E.g. 'http_server', 'database', 'internal_function'
+          depthIndex UInt32,                -- Zero-indexed nesting depth from the trace root. Used for zoom-level filtering.
+          metadata String,                  -- JSON stringified custom payload/baggage properties
+          initiatedAtLocal Int64,           -- Timestamp when execution started (ms)
+          processedAtLocal Int64,           -- Timestamp when execution logic finished (ms)
+          completedAtLocal Nullable(Int64), -- Timestamp when all children completed (ms)
+          ancestryPath Array(String)        -- Ordered array of parent node IDs up to the root, used for bubbling up visuals
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, depthIndex, initiatedAtLocal);
       `,
@@ -76,16 +76,16 @@ export class ClickHouseService {
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS toco_tracer.edges (
-          id String,
-          trace_id String,
-          fromContainerId String,
-          toContainerId String,
-          fromNodeId String,
-          toNodeId String,
-          edgeType String,
-          dispatchedAtLocal Int64,
-          respondedAtLocal Nullable(Int64),
-          egressAncestryPath Array(String)
+          id String,                        -- Unique identifier for the edge
+          trace_id String,                  -- The globally unique trace ID
+          fromContainerId String,           -- The source physical container ID
+          toContainerId String,             -- The destination physical container ID
+          fromNodeId String,                -- The exact egress node ID that dispatched the call
+          toNodeId String,                  -- The exact ingress node ID that received the call
+          edgeType String,                  -- Protocol used (e.g., 'http', 'kafka_message', 'grpc')
+          dispatchedAtLocal Int64,          -- When the call was sent from the source (ms)
+          respondedAtLocal Nullable(Int64), -- When the source received a response (ms)
+          egressAncestryPath Array(String)  -- Ordered parents of fromNodeId, cached for rapid zoom-out collapsing
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, dispatchedAtLocal);
       `,
@@ -119,13 +119,14 @@ export class ClickHouseService {
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
-          id String,
-          edge_id String,
-          trace_id String,
-          visual_depth UInt32,
-          from_target_id String,
-          from_target_type String,
-          to_node_id String
+          id String,                        -- Unique composite ID (e.g. edgeId_depthLevel)
+          edge_id String,                   -- The underlying raw physical network edge ID
+          trace_id String,                  -- The trace ID
+          visual_depth UInt32,              -- The UI zoom slider level this row is built for
+          from_target_id String,            -- The pre-computed visible source ID at this depth (could be parent node or container)
+          from_target_type String,          -- 'node' or 'container', telling the UI what to attach the line to
+          to_target_id String,              -- The pre-computed visible destination ID at this depth
+          to_target_type String             -- 'node' or 'container', completing the bi-directional collapse
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, visual_depth, id);
       `,

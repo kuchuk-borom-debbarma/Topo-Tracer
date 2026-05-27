@@ -251,10 +251,12 @@ export class LogRepoClickHouseImpl extends LogRepo {
 
       const rawReadEdges = (await readEdgesResultSet.json()) as any[];
 
+      // Map the pre-computed sparse closure rows into UI-ready visual wires.
+      // Notice both fromTarget and toTarget use dynamic types to snap to containers when nodes are hidden.
       visualWires = rawReadEdges.map(row => ({
         id: row.id,
         fromTarget: { id: row.from_target_id, type: row.from_target_type as "node" | "container" },
-        toTarget: { id: row.to_node_id, type: "node" },
+        toTarget: { id: row.to_target_id, type: row.to_target_type as "node" | "container" },
       }));
     }
 
@@ -428,10 +430,12 @@ export class LogRepoClickHouseImpl extends LogRepo {
 
       const rawReadEdges = (await readEdgesResultSet.json()) as any[];
 
+      // Map the pre-computed sparse closure rows into UI-ready visual wires.
+      // Notice both fromTarget and toTarget use dynamic types to snap to containers when nodes are hidden.
       visualWires = rawReadEdges.map(row => ({
         id: row.id,
         fromTarget: { id: row.from_target_id, type: row.from_target_type as "node" | "container" },
-        toTarget: { id: row.to_node_id, type: "node" },
+        toTarget: { id: row.to_target_id, type: row.to_target_type as "node" | "container" },
       }));
     }
 

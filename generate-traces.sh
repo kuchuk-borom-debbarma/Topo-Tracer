@@ -42,7 +42,7 @@ done
 echo "💾 Saving depth files to temp/..."
 mkdir -p temp
 
-for DEPTH in 0 1 2 3; do
+for DEPTH in 0 1 2 3 4 5; do
   curl -s "http://localhost:3000/telemetry/trace/$TRACE_ID/full?depth=$DEPTH" > temp/depth$DEPTH.json
   echo "   Saved temp/depth$DEPTH.json"
 done
