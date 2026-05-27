@@ -476,7 +476,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
     if (!nodeIds.length) return [];
     const rs = await this.clickHouse.client.query({
       query: `
-        SELECT node_id, ancestryPath FROM toco_tracer.node_ancestry
+        SELECT node_id, ancestryPath, ancestryDepths FROM toco_tracer.node_ancestry
         WHERE trace_id = {traceId: String} AND node_id IN ({nodeIds: Array(String)})
       `,
       query_params: { traceId, nodeIds },
@@ -503,7 +503,8 @@ export class LogRepoClickHouseImpl extends LogRepo {
     const values = records.map(r => ({
       node_id: r.node_id,
       trace_id: traceId,
-      ancestryPath: r.ancestryPath
+      ancestryPath: r.ancestryPath,
+      ancestryDepths: r.ancestryDepths
     }));
     await this.clickHouse.client.insert({
       table: "toco_tracer.node_ancestry",
@@ -531,7 +532,8 @@ export class LogRepoClickHouseImpl extends LogRepo {
     const values = records.map(r => ({
       edge_id: r.edge_id,
       trace_id: traceId,
-      egressAncestryPath: r.egressAncestryPath
+      egressAncestryPath: r.egressAncestryPath,
+      egressAncestryDepths: r.egressAncestryDepths
     }));
     await this.clickHouse.client.insert({
       table: "toco_tracer.edge_egress_ancestry",
@@ -544,7 +546,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
     if (!edgeIds.length) return [];
     const rs = await this.clickHouse.client.query({
       query: `
-        SELECT edge_id, egressAncestryPath FROM toco_tracer.edge_egress_ancestry
+        SELECT edge_id, egressAncestryPath, egressAncestryDepths FROM toco_tracer.edge_egress_ancestry
         WHERE trace_id = {traceId: String} AND edge_id IN ({edgeIds: Array(String)})
       `,
       query_params: { traceId, edgeIds },

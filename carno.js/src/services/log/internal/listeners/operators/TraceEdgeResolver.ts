@@ -45,18 +45,19 @@ export class TraceEdgeResolver {
     const egressNodeIds = Array.from(new Set(rawEdges.map(e => e.fromNodeId)));
     const ancestryRecords = await this.logRepo.fetchNodeAncestry(traceId, egressNodeIds);
 
-    const ancestryMap = new Map<string, string[]>();
+    const ancestryMap = new Map<string, { path: string[], depths: number[] }>();
     for (const row of ancestryRecords) {
-      ancestryMap.set(row.node_id, row.ancestryPath);
+      ancestryMap.set(row.node_id, { path: row.ancestryPath, depths: row.ancestryDepths });
     }
 
     // 3. Prepare records
     const egressRecordsToInsert: EdgeEgressAncestryRecord[] = [];
     for (const row of rawEdges) {
-      const path = ancestryMap.get(row.fromNodeId) || [row.fromNodeId];
+      const info = ancestryMap.get(row.fromNodeId) || { path: [row.fromNodeId], depths: [0] };
       egressRecordsToInsert.push({
         edge_id: row.id,
-        egressAncestryPath: path,
+        egressAncestryPath: info.path,
+        egressAncestryDepths: info.depths,
       });
     }
 

@@ -59,7 +59,7 @@ export class TraceNodeResolver {
       }
     }
 
-    const dbAncestryMap = new Map<string, string[]>();
+    const dbAncestryMap = new Map<string, { path: string[], depths: number[] }>();
     let resolutionDepth = 0;
 
     // 3. Iterative Batch Parent Fetch
@@ -70,7 +70,7 @@ export class TraceNodeResolver {
       const cachedAncestry = await this.logRepo.fetchNodeAncestry(traceId, missingIds);
 
       for (const row of cachedAncestry) {
-        dbAncestryMap.set(row.node_id, row.ancestryPath);
+        dbAncestryMap.set(row.node_id, { path: row.ancestryPath, depths: row.ancestryDepths });
         currentMissingParents.delete(row.node_id);
       }
 
@@ -90,32 +90,38 @@ export class TraceNodeResolver {
     }
 
     // 4. Resolve paths entirely in-memory
-    const resolvedPaths = new Map<string, string[]>();
+    const resolvedPaths = new Map<string, { path: string[], depths: number[] }>();
 
-    const resolvePath = (nodeId: string, currentDepth: number = 0): string[] => {
-      if (currentDepth > MAX_DEPTH_LIMIT) return [nodeId];
-      if (!nodeId) return [];
+    const resolvePath = (nodeId: string, currentDepth: number = 0): { path: string[], depths: number[] } => {
+      if (currentDepth > MAX_DEPTH_LIMIT) return { path: [nodeId], depths: [0] };
+      if (!nodeId) return { path: [], depths: [] };
       if (resolvedPaths.has(nodeId)) return resolvedPaths.get(nodeId)!;
       if (dbAncestryMap.has(nodeId)) return dbAncestryMap.get(nodeId)!;
 
       const node = localNodeMap.get(nodeId);
-      if (!node) return [nodeId];
+      if (!node) return { path: [nodeId], depths: [0] };
 
-      const parentPath = resolvePath(node.parentNodeId, currentDepth + 1);
-      const fullPath = [...parentPath, nodeId];
-      resolvedPaths.set(nodeId, fullPath);
-      return fullPath;
+      const parentInfo = resolvePath(node.parentNodeId, currentDepth + 1);
+      const fullPath = [...parentInfo.path, nodeId];
+      const fullDepths = [...parentInfo.depths, Number(node.depthIndex)];
+      
+      const result = { path: fullPath, depths: fullDepths };
+      resolvedPaths.set(nodeId, result);
+      return result;
     };
 
     const newAncestryRecords: NodeAncestryRecord[] = [];
     for (const row of rawNodes) {
-      const fullPath = resolvePath(row.id);
-      if (fullPath.length > maxDepth) {
-        maxDepth = fullPath.length;
+      const info = resolvePath(row.id);
+      
+      if (info.path.length > maxDepth) {
+        maxDepth = info.path.length;
       }
+      
       newAncestryRecords.push({
         node_id: row.id,
-        ancestryPath: fullPath,
+        ancestryPath: info.path,
+        ancestryDepths: info.depths,
       });
     }
 

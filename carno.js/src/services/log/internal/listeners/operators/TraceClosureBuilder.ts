@@ -35,18 +35,18 @@ export class TraceClosureBuilder {
     const edgeIds = rawEdges.map(e => e.id);
     const egressAncestryRecords = await this.logRepo.fetchEdgeEgressAncestry(traceId, edgeIds);
     
-    const egressMap = new Map<string, string[]>();
+    const egressMap = new Map<string, { path: string[], depths: number[] }>();
     for (const row of egressAncestryRecords) {
-      egressMap.set(row.edge_id, row.egressAncestryPath);
+      egressMap.set(row.edge_id, { path: row.egressAncestryPath, depths: row.egressAncestryDepths });
     }
 
     // 2b. Batch lookup ingress ancestry
     const ingressNodeIds = Array.from(new Set(rawEdges.map(e => e.toNodeId)));
     const ingressAncestryRecords = await this.logRepo.fetchNodeAncestry(traceId, ingressNodeIds);
 
-    const ingressMap = new Map<string, string[]>();
+    const ingressMap = new Map<string, { path: string[], depths: number[] }>();
     for (const row of ingressAncestryRecords) {
-      ingressMap.set(row.node_id, row.ancestryPath);
+      ingressMap.set(row.node_id, { path: row.ancestryPath, depths: row.ancestryDepths });
     }
 
     // 3. Generate Sparse Visual Wires
@@ -54,8 +54,8 @@ export class TraceClosureBuilder {
     const cappedMaxDepth = Math.min(maxDepth, 100);
 
     for (const row of rawEdges) {
-      const egressAncestryPath = egressMap.get(row.id) || [];
-      const ingressAncestryPath = ingressMap.get(row.toNodeId) || [];
+      const egressInfo = egressMap.get(row.id) || { path: [], depths: [] };
+      const ingressInfo = ingressMap.get(row.toNodeId) || { path: [], depths: [] };
       
       let lastFromTargetId = "";
       let lastToTargetId = "";
@@ -67,22 +67,40 @@ export class TraceClosureBuilder {
         let toTargetType = "container";
 
         if (d > 0) {
-          // If a parent node exists at this depth, snap to it. Otherwise, point to the exact target node.
-          if ((d - 1) < egressAncestryPath.length) {
-            fromTargetId = egressAncestryPath[d - 1]!;
-            fromTargetType = "node";
-          } else {
-            fromTargetId = row.fromNodeId;
-            fromTargetType = "node";
+          // Find the deepest node in the ancestry path whose depthIndex <= d
+          let egressNodeAtDepth: string | null = null;
+          for (let i = egressInfo.depths.length - 1; i >= 0; i--) {
+            if (egressInfo.depths[i]! <= d) {
+              egressNodeAtDepth = egressInfo.path[i]!;
+              break;
+            }
           }
 
-          // Same logic for ingress: collapse to the highest visible parent or target the exact node
-          if ((d - 1) < ingressAncestryPath.length) {
-            toTargetId = ingressAncestryPath[d - 1]!;
+          if (egressNodeAtDepth) {
+            fromTargetId = egressNodeAtDepth;
+            fromTargetType = "node";
+          } else {
+            // No node in this container exists at or above depth `d`
+            // So we snap to the container boundary.
+            fromTargetId = row.fromContainerId;
+            fromTargetType = "container";
+          }
+
+          // Same logic for ingress
+          let ingressNodeAtDepth: string | null = null;
+          for (let i = ingressInfo.depths.length - 1; i >= 0; i--) {
+            if (ingressInfo.depths[i]! <= d) {
+              ingressNodeAtDepth = ingressInfo.path[i]!;
+              break;
+            }
+          }
+
+          if (ingressNodeAtDepth) {
+            toTargetId = ingressNodeAtDepth;
             toTargetType = "node";
           } else {
-            toTargetId = row.toNodeId;
-            toTargetType = "node";
+            toTargetId = row.toContainerId;
+            toTargetType = "container";
           }
         }
 

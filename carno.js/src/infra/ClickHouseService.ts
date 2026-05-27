@@ -97,7 +97,8 @@ export class ClickHouseService {
         CREATE TABLE IF NOT EXISTS toco_tracer.node_ancestry (
           node_id String,
           trace_id String,
-          ancestryPath Array(String)
+          ancestryPath Array(String),
+          ancestryDepths Array(UInt32)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, node_id);
       `,
@@ -109,7 +110,8 @@ export class ClickHouseService {
         CREATE TABLE IF NOT EXISTS toco_tracer.edge_egress_ancestry (
           edge_id String,
           trace_id String,
-          egressAncestryPath Array(String)
+          egressAncestryPath Array(String),
+          egressAncestryDepths Array(UInt32)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, edge_id);
       `,

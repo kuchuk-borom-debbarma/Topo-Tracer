@@ -28,6 +28,7 @@ SELECT
 FROM topo_tracer.read_edges
 WHERE trace_id = :active_trace_id
   AND visual_depth_filter = :current_viewport_zoom
+  -- Using ClickHouse Array functions to locate specific nodes efficiently across the network
   AND has(egress_ancestry_path, 'node_db_failure_uuid') = 1
 GROUP BY 
     from_container_id, 

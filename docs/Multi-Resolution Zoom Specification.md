@@ -146,13 +146,15 @@ async function getTraceWiresForResolution(
     const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
 
     return rawEdges.map(edge => {
-      const resolvedFromNodeId = edge.egress_ancestry_path.find(id => visibleNodeIds.has(id));
-      const resolvedToNodeId = edge.ingress_ancestry_path.find(id => visibleNodeIds.has(id));
+      // Use parallel arrays (ancestryDepths) to find the deepest node whose absolute depthIndex <= threshold
+      const resolvedFromNodeId = findDeepestVisible(edge.egress_ancestry_path, edge.egress_ancestry_depths, depthFilterThreshold);
+      const resolvedToNodeId = findDeepestVisible(edge.ingress_ancestry_path, edge.ingress_ancestry_depths, depthFilterThreshold);
+      
       return {
         id: edge.id,
         from_target: resolvedFromNodeId 
           ? { id: resolvedFromNodeId, type: 'node' }
-          : { id: edge.from_container_id, type: 'container' },
+          : { id: edge.from_container_id, type: 'container' }, // Fallback to container boundary if root is deeper than threshold
         to_target: resolvedToNodeId
           ? { id: resolvedToNodeId, type: 'node' }
           : { id: edge.to_container_id, type: 'container' }
@@ -160,6 +162,9 @@ async function getTraceWiresForResolution(
     });
   });
 }
+
+### Parallel Array Architecture for Depth Resolution
+Because `depthIndex` spans across network boundaries (e.g., a target container might start at Depth 2), array indices cannot reliably map to absolute depth. Topo-Tracer uses **Parallel Arrays** in ClickHouse (`ancestryPath` and `ancestryDepths`) to explicitly map node IDs to their absolute global depth. This ensures the builder can safely truncate paths or snap to outer container bounds without array offset bugs.
 
 ```
 

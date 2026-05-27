@@ -141,12 +141,14 @@ export interface EdgeMaterializationDTO {
 
 export interface NodeAncestryRecord {
   node_id: string;
-  ancestryPath: string[];
+  ancestryPath: string[]; // Ordered list of node IDs from root to this node (inclusive)
+  ancestryDepths: number[]; // Parallel array mapping to ancestryPath indices, storing their absolute depthIndex
 }
 
 export interface EdgeEgressAncestryRecord {
   edge_id: string;
-  egressAncestryPath: string[];
+  egressAncestryPath: string[]; // Ordered list of node IDs from root to the egress node
+  egressAncestryDepths: number[]; // Parallel array storing the depthIndex of each node
 }
 
 export interface TraceMetadataUpdate {
