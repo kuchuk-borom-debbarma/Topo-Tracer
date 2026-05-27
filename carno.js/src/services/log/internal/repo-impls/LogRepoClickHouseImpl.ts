@@ -320,7 +320,9 @@ export class LogRepoClickHouseImpl extends LogRepo {
 
     const isBackward = params.beforeTime !== undefined;
     const hasDepthFilter = params.depth !== undefined;
-    const depthFilterClause = hasDepthFilter ? "AND depthIndex <= {depth: UInt32}" : "";
+    const depthType = params.depthType || 'global';
+    const depthColumn = depthType === 'local' ? 'localDepthIndex' : 'depthIndex';
+    const depthFilterClause = hasDepthFilter ? `AND ${depthColumn} <= {depth: UInt32}` : "";
     if (hasDepthFilter) {
       queryParams.depth = params.depth;
     }
@@ -452,6 +454,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
         query: `
           SELECT * FROM toco_tracer.read_edges
           WHERE trace_id = {traceId: String}
+            AND depth_type = {depthType: String}
             AND visual_depth <= {depth: UInt32}
           ORDER BY visual_depth DESC
           LIMIT 1 BY edge_id
@@ -459,6 +462,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
         query_params: {
           traceId,
           depth: params.depth!,
+          depthType: params.depthType || 'global'
         },
         format: "JSONEachRow",
       });
