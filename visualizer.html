@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Topo-Tracer Visualizer</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #3b82f6;
+      --border: rgba(255, 255, 255, 0.1);
+      --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-family);
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0;
+      background: linear-gradient(to right, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .dropzone {
+      background: var(--card-bg);
+      border: 2px dashed var(--accent);
+      border-radius: 1rem;
+      padding: 3rem;
+      text-align: center;
+      backdrop-filter: blur(12px);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      margin-bottom: 2rem;
+    }
+
+    .dropzone:hover, .dropzone.dragover {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: #60a5fa;
+      transform: translateY(-2px);
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      text-align: center;
+    }
+
+    .metric-value {
+      font-size: 3rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-label {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .data-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      margin-bottom: 1.5rem;
+    }
+
+    .data-section h2 {
+      margin-top: 0;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .node-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+
+    .node-item {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+    }
+
+    .node-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .node-name {
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .badge {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .node-meta {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .raw-json {
+      background: #0f172a;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+      font-family: monospace;
+      font-size: 0.875rem;
+      color: #a5b4fc;
+    }
+
+    #app-content {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Topo-Tracer Visualizer</h1>
+      <p style="color: var(--text-muted);">Load JSON trace files to analyze depth resolution magically.</p>
+    </header>
+
+    <div class="dropzone" id="dropzone">
+      <h2 style="margin: 0; margin-bottom: 0.5rem;">Drag & Drop JSON File Here</h2>
+      <p style="margin: 0; color: var(--text-muted);">or click to select a file from temp/</p>
+      <input type="file" id="fileInput" accept=".json" style="display: none;">
+    </div>
+
+    <div id="app-content">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-value" id="val-depth">-</div>
+          <div class="metric-label">Max Available Depth</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="val-nodes">-</div>
+          <div class="metric-label">Nodes Visible</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="val-edges">-</div>
+          <div class="metric-label">Physical Edges</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="val-wires">-</div>
+          <div class="metric-label">Visual Wires</div>
+        </div>
+      </div>
+
+      <div class="data-section">
+        <h2>Nodes Explorer</h2>
+        <div class="node-list" id="nodes-container"></div>
+      </div>
+
+      <div class="data-section">
+        <h2>Visual Wires (Render Directives)</h2>
+        <div class="node-list" id="wires-container"></div>
+      </div>
+
+      <div class="data-section">
+        <h2>Raw JSON Payload</h2>
+        <pre class="raw-json" id="raw-json"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const appContent = document.getElementById('app-content');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('dragover');
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          renderDashboard(data, file.name);
+        } catch (err) {
+          alert('Invalid JSON file!');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function renderDashboard(data, filename) {
+      appContent.style.display = 'block';
+      dropzone.innerHTML = `<h2 style="margin: 0; margin-bottom: 0.5rem; color: #4ade80;">Loaded: ${filename}</h2><p style="margin: 0; color: var(--text-muted);">Drop another file to switch</p>`;
+
+      // Metrics
+      document.getElementById('val-depth').textContent = data.maxAvailableDepth ?? 0;
+      document.getElementById('val-nodes').textContent = data.nodes?.length || 0;
+      document.getElementById('val-edges').textContent = data.edges?.length || 0;
+      document.getElementById('val-wires').textContent = data.visualWires?.length || 0;
+
+      // Nodes
+      const nodesContainer = document.getElementById('nodes-container');
+      nodesContainer.innerHTML = '';
+      (data.nodes || []).forEach(node => {
+        const div = document.createElement('div');
+        div.className = 'node-item';
+        div.innerHTML = `
+          <div class="node-header">
+            <div class="node-name">${node.name}</div>
+            <div class="badge">Depth ${node.depthIndex}</div>
+          </div>
+          <div class="node-meta"><strong>Container:</strong> ${node.containerId}</div>
+          <div class="node-meta"><strong>Type:</strong> ${node.nodeType}</div>
+          <div class="node-meta" style="margin-top: 0.5rem;"><em>ID: ${node.id.split('-')[0]}...</em></div>
+        `;
+        nodesContainer.appendChild(div);
+      });
+
+      // Wires
+      const wiresContainer = document.getElementById('wires-container');
+      wiresContainer.innerHTML = '';
+      (data.visualWires || []).forEach(wire => {
+        const div = document.createElement('div');
+        div.className = 'node-item';
+        div.innerHTML = `
+          <div class="node-header">
+            <div class="node-name" style="color: #f472b6;">Visual Wire</div>
+          </div>
+          <div class="node-meta"><strong>From:</strong> [${wire.fromTarget.type}] ${wire.fromTarget.id.substring(0, 15)}...</div>
+          <div class="node-meta"><strong>To:</strong> [${wire.toTarget.type}] ${wire.toTarget.id.substring(0, 15)}...</div>
+        `;
+        wiresContainer.appendChild(div);
+      });
+
+      // Raw JSON
+      document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    }
+  </script>
+</body>
+</html>

@@ -106,6 +106,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query: `
         SELECT is_zoom_ready, max_available_depth FROM toco_tracer.trace_metadata
         WHERE trace_id = {traceId: String}
+        ORDER BY is_zoom_ready DESC, max_available_depth DESC
         LIMIT 1
       `,
       query_params: { traceId },

@@ -33,20 +33,31 @@ export interface TraceEdge {
   respondedAtLocal?: string | number;
 }
 
+export interface VisualWire {
+  id: string;
+  fromTarget: { id: string; type: "node" | "container" };
+  toTarget: { id: string; type: "node" | "container" };
+}
+
 export interface TraceData {
-  traceId: string;
-  containers: TraceContainer[];
   nodes: TraceNode[];
   edges: TraceEdge[];
-  maxDepth: number;
-  hasMore: boolean;
+  visualWires?: VisualWire[];
+  isZoomReady: boolean;
+  maxAvailableDepth: number;
+  pagination: {
+    prevTimeCursor: number | null;
+    prevIdCursor: string | null;
+    nextTimeCursor: number | null;
+    nextIdCursor: string | null;
+    hasPrev: boolean;
+    hasNext: boolean;
+  };
 }
 
 export interface TraceMetadata {
-  traceId: string;
   isZoomReady: boolean;
   maxAvailableDepth: number;
-  containerIds: string[];
 }
 
 const API_BASE = "http://localhost:3000/telemetry";

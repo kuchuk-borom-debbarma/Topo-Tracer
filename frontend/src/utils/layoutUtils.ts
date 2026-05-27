@@ -1,11 +1,12 @@
 import dagre from 'dagre';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
-import type { TraceNode, TraceContainer, TraceEdge } from '../api/telemetry';
+import type { TraceNode, TraceContainer, TraceEdge, VisualWire } from '../api/telemetry';
 
 export const getLayoutedElements = (
   traceNodes: TraceNode[],
   traceEdges: TraceEdge[],
   traceContainers: TraceContainer[],
+  visualWires?: VisualWire[],
   direction = 'TB' // Top-Bottom layout
 ) => {
   const dagreGraph = new dagre.graphlib.Graph({ compound: true });
@@ -68,18 +69,37 @@ export const getLayoutedElements = (
   });
 
   // Add edges to DAG
-  traceEdges.forEach((edge) => {
-    dagreGraph.setEdge(edge.fromNodeId, edge.toNodeId);
-    
-    rfEdges.push({
-      id: edge.id,
-      source: edge.fromNodeId,
-      target: edge.toNodeId,
-      type: 'smoothstep',
-      animated: true,
-      style: { stroke: 'var(--accent-cyan)', strokeWidth: 2 },
+  if (visualWires && visualWires.length > 0) {
+    visualWires.forEach((wire) => {
+      if (dagreGraph.hasNode(wire.fromTarget.id) && dagreGraph.hasNode(wire.toTarget.id)) {
+        dagreGraph.setEdge(wire.fromTarget.id, wire.toTarget.id);
+        
+        rfEdges.push({
+          id: wire.id,
+          source: wire.fromTarget.id,
+          target: wire.toTarget.id,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: 'var(--accent-cyan)', strokeWidth: 2 },
+        });
+      }
     });
-  });
+  } else {
+    traceEdges.forEach((edge) => {
+      if (dagreGraph.hasNode(edge.fromNodeId) && dagreGraph.hasNode(edge.toNodeId)) {
+        dagreGraph.setEdge(edge.fromNodeId, edge.toNodeId);
+        
+        rfEdges.push({
+          id: edge.id,
+          source: edge.fromNodeId,
+          target: edge.toNodeId,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: 'var(--accent-cyan)', strokeWidth: 2 },
+        });
+      }
+    });
+  }
 
   // Execute Layout
   dagre.layout(dagreGraph);
