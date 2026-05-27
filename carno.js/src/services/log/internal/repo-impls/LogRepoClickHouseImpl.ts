@@ -196,11 +196,12 @@ export class LogRepoClickHouseImpl extends LogRepo {
     return {} as any;
   }
 
-  override async fetchTraceFull(traceId: string, depth?: number): Promise<import("../../types").FullTraceResult> {
-    const { isZoomReady, maxAvailableDepth } = await this.ensureMaterialized(traceId);
+  override async fetchTraceFull(traceId: string, depth?: number, depthType: 'global' | 'local' = 'global'): Promise<import("../../types").FullTraceResult> {
+    const { isZoomReady, maxAvailableDepth, maxAvailableLocalDepth } = await this.ensureMaterialized(traceId);
 
     const hasDepthFilter = depth !== undefined;
-    const depthFilterClause = hasDepthFilter ? "AND depthIndex <= {depth: UInt32}" : "";
+    const depthColumn = depthType === 'local' ? 'localDepthIndex' : 'depthIndex';
+    const depthFilterClause = hasDepthFilter ? `AND ${depthColumn} <= {depth: UInt32}` : "";
 
     const query = `
       SELECT * FROM toco_tracer.nodes
@@ -272,11 +273,12 @@ export class LogRepoClickHouseImpl extends LogRepo {
         query: `
           SELECT * FROM toco_tracer.read_edges
           WHERE trace_id = {traceId: String}
+            AND depth_type = {depthType: String}
             AND visual_depth <= {depth: UInt32}
           ORDER BY visual_depth DESC
           LIMIT 1 BY edge_id
         `,
-        query_params: { traceId, depth: depth! },
+        query_params: { traceId, depth: depth!, depthType },
         format: "JSONEachRow",
       });
 
@@ -297,6 +299,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       visualWires,
       isZoomReady,
       maxAvailableDepth,
+      maxAvailableLocalDepth,
     };
   }
 
