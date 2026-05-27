@@ -9,6 +9,7 @@ export class TraceNode {
   public name: string;
   public nodeType: string;
   public depthIndex: number;
+  public localDepthIndex: number;
   
   public metadata?: any;
   public initiatedAtLocal: Date;
@@ -24,6 +25,7 @@ export class TraceNode {
     nodeType: string;
     parentNodeId?: string;
     depthIndex: number;
+    localDepthIndex: number;
   }) {
     this.id = uuidv4();
     this.traceId = opts.traceId;
@@ -32,6 +34,7 @@ export class TraceNode {
     this.nodeType = opts.nodeType;
     this.parentNodeId = opts.parentNodeId;
     this.depthIndex = opts.depthIndex;
+    this.localDepthIndex = opts.localDepthIndex;
     this.initiatedAtLocal = new Date();
   }
 
@@ -45,7 +48,8 @@ export class TraceNode {
       name,
       nodeType,
       parentNodeId: this.id,
-      depthIndex: this.depthIndex + 1
+      depthIndex: this.depthIndex + 1,
+      localDepthIndex: this.localDepthIndex + 1
     });
   }
 

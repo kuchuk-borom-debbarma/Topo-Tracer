@@ -21,6 +21,7 @@ export class TraceNodeResolver {
     traceId: string,
     offset: number,
     currentMaxDepth: number,
+    currentMaxLocalDepth: number,
     iteration: number
   ): Promise<void> {
     console.log(`[TraceNodeResolver] Processing nodes for trace ${traceId} at offset ${offset}`);
@@ -28,6 +29,7 @@ export class TraceNodeResolver {
     const BATCH_SIZE = 1000;
     const MAX_DEPTH_LIMIT = 100;
     let maxDepth = currentMaxDepth;
+    let maxLocalDepth = currentMaxLocalDepth || 0;
 
     // 1. Fetch nodes chronologically using repo
     const rawNodes = await this.logRepo.fetchNodesForMaterialization(traceId, BATCH_SIZE, offset);
@@ -43,6 +45,7 @@ export class TraceNodeResolver {
           stage: "RESOLVE_EDGES",
           offset: 0,
           maxDepth,
+          maxLocalDepth,
           iteration: 1,
         },
       });
@@ -59,7 +62,7 @@ export class TraceNodeResolver {
       }
     }
 
-    const dbAncestryMap = new Map<string, { path: string[], depths: number[] }>();
+    const dbAncestryMap = new Map<string, { path: string[], depths: number[], localDepths: number[] }>();
     let resolutionDepth = 0;
 
     // 3. Iterative Batch Parent Fetch
@@ -70,7 +73,7 @@ export class TraceNodeResolver {
       const cachedAncestry = await this.logRepo.fetchNodeAncestry(traceId, missingIds);
 
       for (const row of cachedAncestry) {
-        dbAncestryMap.set(row.node_id, { path: row.ancestryPath, depths: row.ancestryDepths });
+        dbAncestryMap.set(row.node_id, { path: row.ancestryPath, depths: row.ancestryDepths, localDepths: row.ancestryLocalDepths });
         currentMissingParents.delete(row.node_id);
       }
 
@@ -90,22 +93,23 @@ export class TraceNodeResolver {
     }
 
     // 4. Resolve paths entirely in-memory
-    const resolvedPaths = new Map<string, { path: string[], depths: number[] }>();
+    const resolvedPaths = new Map<string, { path: string[], depths: number[], localDepths: number[] }>();
 
-    const resolvePath = (nodeId: string, currentDepth: number = 0): { path: string[], depths: number[] } => {
-      if (currentDepth > MAX_DEPTH_LIMIT) return { path: [nodeId], depths: [0] };
-      if (!nodeId) return { path: [], depths: [] };
+    const resolvePath = (nodeId: string, currentDepth: number = 0): { path: string[], depths: number[], localDepths: number[] } => {
+      if (currentDepth > MAX_DEPTH_LIMIT) return { path: [nodeId], depths: [0], localDepths: [0] };
+      if (!nodeId) return { path: [], depths: [], localDepths: [] };
       if (resolvedPaths.has(nodeId)) return resolvedPaths.get(nodeId)!;
       if (dbAncestryMap.has(nodeId)) return dbAncestryMap.get(nodeId)!;
 
       const node = localNodeMap.get(nodeId);
-      if (!node) return { path: [nodeId], depths: [0] };
+      if (!node) return { path: [nodeId], depths: [0], localDepths: [0] };
 
       const parentInfo = resolvePath(node.parentNodeId, currentDepth + 1);
       const fullPath = [...parentInfo.path, nodeId];
       const fullDepths = [...parentInfo.depths, Number(node.depthIndex)];
+      const fullLocalDepths = [...parentInfo.localDepths, Number(node.localDepthIndex || 0)];
       
-      const result = { path: fullPath, depths: fullDepths };
+      const result = { path: fullPath, depths: fullDepths, localDepths: fullLocalDepths };
       resolvedPaths.set(nodeId, result);
       return result;
     };
@@ -118,10 +122,15 @@ export class TraceNodeResolver {
         maxDepth = info.path.length;
       }
       
+      if (row.localDepthIndex !== undefined && row.localDepthIndex > maxLocalDepth) {
+        maxLocalDepth = row.localDepthIndex;
+      }
+      
       newAncestryRecords.push({
         node_id: row.id,
         ancestryPath: info.path,
         ancestryDepths: info.depths,
+        ancestryLocalDepths: info.localDepths,
       });
     }
 
@@ -129,8 +138,8 @@ export class TraceNodeResolver {
     await this.logRepo.saveNodeAncestryBatch(traceId, newAncestryRecords);
 
     // 6. Update max_available_depth metadata
-    if (maxDepth > currentMaxDepth) {
-      await this.logRepo.updateTraceMaterializationMetadata(traceId, { max_available_depth: maxDepth });
+    if (maxDepth > currentMaxDepth || maxLocalDepth > currentMaxLocalDepth) {
+      await this.logRepo.updateTraceMaterializationMetadata(traceId, { max_available_depth: maxDepth, max_available_local_depth: maxLocalDepth });
     }
 
     // 7. Publish next batch offset
@@ -142,6 +151,7 @@ export class TraceNodeResolver {
         stage: "RESOLVE_NODES",
         offset: offset + BATCH_SIZE,
         maxDepth,
+        maxLocalDepth,
         iteration: 1,
       },
     });

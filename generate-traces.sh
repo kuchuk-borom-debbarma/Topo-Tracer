@@ -43,8 +43,11 @@ echo "💾 Saving depth files to temp/..."
 mkdir -p temp
 
 for DEPTH in 0 1 2 3 4 5; do
-  curl -s "http://localhost:3000/telemetry/trace/$TRACE_ID/full?depth=$DEPTH" > temp/depth$DEPTH.json
-  echo "   Saved temp/depth$DEPTH.json"
+  curl -s "http://localhost:3000/telemetry/trace/$TRACE_ID/full?depth=$DEPTH&depthType=global" > temp/depth$DEPTH-global.json
+  echo "   Saved temp/depth$DEPTH-global.json"
+  
+  curl -s "http://localhost:3000/telemetry/trace/$TRACE_ID/full?depth=$DEPTH&depthType=local" > temp/depth$DEPTH-local.json
+  echo "   Saved temp/depth$DEPTH-local.json"
 done
 
 echo "🛑 Shutting down backend..."

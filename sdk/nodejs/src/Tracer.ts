@@ -49,7 +49,8 @@ export class Tracer {
       containerId: this.getContainerId(),
       name,
       nodeType,
-      depthIndex: 0
+      depthIndex: 0,
+      localDepthIndex: 0
     });
   }
 
@@ -69,7 +70,8 @@ export class Tracer {
       name,
       nodeType,
       parentNodeId,
-      depthIndex: parentDepthIndex + 1
+      depthIndex: parentDepthIndex + 1,
+      localDepthIndex: 0
     });
   }
 
@@ -86,6 +88,7 @@ export class Tracer {
       name: node.name,
       nodeType: node.nodeType,
       depthIndex: node.depthIndex,
+      localDepthIndex: node.localDepthIndex,
       metadata: node.metadata,
       initiatedAtLocal: node.initiatedAtLocal,
       processedAtLocal: node.processedAtLocal!,

@@ -60,7 +60,8 @@ export class LogController {
     @Query("beforeTime") beforeTime?: string,
     @Query("beforeId") beforeId?: string,
     @Query("afterTime") afterTime?: string,
-    @Query("afterId") afterId?: string
+    @Query("afterId") afterId?: string,
+    @Query("depthType") depthType?: string
   ) {
     const rawLimit = limit ? parseInt(limit, 10) : undefined;
     const rawDepth = depth ? parseInt(depth, 10) : undefined;
@@ -76,6 +77,7 @@ export class LogController {
       beforeId,
       afterTime: rawAfterTime,
       afterId,
+      depthType: depthType as "global" | "local" | undefined,
     });
   }
 
@@ -83,12 +85,13 @@ export class LogController {
   @Get("/trace/:traceId/full")
   async getTraceFull(
     @Param("traceId") traceId: string,
-    @Query("depth") depth?: string
+    @Query("depth") depth?: string,
+    @Query("depthType") depthType?: string
   ) {
     const rawDepth = depth ? parseInt(depth, 10) : undefined;
-    console.log(`[LogController] Full unified fetch request for trace ${traceId} (depth: ${rawDepth})`);
+    console.log(`[LogController] Full unified fetch request for trace ${traceId} (depth: ${rawDepth}, depthType: ${depthType})`);
     
-    return await this.logService.logTraceFull(traceId, rawDepth);
+    return await this.logService.logTraceFull(traceId, rawDepth, depthType as 'global' | 'local');
   }
 
   // Fetch metadata for a specific trace, such as whether zoom is fully materialized

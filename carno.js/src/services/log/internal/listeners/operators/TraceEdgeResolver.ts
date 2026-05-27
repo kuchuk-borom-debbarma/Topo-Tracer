@@ -16,6 +16,7 @@ export class TraceEdgeResolver {
     traceId: string,
     offset: number,
     maxDepth: number,
+    maxLocalDepth: number,
     iteration: number
   ): Promise<void> {
     console.log(`[TraceEdgeResolver] Processing edges for trace ${traceId} at offset ${offset}`);
@@ -35,6 +36,7 @@ export class TraceEdgeResolver {
           stage: "BUILD_CLOSURES",
           offset: 0,
           maxDepth,
+          maxLocalDepth,
           iteration: 1,
         },
       });
@@ -45,19 +47,20 @@ export class TraceEdgeResolver {
     const egressNodeIds = Array.from(new Set(rawEdges.map(e => e.fromNodeId)));
     const ancestryRecords = await this.logRepo.fetchNodeAncestry(traceId, egressNodeIds);
 
-    const ancestryMap = new Map<string, { path: string[], depths: number[] }>();
+    const ancestryMap = new Map<string, { path: string[], depths: number[], localDepths: number[] }>();
     for (const row of ancestryRecords) {
-      ancestryMap.set(row.node_id, { path: row.ancestryPath, depths: row.ancestryDepths });
+      ancestryMap.set(row.node_id, { path: row.ancestryPath, depths: row.ancestryDepths, localDepths: row.ancestryLocalDepths });
     }
 
     // 3. Prepare records
     const egressRecordsToInsert: EdgeEgressAncestryRecord[] = [];
     for (const row of rawEdges) {
-      const info = ancestryMap.get(row.fromNodeId) || { path: [row.fromNodeId], depths: [0] };
+      const info = ancestryMap.get(row.fromNodeId) || { path: [row.fromNodeId], depths: [0], localDepths: [0] };
       egressRecordsToInsert.push({
         edge_id: row.id,
         egressAncestryPath: info.path,
         egressAncestryDepths: info.depths,
+        egressAncestryLocalDepths: info.localDepths,
       });
     }
 
@@ -73,6 +76,7 @@ export class TraceEdgeResolver {
         stage: "RESOLVE_EDGES",
         offset: offset + BATCH_SIZE,
         maxDepth,
+        maxLocalDepth,
         iteration: 1,
       },
     });

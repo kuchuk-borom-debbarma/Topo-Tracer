@@ -62,6 +62,7 @@ export class ClickHouseService {
           name String,                      -- Human-readable name (e.g. 'POST /v1/checkout' or 'DB Query')
           nodeType String,                  -- E.g. 'http_server', 'database', 'internal_function'
           depthIndex UInt32,                -- Zero-indexed nesting depth from the trace root. Used for zoom-level filtering.
+          localDepthIndex UInt32,           -- Zero-indexed nesting depth within the current container context.
           metadata String,                  -- JSON stringified custom payload/baggage properties
           initiatedAtLocal Int64,           -- Timestamp when execution started (ms)
           processedAtLocal Int64,           -- Timestamp when execution logic finished (ms)
@@ -98,7 +99,8 @@ export class ClickHouseService {
           node_id String,
           trace_id String,
           ancestryPath Array(String),
-          ancestryDepths Array(UInt32)
+          ancestryDepths Array(UInt32),
+          ancestryLocalDepths Array(UInt32)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, node_id);
       `,
@@ -111,7 +113,8 @@ export class ClickHouseService {
           edge_id String,
           trace_id String,
           egressAncestryPath Array(String),
-          egressAncestryDepths Array(UInt32)
+          egressAncestryDepths Array(UInt32),
+          egressAncestryLocalDepths Array(UInt32)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, edge_id);
       `,
@@ -121,16 +124,17 @@ export class ClickHouseService {
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
-          id String,                        -- Unique composite ID (e.g. edgeId_depthLevel)
-          edge_id String,                   -- The underlying raw physical network edge ID
-          trace_id String,                  -- The trace ID
-          visual_depth UInt32,              -- The UI zoom slider level this row is built for
-          from_target_id String,            -- The pre-computed visible source ID at this depth (could be parent node or container)
-          from_target_type String,          -- 'node' or 'container', telling the UI what to attach the line to
-          to_target_id String,              -- The pre-computed visible destination ID at this depth
-          to_target_type String             -- 'node' or 'container', completing the bi-directional collapse
+          id String,
+          edge_id String,
+          trace_id String,
+          depth_type Enum8('global' = 1, 'local' = 2),
+          visual_depth UInt32,
+          from_target_id String,
+          from_target_type Enum8('node' = 1, 'container' = 2),
+          to_target_id String,
+          to_target_type Enum8('node' = 1, 'container' = 2)
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, visual_depth, id);
+        ORDER BY (trace_id, depth_type, visual_depth, edge_id);
       `,
     });
 
@@ -141,8 +145,9 @@ export class ClickHouseService {
           trace_id String,
           is_zoom_ready UInt8,
           max_available_depth UInt32,
+          max_available_local_depth UInt32,
           materialized_offset UInt32
-        ) ENGINE = MergeTree()
+        ) ENGINE = ReplacingMergeTree()
         ORDER BY trace_id;
       `,
     });

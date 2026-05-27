@@ -190,6 +190,11 @@
       <p style="margin: 0; color: var(--text-muted);">or click to select a file from temp/</p>
       <input type="file" id="fileInput" accept=".json" style="display: none;">
     </div>
+    
+    <div style="text-align: center; margin-bottom: 2rem;">
+      <label style="margin-right: 1rem; color: #94a3b8;"><input type="radio" name="depthType" value="global" checked> Global (Infrastructure View)</label>
+      <label style="color: #94a3b8;"><input type="radio" name="depthType" value="local"> Local (API Blueprint View)</label>
+    </div>
 
     <div id="app-content">
       <div class="metrics-grid">
@@ -283,8 +288,11 @@
       appContent.style.display = 'block';
       dropzone.innerHTML = `<h2 style="margin: 0; margin-bottom: 0.5rem; color: #4ade80;">Loaded: ${filename}</h2><p style="margin: 0; color: var(--text-muted);">Drop another file to switch</p>`;
 
+      const depthType = document.querySelector('input[name="depthType"]:checked').value;
+      const maxDepth = depthType === 'local' ? data.maxAvailableLocalDepth : data.maxAvailableDepth;
+
       // Metrics
-      document.getElementById('val-depth').textContent = data.maxAvailableDepth ?? 0;
+      document.getElementById('val-depth').textContent = maxDepth ?? 0;
       document.getElementById('val-nodes').textContent = data.nodes?.length || 0;
       document.getElementById('val-edges').textContent = data.edges?.length || 0;
       document.getElementById('val-wires').textContent = data.visualWires?.length || 0;
@@ -298,7 +306,7 @@
         div.innerHTML = `
           <div class="node-header">
             <div class="node-name">${node.name}</div>
-            <div class="badge">Depth ${node.depthIndex}</div>
+            <div class="badge">Global: ${node.depthIndex} | Local: ${node.localDepthIndex || 0}</div>
           </div>
           <div class="node-meta"><strong>Container:</strong> ${node.containerId}</div>
           <div class="node-meta"><strong>Type:</strong> ${node.nodeType}</div>

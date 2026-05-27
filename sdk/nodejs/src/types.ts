@@ -13,6 +13,7 @@ export type NodeInput = {
   name: string;
   nodeType: string;
   depthIndex: number;
+  localDepthIndex: number;
   metadata?: any;
   initiatedAtLocal: Date;
   processedAtLocal: Date;

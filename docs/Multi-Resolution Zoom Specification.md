@@ -53,10 +53,11 @@ interface MaterializedClosureEdge {
   id: string;                    // Unique identifier for this resolution row
   edge_id: string;               // Underlying physical edge tracking ID
   trace_id: string;
+  depth_type: 'global' | 'local';// The zooming scale this row belongs to
   visual_depth: number;          // The UI depth threshold where this row is active
   from_target_id: string;        // Pre-computed visual origin ID
   from_target_type: 'node' | 'container';
-  to_target_id: string;          // Pre-computed visual destination ID (Bidirectional ingress support)
+  to_target_id: string;          // Pre-computed visual destination ID
   to_target_type: 'node' | 'container';
 }
 
@@ -164,7 +165,69 @@ async function getTraceWiresForResolution(
 }
 
 ### Parallel Array Architecture for Depth Resolution
-Because `depthIndex` spans across network boundaries (e.g., a target container might start at Depth 2), array indices cannot reliably map to absolute depth. Topo-Tracer uses **Parallel Arrays** in ClickHouse (`ancestryPath` and `ancestryDepths`) to explicitly map node IDs to their absolute global depth. This ensures the builder can safely truncate paths or snap to outer container bounds without array offset bugs.
+Because `depthIndex` spans across network boundaries (e.g., a target container might start at Depth 2), array indices cannot reliably map to absolute depth. Topo-Tracer uses **Parallel Arrays** in ClickHouse (`ancestryPath`, `ancestryDepths`, and `ancestryLocalDepths`) to explicitly map node IDs to their absolute global depth and local container depth. This ensures the builder can safely truncate paths or snap to outer container bounds without array offset bugs.
+
+---
+
+## 6. Dual-Depth Architecture (Global vs Local)
+
+To provide both infrastructure macro-views and API endpoint blueprint maps, Topo-Tracer calculates closures on two separate depth metrics simultaneously.
+
+- **Global Depth (`depth_type = 'global'`):** Depth starts at `0` for the origin gateway and increments infinitely across all microservices (e.g., a node 5 network hops away might start at depth `25`). Zooming out on this scale collapses deep downstream containers into opaque boxes.
+- **Local Depth (`depth_type = 'local'`):** Depth resets to `0` for the root entrypoint of *every* container (e.g., `POST /checkout` is 0, and the downstream `POST /stripe` in the payment service is *also* 0). Zooming out on this scale (to `depth=0`) produces a map of raw API endpoints talking directly to each other without opaque container boundaries.
+
+### Dry-Run Example (Dual-Depth Closure Calculation)
+
+Imagine Container A calls Container B over a message queue.
+
+**Raw Nodes Output from SDK:**
+| Node Name | Container | Global Depth | Local Depth | Node ID | Parent ID |
+| --- | --- | --- | --- | --- | --- |
+| `POST /api` | `Gateway` | 0 | 0 | `N1` | - |
+| `dispatch()` | `Gateway` | 1 | 1 | `N2` | `N1` |
+| `Kafka Pub` | `Gateway` | 2 | 2 | `N3` | `N2` |
+| `Kafka Sub` | `Worker` | 3 | 0 | `N4` | `N3` (via edge) |
+| `process()` | `Worker` | 4 | 1 | `N5` | `N4` |
+
+**Edge Generated:** `E1` from `N3` (Gateway) to `N4` (Worker).
+
+**Materialization Engine (TraceNodeResolver) Output:**
+The engine builds parallel arrays for the ancestry paths of the nodes connected to the edge.
+
+*Egress Ancestry (Gateway N3):*
+- `egressAncestryPath` = `[N1, N2, N3]`
+- `egressAncestryDepths` (Global) = `[0, 1, 2]`
+- `egressAncestryLocalDepths` (Local) = `[0, 1, 2]`
+
+*Ingress Ancestry (Worker N4):*
+- `ancestryPath` = `[N4]`
+- `ancestryDepths` (Global) = `[3]`
+- `ancestryLocalDepths` (Local) = `[0]`
+
+**Closure Builder (TraceClosureBuilder) Output:**
+The builder steps through visual depths for both `global` and `local` arrays. It searches for the deepest ancestry node whose absolute depth is `<=` the visual depth `d`.
+
+**Global Mode (Macro Infrastructure):**
+At `d = 0`: 
+- Egress: searches `[0,1,2]` for `<=0`. Finds `N1` (0). Snaps to `N1`.
+- Ingress: searches `[3]` for `<=0`. Finds none. Snaps to `Worker Container`.
+- **Result:** `N1 (POST /api) -> Worker (Collapsed)`
+
+At `d = 2`:
+- Egress: searches `[0,1,2]` for `<=2`. Finds `N3` (2). Snaps to `N3`.
+- Ingress: searches `[3]` for `<=2`. Finds none. Snaps to `Worker Container`.
+- **Result:** `N3 (Kafka Pub) -> Worker (Collapsed)`
+
+At `d = 3`:
+- Egress: finds `N3` (2 <= 3). Snaps to `N3`.
+- Ingress: finds `N4` (3 <= 3). Snaps to `N4`.
+- **Result:** `N3 (Kafka Pub) -> N4 (Kafka Sub)`
+
+**Local Mode (API Blueprint):**
+At `d = 0`:
+- Egress: searches `[0,1,2]` for `<=0`. Finds `N1` (0). Snaps to `N1`.
+- Ingress: searches `[0]` for `<=0`. Finds `N4` (0). Snaps to `N4`.
+- **Result:** `N1 (POST /api) -> N4 (Kafka Sub)` *(A direct API-to-API view!)*
 
 ```
 

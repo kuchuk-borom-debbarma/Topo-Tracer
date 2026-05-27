@@ -15,6 +15,7 @@ export type Node = {
   name: string;             // Human readable name (e.g., 'POST /checkout', 'Process Payment')
   nodeType: string;         // Categorization (e.g., 'http_route', 'db_query', 'function')
   depthIndex: number;       // The structural nesting level from the trace root. Used heavily for zoom filtering.
+  localDepthIndex: number;  // The structural nesting level within the specific container.
   metadata: any;            // Custom baggage properties attached to the execution block
   initiatedAtLocal: Date;   // When this execution block began
   processedAtLocal: Date;   // When the logic finished executing
@@ -54,6 +55,7 @@ export type NodeInput = {
   name: string;
   nodeType: string;
   depthIndex: number;
+  localDepthIndex: number;
   metadata?: any;
   initiatedAtLocal: Date;
   processedAtLocal: Date;
@@ -70,6 +72,7 @@ export interface PaginationParams {
   afterTime?: number;
   afterId?: string;
   depth?: number; // Target visual zoom depth index
+  depthType?: 'global' | 'local'; // Zoom mode
 }
 
 export interface PaginatedResult<T> {
@@ -102,6 +105,7 @@ export interface PaginatedTraceResult {
   visualWires?: VisualWire[]; // Snapped coordinates matching zoom depth
   isZoomReady: boolean;        // True if read_edges are fully pre-computed
   maxAvailableDepth: number;   // Maximum stack depth index in this trace
+  maxAvailableLocalDepth: number; // Maximum local stack depth in this trace
   pagination: {
     prevTimeCursor: number | null;
     prevIdCursor: string | null;
@@ -118,17 +122,20 @@ export interface FullTraceResult {
   visualWires?: VisualWire[]; // Snapped coordinates matching zoom depth
   isZoomReady: boolean;        // True if read_edges are fully pre-computed
   maxAvailableDepth: number;   // Maximum stack depth index in this trace
+  maxAvailableLocalDepth: number; // Maximum local stack depth in this trace
 }
 
 export interface TraceMetadataResult {
   isZoomReady: boolean;
   maxAvailableDepth: number;
+  maxAvailableLocalDepth: number;
 }
 
 export interface NodeMaterializationDTO {
   id: string;
   parentNodeId: string;
   depthIndex: number;
+  localDepthIndex: number;
 }
 
 export interface EdgeMaterializationDTO {
@@ -143,15 +150,18 @@ export interface NodeAncestryRecord {
   node_id: string;
   ancestryPath: string[]; // Ordered list of node IDs from root to this node (inclusive)
   ancestryDepths: number[]; // Parallel array mapping to ancestryPath indices, storing their absolute depthIndex
+  ancestryLocalDepths: number[]; // Parallel array mapping to local depth indexes
 }
 
 export interface EdgeEgressAncestryRecord {
   edge_id: string;
   egressAncestryPath: string[]; // Ordered list of node IDs from root to the egress node
   egressAncestryDepths: number[]; // Parallel array storing the depthIndex of each node
+  egressAncestryLocalDepths: number[]; // Parallel array storing the local depthIndex
 }
 
 export interface TraceMetadataUpdate {
   max_available_depth?: number;
+  max_available_local_depth?: number;
   is_zoom_ready?: boolean;
 }
