@@ -162,6 +162,16 @@
       color: #a5b4fc;
     }
 
+    .mermaid-container {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      overflow-x: auto;
+      text-align: center;
+    }
+
     #app-content {
       display: none;
     }
@@ -198,6 +208,13 @@
         <div class="metric-card">
           <div class="metric-value" id="val-wires">-</div>
           <div class="metric-label">Visual Wires</div>
+        </div>
+      </div>
+
+      <div class="data-section">
+        <h2>Visual Flow Diagram</h2>
+        <div class="mermaid-container" id="mermaid-view">
+          <!-- Mermaid diagram will be injected here -->
         </div>
       </div>
 
@@ -307,7 +324,84 @@
 
       // Raw JSON
       document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+
+      // Render Mermaid Diagram
+      renderMermaidDiagram(data);
     }
+  </script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+    window.renderMermaidDiagram = async function(data) {
+      const container = document.getElementById('mermaid-view');
+      container.innerHTML = '';
+      
+      let mm = "flowchart LR\\n";
+      
+      // Group nodes by container
+      const containers = {};
+      (data.nodes || []).forEach(n => {
+        if(!containers[n.containerId]) containers[n.containerId] = [];
+        containers[n.containerId].push(n);
+      });
+
+      const renderedContainers = new Set(Object.keys(containers));
+
+      // Draw subgraphs
+      for (const [cId, nodes] of Object.entries(containers)) {
+        const safeCId = cId.replace(/-/g, '_');
+        mm += \`  subgraph \${safeCId} ["\${cId}"]\\n\`;
+        nodes.forEach(n => {
+          const safeId = n.id.replace(/-/g, '_');
+          // Add metadata summary to node text if available
+          let extra = "";
+          if (n.metadata) {
+            extra = "<br/>" + JSON.stringify(n.metadata).replace(/"/g, "'");
+          }
+          mm += \`    \${safeId}["\${n.name}\${extra}"]\\n\`;
+        });
+        mm += \`  end\\n\`;
+      }
+
+      // Hidden containers targeted by visual wires
+      (data.visualWires || []).forEach(wire => {
+        [wire.fromTarget, wire.toTarget].forEach(t => {
+          if (t.type === 'container' && !renderedContainers.has(t.id)) {
+            const safeId = t.id.replace(/-/g, '_');
+            mm += \`  \${safeId}["\${t.id} (Collapsed)"]:::container\\n\`;
+            renderedContainers.add(t.id);
+          }
+        });
+      });
+
+      // Draw Network Edges (Visual Wires)
+      (data.visualWires || []).forEach((wire, i) => {
+        const fromSafe = wire.fromTarget.id.replace(/-/g, '_');
+        const toSafe = wire.toTarget.id.replace(/-/g, '_');
+        mm += \`  \${fromSafe} ==>|network| \${toSafe}\\n\`;
+      });
+
+      // Draw internal flow (Parent -> Child inside same container)
+      (data.nodes || []).forEach(n => {
+        if (n.parentNodeId) {
+          const parentVisible = data.nodes.find(p => p.id === n.parentNodeId);
+          if (parentVisible && parentVisible.containerId === n.containerId) {
+            const fromSafe = n.parentNodeId.replace(/-/g, '_');
+            const toSafe = n.id.replace(/-/g, '_');
+            mm += \`  \${fromSafe} -.->|internal| \${toSafe}\\n\`;
+          }
+        }
+      });
+
+      try {
+        const { svg } = await mermaid.render('mermaid-graph-' + Date.now(), mm);
+        container.innerHTML = svg;
+      } catch (e) {
+        container.innerHTML = \`<p style="color: #ef4444;">Error rendering diagram: \${e.message}</p>\`;
+        console.error("Mermaid error:", e, mm);
+      }
+    };
   </script>
 </body>
 </html>
