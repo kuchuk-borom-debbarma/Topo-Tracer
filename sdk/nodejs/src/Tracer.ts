@@ -64,7 +64,8 @@ export class Tracer {
     name: string, 
     nodeType: string, 
     parentDepthIndex: number = 0,
-    group?: string
+    group?: string,
+    scheduledAtLocal?: Date
   ): TraceNode {
     return new TraceNode({
       traceId,
@@ -74,13 +75,11 @@ export class Tracer {
       parentNodeId,
       depthIndex: parentDepthIndex + 1,
       localDepthIndex: 0,
-      group
+      group,
+      scheduledAtLocal
     });
   }
 
-  /**
-   * Internal method used by TraceNode to queue itself for export.
-   */
   public static exportNode(node: TraceNode) {
     if (!this.exporter) return;
     this.exporter.addNode({
@@ -96,7 +95,11 @@ export class Tracer {
       metadata: node.metadata,
       initiatedAtLocal: node.initiatedAtLocal,
       processedAtLocal: node.processedAtLocal!,
-      completedAtLocal: node.completedAtLocal
+      completedAtLocal: node.completedAtLocal,
+      scheduledAtLocal: node.scheduledAtLocal,
+      cpuActiveDurationUs: node.cpuActiveDurationUs,
+      suspendedAtLocal: node.suspendedAtLocal,
+      resumedAtLocal: node.resumedAtLocal
     });
   }
 

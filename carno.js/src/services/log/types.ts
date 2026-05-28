@@ -27,6 +27,10 @@ export type Node = {
   // Ordered path of parent Node IDs from the root down to this node.
   // Crucial for instantly collapsing nested function calls into their highest visible parent container.
   ancestryPath?: string[]; 
+  scheduledAtLocal?: Date;
+  cpuActiveDurationUs?: number;
+  suspendedAtLocal?: Date[];
+  resumedAtLocal?: Date[];
 };
 
 export type Edge = {
@@ -67,6 +71,10 @@ export type NodeInput = {
   processedAtLocal: Date;
   completedAtLocal?: Date;
   ancestryPath?: string[];
+  scheduledAtLocal?: Date;
+  cpuActiveDurationUs?: number;
+  suspendedAtLocal?: Date[];
+  resumedAtLocal?: Date[];
 };
 
 export type EdgeInput = Edge;

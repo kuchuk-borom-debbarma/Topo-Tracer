@@ -55,6 +55,10 @@ export class LogRepoClickHouseImpl extends LogRepo {
       completedAtLocal: n.completedAtLocal ? new Date(n.completedAtLocal).getTime() : null,
       ancestryPath: n.ancestryPath || [],
       localDepthIndex: n.localDepthIndex || 0,
+      scheduledAtLocal: n.scheduledAtLocal ? new Date(n.scheduledAtLocal).getTime() : null,
+      cpuActiveDurationUs: n.cpuActiveDurationUs !== undefined ? Number(n.cpuActiveDurationUs) : null,
+      suspendedAtLocal: (n.suspendedAtLocal || []).map(d => new Date(d).getTime()),
+      resumedAtLocal: (n.resumedAtLocal || []).map(d => new Date(d).getTime()),
     }));
 
     await this.clickHouse.client.insert({
@@ -241,7 +245,10 @@ export class LogRepoClickHouseImpl extends LogRepo {
       initiatedAtLocal: new Date(Number(row.initiatedAtLocal)),
       processedAtLocal: new Date(Number(row.processedAtLocal)),
       completedAtLocal: row.completedAtLocal ? new Date(Number(row.completedAtLocal)) : undefined,
-
+      scheduledAtLocal: row.scheduledAtLocal ? new Date(Number(row.scheduledAtLocal)) : undefined,
+      cpuActiveDurationUs: row.cpuActiveDurationUs !== null && row.cpuActiveDurationUs !== undefined ? Number(row.cpuActiveDurationUs) : undefined,
+      suspendedAtLocal: Array.isArray(row.suspendedAtLocal) ? row.suspendedAtLocal.map((t: any) => new Date(Number(t))) : [],
+      resumedAtLocal: Array.isArray(row.resumedAtLocal) ? row.resumedAtLocal.map((t: any) => new Date(Number(t))) : [],
     }));
 
     let edges: Edge[] = [];
@@ -393,7 +400,10 @@ export class LogRepoClickHouseImpl extends LogRepo {
       initiatedAtLocal: new Date(Number(row.initiatedAtLocal)),
       processedAtLocal: new Date(Number(row.processedAtLocal)),
       completedAtLocal: row.completedAtLocal ? new Date(Number(row.completedAtLocal)) : undefined,
-
+      scheduledAtLocal: row.scheduledAtLocal ? new Date(Number(row.scheduledAtLocal)) : undefined,
+      cpuActiveDurationUs: row.cpuActiveDurationUs !== null && row.cpuActiveDurationUs !== undefined ? Number(row.cpuActiveDurationUs) : undefined,
+      suspendedAtLocal: Array.isArray(row.suspendedAtLocal) ? row.suspendedAtLocal.map((t: any) => new Date(Number(t))) : [],
+      resumedAtLocal: Array.isArray(row.resumedAtLocal) ? row.resumedAtLocal.map((t: any) => new Date(Number(t))) : [],
     }));
 
     // 5. Calculate pagination indicators and slice to final nodes

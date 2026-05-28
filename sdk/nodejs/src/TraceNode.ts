@@ -16,9 +16,14 @@ export class TraceNode {
   public initiatedAtLocal: Date;
   public processedAtLocal?: Date;
   public completedAtLocal?: Date;
+  public scheduledAtLocal?: Date;
+  public cpuActiveDurationUs?: number;
+  public suspendedAtLocal: Date[] = [];
+  public resumedAtLocal: Date[] = [];
   
   private isFinished = false;
   private activeEdges: ActiveEdge[] = [];
+  private startCpuUsage: NodeJS.CpuUsage;
 
   constructor(opts: {
     traceId: string;
@@ -29,6 +34,7 @@ export class TraceNode {
     depthIndex: number;
     localDepthIndex: number;
     group?: string;
+    scheduledAtLocal?: Date;
   }) {
     this.id = uuidv4();
     this.traceId = opts.traceId;
@@ -39,13 +45,15 @@ export class TraceNode {
     this.depthIndex = opts.depthIndex;
     this.localDepthIndex = opts.localDepthIndex;
     this.group = opts.group || `${opts.containerId}_${opts.depthIndex}`;
+    this.scheduledAtLocal = opts.scheduledAtLocal;
     this.initiatedAtLocal = new Date();
+    this.startCpuUsage = process.cpuUsage();
   }
 
   /**
    * Starts a child node under this node in the current container's call stack.
    */
-  public startChild(name: string, nodeType: string, group?: string): TraceNode {
+  public startChild(name: string, nodeType: string, group?: string, scheduledAtLocal?: Date): TraceNode {
     return new TraceNode({
       traceId: this.traceId,
       containerId: this.containerId,
@@ -54,8 +62,23 @@ export class TraceNode {
       parentNodeId: this.id,
       depthIndex: this.depthIndex + 1,
       localDepthIndex: this.localDepthIndex + 1,
-      group
+      group,
+      scheduledAtLocal
     });
+  }
+
+  /**
+   * Suspend context execution (e.g. paused waiting for async I/O).
+   */
+  public suspend() {
+    this.suspendedAtLocal.push(new Date());
+  }
+
+  /**
+   * Resume context execution (e.g. back in processing block).
+   */
+  public resume() {
+    this.resumedAtLocal.push(new Date());
   }
 
   /**
@@ -79,6 +102,9 @@ export class TraceNode {
     }
     this.completedAtLocal = new Date();
     this.metadata = metadata;
+
+    const elapsedCpu = process.cpuUsage(this.startCpuUsage);
+    this.cpuActiveDurationUs = elapsedCpu.user + elapsedCpu.system;
 
     // Auto-complete any active edges that were forgotten/never completed
     for (const edge of this.activeEdges) {

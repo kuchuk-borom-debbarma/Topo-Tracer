@@ -28,6 +28,11 @@ export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, nodes, edges
     ? new Date(node.initiatedAtLocal).getTime() - new Date(parentNode.initiatedAtLocal).getTime()
     : null;
 
+  // Async Ingestion / Queue Lag calculation
+  const schedulingDelay = node.scheduledAtLocal
+    ? new Date(node.initiatedAtLocal).getTime() - new Date(node.scheduledAtLocal).getTime()
+    : null;
+
   // 3. Network Hop Latency Calculations
   const incomingEdge = edges.find(e => e.toNodeId === node.id);
   const edgeRtt = incomingEdge && incomingEdge.respondedAtLocal
@@ -115,6 +120,27 @@ export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, nodes, edges
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-green)' }}>{selfTime}ms</span>
             </div>
             
+            {node.cpuActiveDurationUs !== undefined && node.cpuActiveDurationUs !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Active CPU Duration:</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-teal)' }}>{(node.cpuActiveDurationUs / 1000).toFixed(3)}ms</span>
+              </div>
+            )}
+
+            {schedulingDelay !== null && schedulingDelay >= 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Async Scheduling Delay:</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-purple)' }}>{schedulingDelay}ms</span>
+              </div>
+            )}
+
+            {node.suspendedAtLocal && node.suspendedAtLocal.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Context Switch Count:</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-pink)' }}>{node.suspendedAtLocal.length} suspends</span>
+              </div>
+            )}
+
             {waitTime > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Downstream Wait Time:</span>
@@ -168,6 +194,17 @@ export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, nodes, edges
             Chronological Milestones
           </h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(5,7,12,0.4)', borderRadius: 'var(--radius-md)', padding: '1rem', border: '1px solid var(--glass-border)' }}>
+            {node.scheduledAtLocal && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Scheduled (Async):</span>
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+                  {new Date(node.scheduledAtLocal).toLocaleTimeString()}
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: '0.3rem' }}>
+                    .{new Date(node.scheduledAtLocal).getMilliseconds()}ms
+                  </span>
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
               <span style={{ color: 'var(--text-muted)' }}>Initiated:</span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>

@@ -33,14 +33,28 @@ async function runSophisticatedSimulation() {
   const validationNode = rootNode.startChild("validateOrder()", "function");
   validationNode.markProcessed();
   console.log(`   [Service A] Executing concurrent queries in validation...`);
-  const userQueryNode = validationNode.startChild("DB: Fetch User", "database");
+  
+  // Simulate database queue delay (scheduled 35ms ago)
+  const userQueryScheduled = new Date(Date.now() - 35);
+  const userQueryNode = validationNode.startChild("DB: Fetch User", "database", undefined, userQueryScheduled);
   const fraudScoreNode = validationNode.startChild("API: Fraud Check", "http_client");
   
   await Promise.all([
     (async () => {
-      await delay(25);
+      userQueryNode.suspend(); // Waiting on DB connection pool
+      await delay(15);
+      userQueryNode.resume(); // Connection acquired, resuming!
+      
+      await delay(10);
       userQueryNode.markProcessed();
-      userQueryNode.markCompleted({ userId: 42 });
+      
+      // Simulate CPU-intensive deserialization and validation loop
+      let count = 0;
+      for (let i = 0; i < 4000000; i++) {
+        count += (i * 3) % 2;
+      }
+      
+      userQueryNode.markCompleted({ userId: 42, cpuResult: count });
     })(),
     (async () => {
       await delay(40);
@@ -177,11 +191,25 @@ async function runSophisticatedSimulation() {
 
   const cTraceCtx = kafkaMessagePayload._traceContext;
   
-  const inventoryRootNode = Tracer.continueTrace(cTraceCtx.traceId, cTraceCtx.parentNodeId, "Consume Kafka: OrderCreated", "message_consumer", cTraceCtx.depthIndex);
+  // Simulate Kafka consumer queue/broker wait lag (message scheduled 75ms ago)
+  const kafkaScheduled = new Date(Date.now() - 75);
+  const inventoryRootNode = Tracer.continueTrace(
+    cTraceCtx.traceId, 
+    cTraceCtx.parentNodeId, 
+    "Consume Kafka: OrderCreated", 
+    "message_consumer", 
+    cTraceCtx.depthIndex, 
+    undefined, 
+    kafkaScheduled
+  );
   inventoryRootNode.id = cTraceCtx.targetNodeId;
 
   console.log(`   [Service C] Processing Event for Trace: ${inventoryRootNode.traceId}`);
-  await delay(5);
+  
+  inventoryRootNode.suspend(); // Processing delayed, thread busy
+  await delay(10);
+  inventoryRootNode.resume();  // Consumer thread free, resume context!
+
   inventoryRootNode.markProcessed();
 
   // DEEP NESTING: processInventoryUpdate -> validateStock -> DB Check
@@ -193,7 +221,14 @@ async function runSophisticatedSimulation() {
   const dbCheckNode = validateStockNode.startChild("DB: Check Current Stock", "database");
   await delay(10);
   dbCheckNode.markProcessed();
-  dbCheckNode.markCompleted({ stock: 15 });
+  
+  // Simulate heavy database hash verification CPU loop
+  let stockVerifyHash = 0;
+  for (let i = 0; i < 5000000; i++) {
+    stockVerifyHash += (i * 11) % 7;
+  }
+
+  dbCheckNode.markCompleted({ stock: 15, verifyCode: stockVerifyHash });
   validateStockNode.markProcessed();
   validateStockNode.markCompleted({ valid: true });
 

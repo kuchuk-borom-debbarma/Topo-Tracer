@@ -69,7 +69,11 @@ export class ClickHouseService {
           initiatedAtLocal Int64,           -- Timestamp when execution started (ms)
           processedAtLocal Int64,           -- Timestamp when execution logic finished (ms)
           completedAtLocal Nullable(Int64), -- Timestamp when all children completed (ms)
-          ancestryPath Array(String)        -- Ordered array of parent node IDs up to the root, used for bubbling up visuals
+          ancestryPath Array(String),       -- Ordered array of parent node IDs up to the root, used for bubbling up visuals
+          scheduledAtLocal Nullable(Int64), -- Timestamp when scheduled (ms)
+          cpuActiveDurationUs Nullable(Int64), -- Actual CPU execution cycles (us)
+          suspendedAtLocal Array(Int64),    -- Thread suspension points (ms)
+          resumedAtLocal Array(Int64)       -- Thread resumption points (ms)
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, depthIndex, initiatedAtLocal);
       `,
@@ -152,6 +156,20 @@ export class ClickHouseService {
         ) ENGINE = ReplacingMergeTree()
         ORDER BY trace_id;
       `,
+    });
+ 
+    // 9. Alter Tables to add new high-precision columns (for existing databases)
+    await this.clientInstance.command({
+      query: "ALTER TABLE toco_tracer.nodes ADD COLUMN IF NOT EXISTS scheduledAtLocal Nullable(Int64)",
+    });
+    await this.clientInstance.command({
+      query: "ALTER TABLE toco_tracer.nodes ADD COLUMN IF NOT EXISTS cpuActiveDurationUs Nullable(Int64)",
+    });
+    await this.clientInstance.command({
+      query: "ALTER TABLE toco_tracer.nodes ADD COLUMN IF NOT EXISTS suspendedAtLocal Array(Int64)",
+    });
+    await this.clientInstance.command({
+      query: "ALTER TABLE toco_tracer.nodes ADD COLUMN IF NOT EXISTS resumedAtLocal Array(Int64)",
     });
   }
 }

@@ -21,6 +21,10 @@ export type NodeInput = {
   processedAtLocal: Date;
   completedAtLocal?: Date;
   ancestryPath?: string[];
+  scheduledAtLocal?: Date;
+  cpuActiveDurationUs?: number;
+  suspendedAtLocal?: Date[];
+  resumedAtLocal?: Date[];
 };
 
 export type EdgeInput = {
