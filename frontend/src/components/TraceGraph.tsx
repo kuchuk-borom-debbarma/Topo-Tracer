@@ -1,5 +1,5 @@
 import React from 'react';
-import { Network, Info, ZoomIn, ZoomOut } from 'lucide-react';
+import { Network, Info, ZoomIn, ZoomOut, Sliders, Globe, Link } from 'lucide-react';
 import type { TraceNode, VisualWire } from '../services/api';
 import { getContainerStyle, getNodeColor, getEdgeStyle, getSafeSvgId } from '../utils/styleUtils';
 
@@ -13,6 +13,7 @@ interface TraceGraphProps {
   depth: number;
   setDepth: (d: number) => void;
   maxDepth: number;
+  setDepthType: (type: 'global' | 'local') => void;
 }
 
 interface GroupNode {
@@ -35,7 +36,8 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
   depthType,
   depth,
   setDepth,
-  maxDepth
+  maxDepth,
+  setDepthType
 }) => {
   // Compute unique edge types present to define dynamic SVG markers
   const uniqueEdgeTypes = React.useMemo(() => {
@@ -228,46 +230,80 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
           Snapped Trace Topology Canvas
         </h2>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', padding: '0.25rem', border: '1px solid var(--glass-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Depth Type Toggle */}
+          <div className="segment-control" style={{ padding: '0.15rem' }}>
             <button
-              onClick={() => setDepth(Math.max(0, depth - 1))}
-              disabled={depth <= 0}
-              style={{ 
-                background: 'transparent', 
-                border: 'none', 
-                color: depth <= 0 ? 'var(--text-muted)' : 'var(--text-primary)', 
-                cursor: depth <= 0 ? 'not-allowed' : 'pointer',
-                padding: '0.4rem',
-                display: 'flex',
-                borderRadius: '4px'
-              }}
-              title="Zoom Out (Reduce Resolution)"
+              className={`segment-btn ${depthType === 'global' ? 'active' : ''}`}
+              onClick={() => setDepthType('global')}
+              style={{ fontSize: '0.65rem', padding: '0.25rem 0.5rem' }}
+              title="Global Depth Mode"
             >
-              <ZoomOut size={16} />
+              <Globe size={10} style={{ marginRight: '0.2rem' }} />
+              Global
             </button>
-            <div style={{ width: '1px', background: 'var(--glass-border)', margin: '0.25rem 0.1rem' }} />
             <button
-              onClick={() => setDepth(Math.min(maxDepth, depth + 1))}
-              disabled={depth >= maxDepth}
-              style={{ 
-                background: 'transparent', 
-                border: 'none', 
-                color: depth >= maxDepth ? 'var(--text-muted)' : 'var(--text-primary)', 
-                cursor: depth >= maxDepth ? 'not-allowed' : 'pointer',
-                padding: '0.4rem',
-                display: 'flex',
-                borderRadius: '4px'
-              }}
-              title="Zoom In (Increase Resolution)"
+              className={`segment-btn ${depthType === 'local' ? 'active' : ''}`}
+              onClick={() => setDepthType('local')}
+              style={{ fontSize: '0.65rem', padding: '0.25rem 0.5rem' }}
+              title="Local Depth Mode"
             >
-              <ZoomIn size={16} />
+              <Link size={10} style={{ marginRight: '0.2rem' }} />
+              Local
             </button>
           </div>
 
+          <div style={{ width: '1px', height: '16px', background: 'var(--glass-border)' }} />
+
+          {/* Depth Zoom Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <Sliders size={12} />
+              Zoom
+            </label>
+            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-sm)', padding: '0.15rem', border: '1px solid var(--glass-border)' }}>
+              <button
+                onClick={() => setDepth(Math.max(0, depth - 1))}
+                disabled={depth <= 0}
+                style={{ 
+                  background: 'transparent', 
+                  border: 'none', 
+                  color: depth <= 0 ? 'var(--text-muted)' : 'var(--text-primary)', 
+                  cursor: depth <= 0 ? 'not-allowed' : 'pointer',
+                  padding: '0.2rem 0.4rem',
+                  display: 'flex',
+                  borderRadius: '2px'
+                }}
+              >
+                <ZoomOut size={12} />
+              </button>
+              <div style={{ width: '1px', background: 'var(--glass-border)', margin: '0.2rem 0.1rem' }} />
+              <button
+                onClick={() => setDepth(Math.min(maxDepth, depth + 1))}
+                disabled={depth >= maxDepth}
+                style={{ 
+                  background: 'transparent', 
+                  border: 'none', 
+                  color: depth >= maxDepth ? 'var(--text-muted)' : 'var(--text-primary)', 
+                  cursor: depth >= maxDepth ? 'not-allowed' : 'pointer',
+                  padding: '0.2rem 0.4rem',
+                  display: 'flex',
+                  borderRadius: '2px'
+                }}
+              >
+                <ZoomIn size={12} />
+              </button>
+            </div>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)', minWidth: '12px' }}>
+              {depth}
+            </span>
+          </div>
+
+          <div style={{ width: '1px', height: '16px', background: 'var(--glass-border)' }} />
+
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
             <Info size={12} />
-            Click elements to inspect
+            Inspect
           </span>
         </div>
       </div>

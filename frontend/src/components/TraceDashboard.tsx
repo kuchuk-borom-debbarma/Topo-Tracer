@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { TraceControls } from './TraceControls';
 import { TraceMetrics } from './TraceMetrics';
 import { TraceTree } from './TraceTree';
 import { TraceGraph } from './TraceGraph';
@@ -8,7 +7,7 @@ import { NodeInspector } from './NodeInspector';
 import { fetchTraceFull, fetchTraceMetadata } from '../services/api';
 import type { TraceNode, VisualWire } from '../services/api';
 
-import { AlertCircle, Terminal, List, Network, History } from 'lucide-react';
+import { AlertCircle, List, Network, History, UploadCloud, Download, RefreshCw } from 'lucide-react';
 
 
 export const TraceDashboard: React.FC = () => {
@@ -19,7 +18,6 @@ export const TraceDashboard: React.FC = () => {
   const [depth, setDepth] = useState<number>(3);
   const [maxDepth, setMaxDepth] = useState<number>(3);
   const [depthType, setDepthType] = useState<'global' | 'local'>('global');
-  const [search, setSearch] = useState<string>('');
   
   const [nodes, setNodes] = useState<TraceNode[]>([]);
   const [wires, setWires] = useState<VisualWire[]>([]);
@@ -84,22 +82,30 @@ export const TraceDashboard: React.FC = () => {
     });
   };
 
-  const handleExpandAll = () => {
-    setCollapsedNodeIds(new Set());
-  };
-
-  const handleCollapseAll = () => {
-    const parentNodeIds = new Set<string>();
-    nodes.forEach(n => {
-      if (n.parentNodeId) parentNodeIds.add(n.parentNodeId);
-    });
-    setCollapsedNodeIds(parentNodeIds);
-  };
-
   // Node selection triggers details drawer
   const handleSelectNode = (node: TraceNode) => {
     setSelectedNode(node);
     setIsOpenInspector(true);
+  };
+
+  const handleDownloadTrace = () => {
+    if (nodes.length === 0) return;
+    const data = {
+      nodes,
+      visualWires: wires,
+      edges,
+      maxAvailableDepth: maxDepth,
+      maxAvailableLocalDepth: maxDepth
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `trace-${traceId.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const processFile = (file: File) => {
@@ -113,7 +119,7 @@ export const TraceDashboard: React.FC = () => {
         setWires(data.visualWires || []);
         setEdges(data.edges || []);
         
-        const activeMax = depthType === 'local' ? data.maxAvailableLocalDepth : data.maxAvailableDepth;
+        const activeMax = data.maxAvailableLocalDepth || data.maxAvailableDepth;
         setMaxDepth(activeMax ?? 3);
         setTraceId(`file: ${file.name.substring(0, 15)}...`);
       } catch (err: any) {
@@ -127,13 +133,13 @@ export const TraceDashboard: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '1.5rem 2rem 3rem' }}>
+    <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '1rem 2rem 3rem' }}>
       
-      {/* Compact Header */}
+      {/* Minimal Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           <h1 style={{ 
-            fontSize: '1.75rem', 
+            fontSize: '1.5rem', 
             fontWeight: 800, 
             background: 'linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6)',
             WebkitBackgroundClip: 'text',
@@ -143,14 +149,76 @@ export const TraceDashboard: React.FC = () => {
           }}>
             Topo-Tracer
           </h1>
+
+          <div style={{ display: 'flex', gap: '0.4rem', background: 'rgba(5, 7, 12, 0.4)', padding: '0.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--glass-border)' }}>
+            <input
+              type="text"
+              placeholder="Trace ID..."
+              value={traceId}
+              onChange={(e) => setTraceId(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '0.3rem 0.6rem',
+                color: 'var(--text-primary)',
+                fontSize: '0.8rem',
+                fontFamily: 'var(--font-mono)',
+                outline: 'none',
+                width: '180px'
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleFetch(); }}
+            />
+            <button
+              onClick={handleFetch}
+              disabled={isLoading}
+              style={{ 
+                background: 'rgba(255,255,255,0.05)', 
+                border: 'none', 
+                color: 'var(--text-primary)', 
+                padding: '0 0.75rem', 
+                borderRadius: '4px', 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontSize: '0.75rem'
+              }}
+            >
+              <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+              {isLoading ? '' : 'Fetch'}
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.3rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--glass-border)' }}>
-            <Terminal size={12} style={{ color: 'var(--accent-teal)' }} />
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              {traceId.startsWith('file:') ? 'OFFLINE' : 'LIVE'}
-            </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            {nodes.length > 0 && (
+              <button 
+                onClick={handleDownloadTrace}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}
+              >
+                <Download size={14} />
+                Export
+              </button>
+            )}
+            <button 
+              onClick={() => document.getElementById('global-upload')?.click()}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}
+            >
+              <UploadCloud size={14} />
+              Upload
+            </button>
+            <input 
+              id="global-upload"
+              type="file" 
+              accept=".json" 
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  processFile(e.target.files[0]);
+                }
+              }}
+              style={{ display: 'none' }}
+            />
           </div>
         </div>
       </header>
@@ -182,97 +250,75 @@ export const TraceDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Core split layout workspace */}
-      <div className="dashboard-grid">
+      {/* Full width workspace */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         
-        {/* LEFT SIDEBAR - CONTROLS */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          
-          <TraceControls
-            traceId={traceId}
-            setTraceId={setTraceId}
-            depth={depth}
-            setDepth={setDepth}
-            maxDepth={maxDepth}
-            depthType={depthType}
-            setDepthType={setDepthType}
-            search={search}
-            setSearch={setSearch}
-            onFetch={handleFetch}
-            isLoading={isLoading}
-            onExpandAll={handleExpandAll}
-            onCollapseAll={handleCollapseAll}
-            onFileSelect={processFile}
-          />
+        {/* Active stats metrics widgets */}
+        <TraceMetrics nodes={nodes} wires={wires} />
 
+        {/* Tabs Selector Navigation */}
+        <div className="dashboard-tabs">
+          <button 
+            className={`tab-trigger ${activeTab === 'tree' ? 'active' : ''}`}
+            onClick={() => setActiveTab('tree')}
+          >
+            <List size={16} />
+            Trace Tree
+          </button>
+          <button 
+            className={`tab-trigger ${activeTab === 'topology' ? 'active' : ''}`}
+            onClick={() => setActiveTab('topology')}
+          >
+            <Network size={16} />
+            Topology
+          </button>
+          <button 
+            className={`tab-trigger ${activeTab === 'list' ? 'active' : ''}`}
+            onClick={() => setActiveTab('list')}
+          >
+            <History size={16} />
+            History
+          </button>
         </div>
 
-        {/* RIGHT MAIN PANEL - METRICS, TABS & ACTIVE VIEWPORT */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
-          
-          {/* Active stats metrics widgets */}
-          <TraceMetrics nodes={nodes} wires={wires} />
-
-          {/* Tabs Selector Navigation */}
-          <div className="dashboard-tabs">
-            <button 
-              className={`tab-trigger ${activeTab === 'tree' ? 'active' : ''}`}
-              onClick={() => setActiveTab('tree')}
-            >
-              <List size={16} />
-              Hierarchical Trace Tree Explorer
-            </button>
-            <button 
-              className={`tab-trigger ${activeTab === 'topology' ? 'active' : ''}`}
-              onClick={() => setActiveTab('topology')}
-            >
-              <Network size={16} />
-              Architecture Topology Canvas
-            </button>
-            <button 
-              className={`tab-trigger ${activeTab === 'list' ? 'active' : ''}`}
-              onClick={() => setActiveTab('list')}
-            >
-              <History size={16} />
-              Trace History & Logs
-            </button>
-          </div>
-
-          {/* Active Workspace Viewport */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
-            {activeTab === 'tree' ? (
-              <TraceTree
-                nodes={nodes}
-                selectedNode={selectedNode}
-                onSelectNode={handleSelectNode}
-                collapsedNodeIds={collapsedNodeIds}
-                toggleCollapseNode={toggleCollapseNode}
-                search={search}
-                depthType={depthType}
-              />
-            ) : activeTab === 'topology' ? (
-              <TraceGraph
-                nodes={nodes}
-                wires={wires}
-                edges={edges}
-                selectedNode={selectedNode}
-                onSelectNode={handleSelectNode}
-                depthType={depthType}
-                depth={depth}
-                setDepth={setDepth}
-                maxDepth={maxDepth}
-              />
-            ) : (
-              <TraceList 
-                onSelectTrace={(id) => {
-                  setTraceId(id);
-                  setActiveTab('tree');
-                  setDepth(3);
-                }}
-              />
-            )}
-          </div>
-
+        {/* Active Workspace Viewport */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '600px' }}>
+          {activeTab === 'tree' ? (
+            <TraceTree
+              nodes={nodes}
+              selectedNode={selectedNode}
+              onSelectNode={handleSelectNode}
+              collapsedNodeIds={collapsedNodeIds}
+              toggleCollapseNode={toggleCollapseNode}
+              search={""}
+              depthType={depthType}
+              depth={depth}
+              setDepth={setDepth}
+              maxDepth={maxDepth}
+              setDepthType={setDepthType}
+            />
+          ) : activeTab === 'topology' ? (
+            <TraceGraph
+              nodes={nodes}
+              wires={wires}
+              edges={edges}
+              selectedNode={selectedNode}
+              onSelectNode={handleSelectNode}
+              depthType={depthType}
+              depth={depth}
+              setDepth={setDepth}
+              maxDepth={maxDepth}
+              setDepthType={setDepthType}
+            />
+          ) : (
+            <TraceList 
+              onSelectTrace={(id) => {
+                setTraceId(id);
+                setActiveTab('tree');
+                setDepth(3);
+              }}
+            />
+          )}
         </div>
 
       </div>
