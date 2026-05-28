@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { Tracer } from "./Tracer";
+import { NodeType, EdgeType } from "./types";
 
 export class TraceNode {
   public id: string;
@@ -7,7 +8,7 @@ export class TraceNode {
   public containerId: string;
   public parentNodeId?: string;
   public name: string;
-  public nodeType: string;
+  public nodeType: NodeType | string;
   public depthIndex: number;
   public localDepthIndex: number;
   public group?: string;
@@ -29,7 +30,7 @@ export class TraceNode {
     traceId: string;
     containerId: string;
     name: string;
-    nodeType: string;
+    nodeType: NodeType | string;
     parentNodeId?: string;
     depthIndex: number;
     localDepthIndex: number;
@@ -53,7 +54,7 @@ export class TraceNode {
   /**
    * Starts a child node under this node in the current container's call stack.
    */
-  public startChild(name: string, nodeType: string, group?: string, scheduledAtLocal?: Date): TraceNode {
+  public startChild(name: string, nodeType: NodeType | string, group?: string, scheduledAtLocal?: Date): TraceNode {
     return new TraceNode({
       traceId: this.traceId,
       containerId: this.containerId,
@@ -118,7 +119,7 @@ export class TraceNode {
    * Records a network hop to another container/service.
    * Returns a stateful ActiveEdge handle that can be completed later.
    */
-  public recordEgressEdge(toContainerId: string, toNodeId: string, edgeType: string): ActiveEdge {
+  public recordEgressEdge(toContainerId: string, toNodeId: string, edgeType: EdgeType | string): ActiveEdge {
     const edge = new ActiveEdge({
       traceId: this.traceId,
       fromContainerId: this.containerId,
@@ -139,7 +140,7 @@ export class ActiveEdge {
   private toContainerId: string;
   private fromNodeId: string;
   private toNodeId: string;
-  private edgeType: string;
+  private edgeType: EdgeType | string;
   private dispatchedAtLocal: Date;
   private respondedAtLocal?: Date;
   private isFinished = false;
@@ -150,7 +151,7 @@ export class ActiveEdge {
     toContainerId: string;
     fromNodeId: string;
     toNodeId: string;
-    edgeType: string;
+    edgeType: EdgeType | string;
   }) {
     this.id = uuidv4();
     this.traceId = opts.traceId;

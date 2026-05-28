@@ -1,6 +1,6 @@
 import { BatchExporter } from "./BatchExporter";
 import { TraceNode } from "./TraceNode";
-import { ContainerInput, EdgeInput, TracerConfig } from "./types";
+import { ContainerInput, EdgeInput, TracerConfig, NodeType } from "./types";
 import { v4 as uuidv4 } from "uuid";
 
 export class Tracer {
@@ -42,7 +42,7 @@ export class Tracer {
   /**
    * Starts a completely new distributed trace.
    */
-  public static startTrace(name: string, nodeType: string, group?: string): TraceNode {
+  public static startTrace(name: string, nodeType: NodeType | string, group?: string): TraceNode {
     const traceId = uuidv4();
     return new TraceNode({
       traceId,
@@ -62,7 +62,7 @@ export class Tracer {
     traceId: string, 
     parentNodeId: string, 
     name: string, 
-    nodeType: string, 
+    nodeType: NodeType | string, 
     parentDepthIndex: number = 0,
     group?: string,
     scheduledAtLocal?: Date

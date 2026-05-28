@@ -1,7 +1,33 @@
+export enum ContainerType {
+  EXPRESS_API = 'Express API',
+  GRPC_SERVICE = 'gRPC/HTTP Service',
+  BACKGROUND_WORKER = 'Background Worker',
+  CRON_JOB = 'Cron Job',
+  POD = 'pod',
+  DEPLOYMENT = 'deployment',
+  SERVICE = 'service'
+}
+
+export enum NodeType {
+  HTTP_SERVER = 'http_server',
+  HTTP_CLIENT = 'http_client',
+  DATABASE = 'database',
+  MESSAGE_PRODUCER = 'message_producer',
+  MESSAGE_CONSUMER = 'message_consumer',
+  BATCH_JOB = 'batch_job',
+  FUNCTION = 'function'
+}
+
+export enum EdgeType {
+  HTTP_REQUEST = 'http_request',
+  KAFKA_MESSAGE = 'kafka_message',
+  SQS_MESSAGE = 'sqs_message'
+}
+
 export type ContainerInput = {
   id: string;
   name: string;
-  containerType: string;
+  containerType: ContainerType | string;
   createdAtLocal: Date;
 };
 
@@ -11,7 +37,7 @@ export type NodeInput = {
   containerId: string;
   parentNodeId?: string;
   name: string;
-  nodeType: string;
+  nodeType: NodeType | string;
   depthIndex: number;
   localDepthIndex: number;
   group?: string;
@@ -34,7 +60,7 @@ export type EdgeInput = {
   toContainerId: string;
   fromNodeId: string;
   toNodeId: string;
-  edgeType: string;
+  edgeType: EdgeType | string;
   dispatchedAtLocal: Date;
   respondedAtLocal?: Date;
 };
