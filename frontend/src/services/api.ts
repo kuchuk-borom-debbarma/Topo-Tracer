@@ -12,6 +12,10 @@ export interface TraceNode {
   initiatedAtLocal: string;
   processedAtLocal: string;
   completedAtLocal: string | null;
+  scheduledAtLocal?: string;
+  cpuActiveDurationUs?: number;
+  suspendedAtLocal?: string[];
+  resumedAtLocal?: string[];
 }
 
 export interface WireTarget {
