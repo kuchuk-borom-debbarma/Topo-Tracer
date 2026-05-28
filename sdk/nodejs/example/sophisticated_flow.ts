@@ -59,7 +59,7 @@ async function runSophisticatedSimulation() {
   paymentClientNode.markProcessed();
   
   const paymentIncomingNodeId = uuidv4(); 
-  paymentClientNode.recordEgressEdge(paymentSvcId, paymentIncomingNodeId, "http_request");
+  const paymentEdge = paymentClientNode.recordEgressEdge(paymentSvcId, paymentIncomingNodeId, "http_request");
 
   httpRequestHeaders = {
     "x-trace-id": rootNode.traceId,
@@ -67,6 +67,9 @@ async function runSophisticatedSimulation() {
     "x-target-node-id": paymentIncomingNodeId,
     "x-depth-index": paymentClientNode.depthIndex.toString(),
   };
+
+  await delay(45); // Simulate downstream round-trip processing time
+  paymentEdge.complete();
   
   paymentClientNode.markCompleted({ status: 500 }); // We'll simulate a failure downstream
   processPaymentNode.markCompleted({ status: "payment_failed_fallback" });
@@ -80,7 +83,7 @@ async function runSophisticatedSimulation() {
   eventPublisherNode.markProcessed();
 
   const inventoryConsumerNodeId = uuidv4();
-  eventPublisherNode.recordEgressEdge(inventorySvcId, inventoryConsumerNodeId, "kafka_message");
+  const kafkaEdge = eventPublisherNode.recordEgressEdge(inventorySvcId, inventoryConsumerNodeId, "kafka_message");
 
   kafkaMessagePayload = {
     orderId: 999,
@@ -92,17 +95,23 @@ async function runSophisticatedSimulation() {
     }
   };
 
+  await delay(12); // Simulate broker write latency
+  kafkaEdge.complete();
+
   eventPublisherNode.markCompleted({ topic: "orders.events" });
 
   // 4. Send to Reporting Queue for Fan-out batching (Also nested under Dispatch)
   const reportingTargetNodeId = uuidv4();
-  dispatchOrderNode.recordEgressEdge(reportSvcId, reportingTargetNodeId, "sqs_message");
+  const sqsEdge = dispatchOrderNode.recordEgressEdge(reportSvcId, reportingTargetNodeId, "sqs_message");
   batchQueuePayloads.push({
     traceId: rootNode.traceId,
     parentNodeId: dispatchOrderNode.id,
     targetNodeId: reportingTargetNodeId,
     depthIndex: dispatchOrderNode.depthIndex
   });
+
+  await delay(8); // Simulate queue delivery latency
+  sqsEdge.complete();
 
   dispatchOrderNode.markCompleted({ dispatched: true });
 

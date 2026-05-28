@@ -18,6 +18,7 @@ export class TraceNode {
   public completedAtLocal?: Date;
   
   private isFinished = false;
+  private activeEdges: ActiveEdge[] = [];
 
   constructor(opts: {
     traceId: string;
@@ -79,23 +80,91 @@ export class TraceNode {
     this.completedAtLocal = new Date();
     this.metadata = metadata;
 
+    // Auto-complete any active edges that were forgotten/never completed
+    for (const edge of this.activeEdges) {
+      edge.autoComplete();
+    }
+
     Tracer.exportNode(this);
   }
 
   /**
    * Records a network hop to another container/service.
-   * Note: The edge is exported immediately.
+   * Returns a stateful ActiveEdge handle that can be completed later.
    */
-  public recordEgressEdge(toContainerId: string, toNodeId: string, edgeType: string) {
-    Tracer.exportEdge({
-      id: uuidv4(),
+  public recordEgressEdge(toContainerId: string, toNodeId: string, edgeType: string): ActiveEdge {
+    const edge = new ActiveEdge({
       traceId: this.traceId,
       fromContainerId: this.containerId,
-      toContainerId: toContainerId,
+      toContainerId,
       fromNodeId: this.id,
-      toNodeId: toNodeId,
-      edgeType,
-      dispatchedAtLocal: new Date()
+      toNodeId,
+      edgeType
+    });
+    this.activeEdges.push(edge);
+    return edge;
+  }
+}
+
+export class ActiveEdge {
+  private id: string;
+  private traceId: string;
+  private fromContainerId: string;
+  private toContainerId: string;
+  private fromNodeId: string;
+  private toNodeId: string;
+  private edgeType: string;
+  private dispatchedAtLocal: Date;
+  private respondedAtLocal?: Date;
+  private isFinished = false;
+
+  constructor(opts: {
+    traceId: string;
+    fromContainerId: string;
+    toContainerId: string;
+    fromNodeId: string;
+    toNodeId: string;
+    edgeType: string;
+  }) {
+    this.id = uuidv4();
+    this.traceId = opts.traceId;
+    this.fromContainerId = opts.fromContainerId;
+    this.toContainerId = opts.toContainerId;
+    this.fromNodeId = opts.fromNodeId;
+    this.toNodeId = opts.toNodeId;
+    this.edgeType = opts.edgeType;
+    this.dispatchedAtLocal = new Date();
+  }
+
+  public getEdgeId(): string {
+    return this.id;
+  }
+
+  public complete() {
+    if (this.isFinished) return;
+    this.isFinished = true;
+    this.respondedAtLocal = new Date();
+    this.export();
+  }
+
+  public autoComplete() {
+    if (this.isFinished) return;
+    this.isFinished = true;
+    // Keep respondedAtLocal undefined as it was never officially completed
+    this.export();
+  }
+
+  private export() {
+    Tracer.exportEdge({
+      id: this.id,
+      traceId: this.traceId,
+      fromContainerId: this.fromContainerId,
+      toContainerId: this.toContainerId,
+      fromNodeId: this.fromNodeId,
+      toNodeId: this.toNodeId,
+      edgeType: this.edgeType,
+      dispatchedAtLocal: this.dispatchedAtLocal,
+      respondedAtLocal: this.respondedAtLocal
     });
   }
 }
