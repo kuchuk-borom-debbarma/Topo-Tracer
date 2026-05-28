@@ -50,6 +50,7 @@ export class TraceMaterializationListener {
     stage: "RESOLVE_NODES" | "RESOLVE_EDGES" | "BUILD_CLOSURES";
     offset: number;
     maxDepth: number;
+    maxLocalDepth?: number;
     iteration: number;
   }): Promise<void> {
     const iteration = payload.iteration || 1;
@@ -62,12 +63,13 @@ export class TraceMaterializationListener {
 
     try {
       if (payload.stage === "RESOLVE_NODES") {
-        await this.nodeResolver.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, iteration);
+        await this.nodeResolver.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, payload.maxLocalDepth || 0, iteration);
       } else if (payload.stage === "RESOLVE_EDGES") {
-        await this.edgeResolver.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, iteration);
+        await this.edgeResolver.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, payload.maxLocalDepth || 0, iteration);
       } else if (payload.stage === "BUILD_CLOSURES") {
-        await this.closureBuilder.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, iteration);
+        await this.closureBuilder.resolve(payload.traceId, payload.offset || 0, payload.maxDepth || 0, payload.maxLocalDepth || 0, iteration);
       }
+
     } catch (error) {
       console.error(`[TraceMaterializationListener] Failed stage "${payload.stage}" for trace ${payload.traceId} at offset ${payload.offset}:`, error);
     }

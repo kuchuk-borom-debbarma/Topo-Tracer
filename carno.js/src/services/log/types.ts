@@ -15,8 +15,11 @@ export type Node = {
   name: string;             // Human readable name (e.g., 'POST /checkout', 'Process Payment')
   nodeType: string;         // Categorization (e.g., 'http_route', 'db_query', 'function')
   depthIndex: number;       // The structural nesting level from the trace root. Used heavily for zoom filtering.
-  localDepthIndex: number;  // The structural nesting level within the specific container.
+  localDepthIndex?: number;  // The structural nesting level within the specific container.
+  group?: string;            // The custom depth group label
   metadata: any;            // Custom baggage properties attached to the execution block
+
+
   initiatedAtLocal: Date;   // When this execution block began
   processedAtLocal: Date;   // When the logic finished executing
   completedAtLocal?: Date;  // When all async child blocks finally resolved
@@ -55,8 +58,11 @@ export type NodeInput = {
   name: string;
   nodeType: string;
   depthIndex: number;
-  localDepthIndex: number;
+  localDepthIndex?: number;
+  group?: string;
   metadata?: any;
+
+
   initiatedAtLocal: Date;
   processedAtLocal: Date;
   completedAtLocal?: Date;
@@ -104,8 +110,8 @@ export interface PaginatedTraceResult {
   edges: Edge[];
   visualWires?: VisualWire[]; // Snapped coordinates matching zoom depth
   isZoomReady: boolean;        // True if read_edges are fully pre-computed
-  maxAvailableDepth: number;   // Maximum stack depth index in this trace
-  maxAvailableLocalDepth: number; // Maximum local stack depth in this trace
+  maxAvailableDepth?: number;   // Maximum stack depth index in this trace
+  maxAvailableLocalDepth?: number; // Maximum local stack depth in this trace
   pagination: {
     prevTimeCursor: number | null;
     prevIdCursor: string | null;
@@ -121,21 +127,22 @@ export interface FullTraceResult {
   edges: Edge[];
   visualWires?: VisualWire[]; // Snapped coordinates matching zoom depth
   isZoomReady: boolean;        // True if read_edges are fully pre-computed
-  maxAvailableDepth: number;   // Maximum stack depth index in this trace
-  maxAvailableLocalDepth: number; // Maximum local stack depth in this trace
+  maxAvailableDepth?: number;   // Maximum stack depth index in this trace
+  maxAvailableLocalDepth?: number; // Maximum local stack depth in this trace
 }
 
 export interface TraceMetadataResult {
   isZoomReady: boolean;
-  maxAvailableDepth: number;
-  maxAvailableLocalDepth: number;
+  maxAvailableDepth?: number;
+  maxAvailableLocalDepth?: number;
+
 }
 
 export interface NodeMaterializationDTO {
   id: string;
   parentNodeId: string;
   depthIndex: number;
-  localDepthIndex: number;
+  localDepthIndex?: number;
 }
 
 export interface EdgeMaterializationDTO {

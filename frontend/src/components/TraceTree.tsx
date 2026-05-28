@@ -9,10 +9,11 @@ import {
   ChevronDown, 
   ChevronRight,
   Container,
-  AlertCircle
+  AlertCircle,
+  Folder,
+  FolderOpen
 } from 'lucide-react';
 import type { TraceNode } from '../services/api';
-
 
 interface TraceTreeProps {
   nodes: TraceNode[];
@@ -24,6 +25,10 @@ interface TraceTreeProps {
   depthType: 'global' | 'local';
 }
 
+type RenderItem = 
+  | { type: 'group_header'; key: string; groupName: string; parentNodeId: string; depth: number; collapsed: boolean; childCount: number }
+  | { type: 'node'; node: TraceNode; depth: number };
+
 export const TraceTree: React.FC<TraceTreeProps> = ({
   nodes,
   selectedNode,
@@ -33,6 +38,21 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
   search,
   depthType
 }) => {
+  // Local state to track which logical depth groups are collapsed
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = React.useState<Set<string>>(new Set());
+
+  const toggleCollapseGroup = React.useCallback((groupKey: string) => {
+    setCollapsedGroupKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  }, []);
+
   // 1. Build parentage maps to efficiently identify hierarchy and folder states
   const parentToChildrenMap = React.useMemo(() => {
     const map = new Map<string, TraceNode[]>();
@@ -49,56 +69,84 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
     return parentToChildrenMap.get(nodeId)?.length || 0;
   };
 
-  // Determine if a node is currently hidden due to any parent in its ancestry being collapsed
-  const isNodeHiddenByCollapse = React.useMemo(() => {
-    const hiddenSet = new Set<string>();
-    
-    // Breadth-First traversal starting from collapsed nodes
-    const queue = Array.from(collapsedNodeIds);
-    while (queue.length > 0) {
-      const parentId = queue.shift()!;
-      const children = parentToChildrenMap.get(parentId) || [];
-      children.forEach(c => {
-        if (!hiddenSet.has(c.id)) {
-          hiddenSet.add(c.id);
-          queue.push(c.id);
-        }
-      });
-    }
-    
-    return hiddenSet;
-  }, [collapsedNodeIds, parentToChildrenMap]);
-
-  // 2. Perform depth-first sort on nodes so we display the tree in chronological order
-  const orderedNodes = React.useMemo(() => {
-    const result: TraceNode[] = [];
+  // 2. Perform DFS to build chronological render items with group headers
+  const renderItems = React.useMemo(() => {
+    const result: RenderItem[] = [];
     const visited = new Set<string>();
 
-    const dfs = (parentNodeId: string) => {
-      const children = parentToChildrenMap.get(parentNodeId) || [];
+    const dfs = (parentId: string) => {
+      const children = parentToChildrenMap.get(parentId) || [];
+      if (children.length === 0) return;
+
       // Sort children by initiation timestamp
       children.sort((a, b) => new Date(a.initiatedAtLocal).getTime() - new Date(b.initiatedAtLocal).getTime());
-      
+
+      // Group sibling children by their group name
+      const groups: { groupName: string; nodes: TraceNode[] }[] = [];
+      const groupMap = new Map<string, TraceNode[]>();
+
       children.forEach(node => {
-        if (!visited.has(node.id)) {
-          visited.add(node.id);
-          result.push(node);
-          dfs(node.id);
+        // Fallback group name if missing
+        const gName = node.group || `${nodes.find(n => n.id === parentId)?.name || 'Root'} group`;
+        if (!groupMap.has(gName)) {
+          groupMap.set(gName, []);
+          groups.push({ groupName: gName, nodes: groupMap.get(gName)! });
         }
+        groupMap.get(gName)!.push(node);
+      });
+
+      // Now process each group
+      groups.forEach(group => {
+        const firstNode = group.nodes[0];
+        const groupDepth = depthType === 'local' ? firstNode.localDepthIndex : firstNode.depthIndex;
+        const groupKey = `${parentId}::${group.groupName}`;
+        const isCollapsed = collapsedGroupKeys.has(groupKey);
+
+        // Render the group header at groupDepth
+        result.push({
+          type: 'group_header',
+          key: groupKey,
+          groupName: group.groupName,
+          parentNodeId: parentId,
+          depth: groupDepth,
+          collapsed: isCollapsed,
+          childCount: group.nodes.length
+        });
+
+        // Render the children in this group, nested (depth + 1)
+        group.nodes.forEach(node => {
+          if (!visited.has(node.id)) {
+            visited.add(node.id);
+            const nodeDepth = depthType === 'local' ? node.localDepthIndex : node.depthIndex;
+            result.push({
+              type: 'node',
+              node,
+              depth: nodeDepth + 1 // Nest node inside its group header
+            });
+            // Recursively run DFS for this child's descendants
+            dfs(node.id);
+          }
+        });
       });
     };
 
     dfs(''); // start from root parent
-    
-    // Add any orphans that were not reached by standard DFS (in case of broken ancestry)
+
+    // Add orphans that were not reached by standard DFS (in case of broken ancestry)
     nodes.forEach(n => {
       if (!visited.has(n.id)) {
-        result.push(n);
+        visited.add(n.id);
+        const nodeDepth = depthType === 'local' ? n.localDepthIndex : n.depthIndex;
+        result.push({
+          type: 'node',
+          node: n,
+          depth: nodeDepth
+        });
       }
     });
 
     return result;
-  }, [nodes, parentToChildrenMap]);
+  }, [nodes, parentToChildrenMap, collapsedGroupKeys, depthType]);
 
   // Helper to color latency bar based on SLA
   const getLatencyColor = (durationMs: number) => {
@@ -130,20 +178,79 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
     }
   };
 
-  // Search filter
-  const filteredNodes = orderedNodes.filter(n => {
-    if (isNodeHiddenByCollapse.has(n.id)) return false;
-    
+  // Helper to check if a node matches search query
+  const matchesSearch = React.useCallback((node: TraceNode) => {
     if (search.trim() === '') return true;
-    
     const query = search.toLowerCase();
     return (
-      n.name.toLowerCase().includes(query) ||
-      n.containerId.toLowerCase().includes(query) ||
-      n.nodeType.toLowerCase().includes(query) ||
-      (n.metadata && JSON.stringify(n.metadata).toLowerCase().includes(query))
+      node.name.toLowerCase().includes(query) ||
+      node.containerId.toLowerCase().includes(query) ||
+      node.nodeType.toLowerCase().includes(query) ||
+      (node.metadata && JSON.stringify(node.metadata).toLowerCase().includes(query))
     );
-  });
+  }, [search]);
+
+  // Compute final visible list of render items based on collapse states and search queries
+  const filteredRenderItems = React.useMemo(() => {
+    const hiddenNodeIds = new Set<string>();
+    
+    // Breadth-First traversal from root to compute which node IDs are collapsed/hidden
+    const queue = [''];
+    while (queue.length > 0) {
+      const parentId = queue.shift()!;
+      const children = parentToChildrenMap.get(parentId) || [];
+      
+      children.forEach(c => {
+        const groupName = c.group || `${nodes.find(n => n.id === parentId)?.name || 'Root'} group`;
+        const groupKey = `${parentId}::${groupName}`;
+        
+        const isParentHidden = hiddenNodeIds.has(parentId);
+        const isParentCollapsed = parentId ? collapsedNodeIds.has(parentId) : false;
+        const isGroupCollapsed = collapsedGroupKeys.has(groupKey);
+        
+        if (isParentHidden || isParentCollapsed || isGroupCollapsed) {
+          hiddenNodeIds.add(c.id);
+        }
+        queue.push(c.id);
+      });
+    }
+
+    // Determine which nodes actually match the search and are not hidden
+    const visibleNodeIds = new Set<string>();
+    nodes.forEach(node => {
+      if (!hiddenNodeIds.has(node.id) && matchesSearch(node)) {
+        visibleNodeIds.add(node.id);
+      }
+    });
+
+    // Helper to check if a group has any visible children (directly or recursively)
+    const hasVisibleDescendants = (parentId: string, groupName: string): boolean => {
+      const children = parentToChildrenMap.get(parentId) || [];
+      const groupChildren = children.filter(c => {
+        const gName = c.group || `${nodes.find(n => n.id === parentId)?.name || 'Root'} group`;
+        return gName === groupName;
+      });
+
+      const checkDescendants = (nodeId: string): boolean => {
+        if (visibleNodeIds.has(nodeId)) return true;
+        const subChildren = parentToChildrenMap.get(nodeId) || [];
+        return subChildren.some(sc => checkDescendants(sc.id));
+      };
+
+      return groupChildren.some(c => checkDescendants(c.id));
+    };
+
+    return renderItems.filter(item => {
+      if (item.type === 'node') {
+        return visibleNodeIds.has(item.node.id);
+      } else {
+        // If parent is hidden, group is hidden
+        if (item.parentNodeId && hiddenNodeIds.has(item.parentNodeId)) return false;
+        // Only show group header if it contains matches or search is empty
+        return hasVisibleDescendants(item.parentNodeId, item.groupName);
+      }
+    });
+  }, [renderItems, nodes, parentToChildrenMap, collapsedNodeIds, collapsedGroupKeys, matchesSearch]);
 
   return (
     <div className="glass-panel" style={{ padding: '1.25rem', flex: 1, minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
@@ -151,28 +258,129 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
         <h2 style={{ fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
           Indented Tree Explorer
           <span style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.06)', padding: '0.2rem 0.5rem', borderRadius: '99px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-            {filteredNodes.length} visible
+            {filteredRenderItems.filter(i => i.type === 'node').length} spans
           </span>
         </h2>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', maxHeight: '600px', paddingRight: '0.5rem' }} className="tree-container">
-        {filteredNodes.length === 0 ? (
+        {filteredRenderItems.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--text-muted)' }}>
             <Cpu size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
             <p style={{ fontSize: '0.875rem' }}>No trace spans visible at this depth resolution.</p>
             <p style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>Try adjusting the zoom slider or filtering search term.</p>
           </div>
         ) : (
-          filteredNodes.map(node => {
+          filteredRenderItems.map(item => {
+            if (item.type === 'group_header') {
+              return (
+                <div
+                  key={item.key}
+                  className={`tree-node-row depth-${item.depth}`}
+                  style={{
+                    '--depth': item.depth,
+                    display: 'flex',
+                    alignItems: 'center',
+                    background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.03) 100%)',
+                    border: '1px solid rgba(59, 130, 246, 0.15)',
+                    borderLeft: '4px solid var(--accent-blue)',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                    marginBottom: '0.35rem',
+                    marginTop: '0.25rem',
+                    position: 'relative',
+                    backdropFilter: 'blur(8px)',
+                    boxShadow: '0 0 10px rgba(59, 130, 246, 0.04)',
+                    transition: 'all 0.15s ease',
+                    zIndex: 5
+                  } as React.CSSProperties}
+                  onClick={() => toggleCollapseGroup(item.key)}
+                >
+                  {/* Connector vertical guidelines */}
+                  {Array.from({ length: item.depth }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        position: 'absolute',
+                        left: `calc(${idx} * 24px + 12px)`,
+                        top: 0,
+                        bottom: 0,
+                        width: '1px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        pointerEvents: 'none'
+                      }}
+                    />
+                  ))}
+
+                  {/* Folder chevron toggle trigger */}
+                  <div 
+                    style={{ 
+                      width: '20px', 
+                      height: '20px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      marginRight: '0.4rem',
+                      color: 'var(--accent-blue)',
+                      zIndex: 2
+                    }}
+                  >
+                    {item.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  </div>
+
+                  {/* Group Icon */}
+                  <div style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
+                    {item.collapsed ? <Folder size={15} /> : <FolderOpen size={15} />}
+                  </div>
+
+                  {/* Logical Group Label Badge */}
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                    <span 
+                      style={{
+                        fontSize: '0.75rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        fontWeight: 700,
+                        color: 'var(--text-primary)',
+                        textOverflow: 'ellipsis',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {item.groupName}
+                    </span>
+                    <span 
+                      style={{
+                        fontSize: '0.65rem',
+                        color: 'var(--accent-blue)',
+                        background: 'rgba(59, 130, 246, 0.08)',
+                        border: '1px solid rgba(59, 130, 246, 0.15)',
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {item.childCount} {item.childCount === 1 ? 'span' : 'spans'}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            // Otherwise, render a standard Node item
+            const { node } = item;
             const hasChildren = getChildCount(node.id) > 0;
             const isCollapsed = collapsedNodeIds.has(node.id);
-            const nodeDepth = depthType === 'local' ? node.localDepthIndex : node.depthIndex;
+            const nodeDepth = item.depth;
             
-            // Duration calculation
-            const duration = node.completedAtLocal 
-              ? new Date(node.completedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime()
+            // Time Duration & Wait Calculations
+            const selfTime = new Date(node.processedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime();
+            const waitTime = node.completedAtLocal 
+              ? new Date(node.completedAtLocal).getTime() - new Date(node.processedAtLocal).getTime()
               : 0;
+            const totalDuration = selfTime + waitTime;
 
             const isSelected = selectedNode?.id === node.id;
             const isError = !!(node.metadata && (node.metadata.error || node.metadata.exception || (node.metadata.status >= 400)));
@@ -284,24 +492,70 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                       {node.nodeType.replace('_', ' ')}
                     </span>
                     <span>•</span>
-                    <span>{duration}ms duration</span>
+                    <span>{totalDuration}ms duration {waitTime > 0 ? `(${selfTime}ms self + ${waitTime}ms wait)` : ''}</span>
                   </div>
                 </div>
 
                 {/* Inline Performance Latency Visualizer bar */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '90px' }}>
-                  <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: 600, color: getLatencyColor(duration), width: '45px', textAlign: 'right' }}>
-                    {duration}ms
-                  </span>
-                  <div style={{ flex: 1, height: '4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'flex-end', 
+                    gap: '0.25rem', 
+                    width: '130px' 
+                  }}
+                  title={`Self Time: ${selfTime}ms | Wait Time: ${waitTime}ms`}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', fontWeight: 600, color: getLatencyColor(totalDuration) }}>
+                      {totalDuration}ms
+                    </span>
+                    {waitTime > 0 && (
+                      <span style={{ fontSize: '0.62rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                        ({selfTime}+{waitTime})
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    style={{ 
+                      width: '100%', 
+                      height: '5px', 
+                      background: 'rgba(255, 255, 255, 0.06)', 
+                      borderRadius: '3px', 
+                      overflow: 'hidden', 
+                      display: 'flex',
+                      justifyContent: 'flex-start'
+                    }}
+                  >
                     <div 
                       style={{ 
                         height: '100%', 
-                        width: `${Math.min(100, (duration / 800) * 100)}%`, 
-                        background: getLatencyColor(duration),
-                        borderRadius: '2px'
-                      }} 
-                    />
+                        width: `${Math.min(100, (totalDuration / 800) * 100)}%`, 
+                        display: 'flex',
+                        borderRadius: '3px',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {selfTime > 0 && (
+                        <div 
+                          style={{ 
+                            height: '100%', 
+                            width: `${(selfTime / totalDuration) * 100}%`, 
+                            background: 'var(--accent-green)'
+                          }} 
+                        />
+                      )}
+                      {waitTime > 0 && (
+                        <div 
+                          style={{ 
+                            height: '100%', 
+                            width: `${(waitTime / totalDuration) * 100}%`, 
+                            background: 'var(--accent-teal)'
+                          }} 
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 

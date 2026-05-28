@@ -2,21 +2,53 @@ import React from 'react';
 import { X, Clock, Tag, Share2, Layers, AlertCircle, CheckCircle } from 'lucide-react';
 import type { TraceNode } from '../services/api';
 
-
 interface NodeInspectorProps {
   node: TraceNode | null;
+  nodes: TraceNode[];
+  edges: any[];
   onClose: () => void;
   isOpen: boolean;
 }
 
-export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, onClose, isOpen }) => {
+export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, nodes, edges = [], onClose, isOpen }) => {
   if (!node) return null;
 
-  const duration = node.completedAtLocal
-    ? new Date(node.completedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime()
+  // 1. Core Node Latency & Wait Calculations
+  const selfTime = new Date(node.processedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime();
+  const waitTime = node.completedAtLocal
+    ? new Date(node.completedAtLocal).getTime() - new Date(node.processedAtLocal).getTime()
     : 0;
+  const totalDuration = selfTime + waitTime;
 
   const isError = !!(node.metadata && (node.metadata.error || node.metadata.exception || node.metadata.status >= 400));
+
+  // 2. Nesting Delay (Call Lag) relative to Parent
+  const parentNode = node.parentNodeId ? nodes.find(n => n.id === node.parentNodeId) : null;
+  const nestingDelay = parentNode
+    ? new Date(node.initiatedAtLocal).getTime() - new Date(parentNode.initiatedAtLocal).getTime()
+    : null;
+
+  // 3. Network Hop Latency Calculations
+  const incomingEdge = edges.find(e => e.toNodeId === node.id);
+  const edgeRtt = incomingEdge && incomingEdge.respondedAtLocal
+    ? new Date(incomingEdge.respondedAtLocal).getTime() - new Date(incomingEdge.dispatchedAtLocal).getTime()
+    : null;
+
+  const reqTransit = incomingEdge
+    ? new Date(node.initiatedAtLocal).getTime() - new Date(incomingEdge.dispatchedAtLocal).getTime()
+    : null;
+
+  const respTransit = incomingEdge && incomingEdge.respondedAtLocal
+    ? new Date(incomingEdge.respondedAtLocal).getTime() - (node.completedAtLocal ? new Date(node.completedAtLocal).getTime() : new Date(node.processedAtLocal).getTime())
+    : null;
+
+  const netOverhead = incomingEdge && edgeRtt !== null
+    ? (reqTransit || 0) + (respTransit || 0)
+    : 0;
+
+  const overheadPct = incomingEdge && edgeRtt && edgeRtt > 0
+    ? (netOverhead / edgeRtt) * 100
+    : 0;
 
   return (
     <div className={`slide-drawer ${isOpen ? 'open' : ''}`}>
@@ -34,7 +66,6 @@ export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, onClose, isO
         <button 
           onClick={onClose} 
           style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.2rem', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          className="hover:bg-white/5"
         >
           <X size={20} />
         </button>
@@ -57,18 +88,76 @@ export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, onClose, isO
           <Clock size={20} style={{ color: 'var(--accent-teal)' }} />
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              <span>Execution Time</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{duration}ms</span>
+              <span>Total Lifecycle Duration</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{totalDuration}ms</span>
             </div>
             <div style={{ height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '0.4rem' }}>
               <div 
                 style={{ 
                   height: '100%', 
-                  width: `${Math.min(100, (duration / 800) * 100)}%`, 
+                  width: `${Math.min(100, (totalDuration / 800) * 100)}%`, 
                   background: isError ? 'var(--accent-red)' : 'var(--accent-teal)'
                 }} 
               />
             </div>
+          </div>
+        </div>
+
+        {/* Deep observed latency profiler */}
+        <div>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Clock size={14} style={{ color: 'var(--accent-teal)' }} />
+            Observed Timing & Latency Profiler
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(5,7,12,0.4)', borderRadius: 'var(--radius-md)', padding: '1rem', border: '1px solid var(--glass-border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Self Execution (Local Logic):</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-green)' }}>{selfTime}ms</span>
+            </div>
+            
+            {waitTime > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Downstream Wait Time:</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-teal)' }}>{waitTime}ms</span>
+              </div>
+            )}
+
+            {nestingDelay !== null && nestingDelay >= 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Nesting Call Lag (Queue/Prep):</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-secondary)' }}>{nestingDelay}ms</span>
+              </div>
+            )}
+
+            {incomingEdge && (
+              <>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', margin: '0.25rem 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Network Round-Trip (RTT):</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-pink)' }}>{edgeRtt}ms</span>
+                </div>
+                {reqTransit !== null && reqTransit >= 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Request Network Transit:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{reqTransit}ms</span>
+                  </div>
+                )}
+                {respTransit !== null && respTransit >= 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Response Network Transit:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{respTransit}ms</span>
+                  </div>
+                )}
+                {edgeRtt !== null && edgeRtt > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Network Wire Overhead:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-orange)', fontWeight: 600 }}>
+                      {netOverhead}ms ({overheadPct.toFixed(1)}%)
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -136,6 +225,12 @@ export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, onClose, isO
               <span style={{ color: 'var(--text-muted)' }}>Local Container Depth:</span>
               <span style={{ fontWeight: 600 }}>{node.localDepthIndex}</span>
             </div>
+            {node.group && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Logical Depth Group:</span>
+                <span style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{node.group}</span>
+              </div>
+            )}
           </div>
         </div>
 

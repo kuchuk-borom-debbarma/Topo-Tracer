@@ -36,7 +36,9 @@ export class LogServiceImpl extends LogService {
     const enrichedNodes: Node[] = nodes.map(n => ({
       ...n,
       parentNodeId: n.parentNodeId || "",
+      group: n.group || "",
       metadata: n.metadata ?? null
+
     }));
 
     await this.logRepo.saveNodes(enrichedNodes);

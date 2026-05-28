@@ -61,7 +61,9 @@ export class ClickHouseService {
           parentNodeId String,              -- Parent node ID for intra-container hierarchical nesting
           name String,                      -- Human-readable name (e.g. 'POST /v1/checkout' or 'DB Query')
           nodeType String,                  -- E.g. 'http_server', 'database', 'internal_function'
+          group String,                     -- Custom group label for this depth level
           depthIndex UInt32,                -- Zero-indexed nesting depth from the trace root. Used for zoom-level filtering.
+
           localDepthIndex UInt32,           -- Zero-indexed nesting depth within the current container context.
           metadata String,                  -- JSON stringified custom payload/baggage properties
           initiatedAtLocal Int64,           -- Timestamp when execution started (ms)

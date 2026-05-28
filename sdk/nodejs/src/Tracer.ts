@@ -42,7 +42,7 @@ export class Tracer {
   /**
    * Starts a completely new distributed trace.
    */
-  public static startTrace(name: string, nodeType: string): TraceNode {
+  public static startTrace(name: string, nodeType: string, group?: string): TraceNode {
     const traceId = uuidv4();
     return new TraceNode({
       traceId,
@@ -50,7 +50,8 @@ export class Tracer {
       name,
       nodeType,
       depthIndex: 0,
-      localDepthIndex: 0
+      localDepthIndex: 0,
+      group
     });
   }
 
@@ -62,7 +63,8 @@ export class Tracer {
     parentNodeId: string, 
     name: string, 
     nodeType: string, 
-    parentDepthIndex: number = 0
+    parentDepthIndex: number = 0,
+    group?: string
   ): TraceNode {
     return new TraceNode({
       traceId,
@@ -71,7 +73,8 @@ export class Tracer {
       nodeType,
       parentNodeId,
       depthIndex: parentDepthIndex + 1,
-      localDepthIndex: 0
+      localDepthIndex: 0,
+      group
     });
   }
 
@@ -89,12 +92,14 @@ export class Tracer {
       nodeType: node.nodeType,
       depthIndex: node.depthIndex,
       localDepthIndex: node.localDepthIndex,
+      group: node.group,
       metadata: node.metadata,
       initiatedAtLocal: node.initiatedAtLocal,
       processedAtLocal: node.processedAtLocal!,
       completedAtLocal: node.completedAtLocal
     });
   }
+
 
   /**
    * Internal method used to queue an edge for export.

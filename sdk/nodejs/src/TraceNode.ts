@@ -10,6 +10,7 @@ export class TraceNode {
   public nodeType: string;
   public depthIndex: number;
   public localDepthIndex: number;
+  public group?: string;
   
   public metadata?: any;
   public initiatedAtLocal: Date;
@@ -26,6 +27,7 @@ export class TraceNode {
     parentNodeId?: string;
     depthIndex: number;
     localDepthIndex: number;
+    group?: string;
   }) {
     this.id = uuidv4();
     this.traceId = opts.traceId;
@@ -35,13 +37,14 @@ export class TraceNode {
     this.parentNodeId = opts.parentNodeId;
     this.depthIndex = opts.depthIndex;
     this.localDepthIndex = opts.localDepthIndex;
+    this.group = opts.group || `${opts.containerId}_${opts.depthIndex}`;
     this.initiatedAtLocal = new Date();
   }
 
   /**
    * Starts a child node under this node in the current container's call stack.
    */
-  public startChild(name: string, nodeType: string): TraceNode {
+  public startChild(name: string, nodeType: string, group?: string): TraceNode {
     return new TraceNode({
       traceId: this.traceId,
       containerId: this.containerId,
@@ -49,7 +52,8 @@ export class TraceNode {
       nodeType,
       parentNodeId: this.id,
       depthIndex: this.depthIndex + 1,
-      localDepthIndex: this.localDepthIndex + 1
+      localDepthIndex: this.localDepthIndex + 1,
+      group
     });
   }
 

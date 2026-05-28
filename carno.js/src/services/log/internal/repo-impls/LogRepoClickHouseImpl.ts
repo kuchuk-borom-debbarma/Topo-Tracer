@@ -47,7 +47,9 @@ export class LogRepoClickHouseImpl extends LogRepo {
     const mappedNodes = nodes.map(n => ({
       ...n,
       trace_id: n.traceId,
+      group: n.group || "",
       metadata: typeof n.metadata === "object" ? JSON.stringify(n.metadata) : String(n.metadata || ""),
+
       initiatedAtLocal: new Date(n.initiatedAtLocal).getTime(),
       processedAtLocal: new Date(n.processedAtLocal).getTime(),
       completedAtLocal: n.completedAtLocal ? new Date(n.completedAtLocal).getTime() : null,
@@ -170,6 +172,8 @@ export class LogRepoClickHouseImpl extends LogRepo {
   }
 
   override async fetchTrace(traceId: string, depthFilterThreshold: number = 0, depthType: 'global' | 'local' = 'global'): Promise<import("../../types").FullTraceResult> {
+
+
     const { isZoomReady, maxAvailableDepth, maxAvailableLocalDepth } = await this.ensureMaterialized(traceId);
     
     // Fallback while materializing
@@ -232,10 +236,12 @@ export class LogRepoClickHouseImpl extends LogRepo {
       nodeType: row.nodeType,
       depthIndex: Number(row.depthIndex),
       localDepthIndex: Number(row.localDepthIndex || 0),
+      group: row.group || "",
       metadata: row.metadata ? JSON.parse(row.metadata) : null,
       initiatedAtLocal: new Date(Number(row.initiatedAtLocal)),
       processedAtLocal: new Date(Number(row.processedAtLocal)),
       completedAtLocal: row.completedAtLocal ? new Date(Number(row.completedAtLocal)) : undefined,
+
     }));
 
     let edges: Edge[] = [];
@@ -382,10 +388,12 @@ export class LogRepoClickHouseImpl extends LogRepo {
       nodeType: row.nodeType,
       depthIndex: Number(row.depthIndex),
       localDepthIndex: Number(row.localDepthIndex || 0),
+      group: row.group || "",
       metadata: row.metadata ? JSON.parse(row.metadata) : null,
       initiatedAtLocal: new Date(Number(row.initiatedAtLocal)),
       processedAtLocal: new Date(Number(row.processedAtLocal)),
       completedAtLocal: row.completedAtLocal ? new Date(Number(row.completedAtLocal)) : undefined,
+
     }));
 
     // 5. Calculate pagination indicators and slice to final nodes
