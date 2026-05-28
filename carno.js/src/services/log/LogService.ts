@@ -23,7 +23,15 @@ export class LogService {
   }
 
   async logTracePaginated(traceId: string, params: PaginationParams): Promise<PaginatedTraceResult> {
-    return { nodes: [], edges: [], pagination: { prevTimeCursor: null, prevIdCursor: null, nextTimeCursor: null, nextIdCursor: null, hasPrev: false, hasNext: false } };
+    return { nodes: [], edges: [], pagination: { prevTimeCursor: null, prevIdCursor: null, nextTimeCursor: null, nextIdCursor: null, hasPrev: false, hasNext: false }, isZoomReady: false, maxAvailableDepth: 0, maxAvailableLocalDepth: 0 };
+  }
+
+  async logTraceFull(traceId: string, depth?: number, depthType: 'global' | 'local' = 'global'): Promise<import("./types").FullTraceResult> {
+    return { nodes: [], edges: [], isZoomReady: false, maxAvailableDepth: 0, maxAvailableLocalDepth: 0 };
+  }
+
+  async fetchTraceMetadata(traceId: string): Promise<import("./types").TraceMetadataResult> {
+    return { isZoomReady: false, maxAvailableDepth: 0, maxAvailableLocalDepth: 0 };
   }
 }
 

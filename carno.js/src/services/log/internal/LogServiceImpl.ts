@@ -36,7 +36,9 @@ export class LogServiceImpl extends LogService {
     const enrichedNodes: Node[] = nodes.map(n => ({
       ...n,
       parentNodeId: n.parentNodeId || "",
+      group: n.group || "",
       metadata: n.metadata ?? null
+
     }));
 
     await this.logRepo.saveNodes(enrichedNodes);
@@ -112,5 +114,13 @@ export class LogServiceImpl extends LogService {
 
   override async logTracePaginated(traceId: string, params: PaginationParams): Promise<PaginatedTraceResult> {
     return await this.logRepo.fetchTracePaginated(traceId, params);
+  }
+
+  override async logTraceFull(traceId: string, depth?: number, depthType: 'global' | 'local' = 'global'): Promise<import("../types").FullTraceResult> {
+    return await this.logRepo.fetchTraceFull(traceId, depth, depthType);
+  }
+
+  override async fetchTraceMetadata(traceId: string): Promise<import("../types").TraceMetadataResult> {
+    return await this.logRepo.fetchTraceMetadata(traceId);
   }
 }

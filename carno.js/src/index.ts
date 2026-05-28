@@ -5,6 +5,12 @@ import { LogService } from "./services/log/LogService";
 import { LogServiceImpl } from "./services/log/internal/LogServiceImpl";
 import { ClickHouseService } from "./infra/ClickHouseService";
 import { LogController } from "./routes/LogController";
+import { MessageBroker } from "./infra/message/MessageBroker";
+import { InMemoryMessageBroker } from "./infra/message/InMemoryMessageBroker";
+import { TraceNodeResolver } from "./services/log/internal/listeners/operators/TraceNodeResolver";
+import { TraceEdgeResolver } from "./services/log/internal/listeners/operators/TraceEdgeResolver";
+import { TraceClosureBuilder } from "./services/log/internal/listeners/operators/TraceClosureBuilder";
+import { TraceMaterializationListener } from "./services/log/internal/listeners/TraceMaterializationListener";
 
 @Controller()
 class AppController {
@@ -38,6 +44,11 @@ app.services([
   ClickHouseService,
   { token: LogRepo, useClass: LogRepoClickHouseImpl },
   { token: LogService, useClass: LogServiceImpl },
+  { token: MessageBroker, useClass: InMemoryMessageBroker },
+  TraceNodeResolver,
+  TraceEdgeResolver,
+  TraceClosureBuilder,
+  TraceMaterializationListener,
 ]);
 
 app.controllers([AppController, LogController]);

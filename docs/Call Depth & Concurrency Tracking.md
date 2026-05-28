@@ -66,42 +66,41 @@ When the transaction finishes, the SDK flushes the telemetry rows to the databas
 [
   {
     "id": "node_http_root_001",
-    "parent_node_id": null,
-    "depth_index": 0,
+    "parentNodeId": null,
+    "depthIndex": 0,
     "name": "HTTP DELETE /tasks/:id",
     "timestamps": { "initiatedAt": 1779905412000, "processedAt": 1779905412050, "completedAt": 1779905412050 }
   },
   {
     "id": "node_auth_002",
-    "parent_node_id": "node_http_root_001",
-    "depth_index": 1,
+    "parentNodeId": "node_http_root_001",
+    "depthIndex": 1,
     "name": "auth_middleware",
     "timestamps": { "initiatedAt": 1779905412002, "processedAt": 1779905412010, "completedAt": 1779905412010 }
   },
   {
     "id": "node_ctrl_003",
-    "parent_node_id": "node_auth_002",
-    "depth_index": 2,
+    "parentNodeId": "node_auth_002",
+    "depthIndex": 2,
     "name": "TaskController",
     "timestamps": { "initiatedAt": 1779905412011, "processedAt": 1779905412048, "completedAt": 1779905412049 }
   },
   {
     "id": "node_db_user_004",
-    "parent_node_id": "node_ctrl_003",
-    "depth_index": 3,
+    "parentNodeId": "node_ctrl_003",
+    "depthIndex": 3,
     "name": "db::fetch_user",
     "timestamps": { "initiatedAt": 1779905412012, "processedAt": 1779905412030, "completedAt": 1779905412030 }
   },
   {
     "id": "node_db_task_005",
-    "parent_node_id": "node_ctrl_003",
-    "depth_index": 3,
+    "parentNodeId": "node_ctrl_003",
+    "depthIndex": 3,
     "name": "db::fetch_task",
     "timestamps": { "initiatedAt": 1779905412013, "processedAt": 1779905412045, "completedAt": 1779905412045 }
   }
 ]
-
-```
+````
 
 ---
 

@@ -11,6 +11,8 @@ export class MockLogRepo extends LogRepo {
   private mockTraceResult: PaginatedTraceResult = {
     nodes: [],
     edges: [],
+    isZoomReady: false,
+    maxAvailableDepth: 0,
     pagination: {
       prevTimeCursor: null,
       prevIdCursor: null,

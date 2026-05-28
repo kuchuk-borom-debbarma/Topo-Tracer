@@ -56,24 +56,49 @@ export class LogController {
   async getTrace(
     @Param("traceId") traceId: string,
     @Query("limit") limit?: string,
+    @Query("depth") depth?: string,
     @Query("beforeTime") beforeTime?: string,
     @Query("beforeId") beforeId?: string,
     @Query("afterTime") afterTime?: string,
-    @Query("afterId") afterId?: string
+    @Query("afterId") afterId?: string,
+    @Query("depthType") depthType?: string
   ) {
     const rawLimit = limit ? parseInt(limit, 10) : undefined;
+    const rawDepth = depth ? parseInt(depth, 10) : undefined;
     const rawBeforeTime = beforeTime ? parseInt(beforeTime, 10) : undefined;
     const rawAfterTime = afterTime ? parseInt(afterTime, 10) : undefined;
 
-    console.log(`[LogController] Paginated unified fetch request for trace ${traceId} (limit: ${rawLimit})`);
+    console.log(`[LogController] Paginated unified fetch request for trace ${traceId} (limit: ${rawLimit}, depth: ${rawDepth})`);
 
     return await this.logService.logTracePaginated(traceId, {
       limit: rawLimit,
+      depth: rawDepth,
       beforeTime: rawBeforeTime,
       beforeId,
       afterTime: rawAfterTime,
       afterId,
+      depthType: depthType as "global" | "local" | undefined,
     });
+  }
+
+  // Fetch all nodes and matching edges for a given trace up to a specific depth without pagination limits
+  @Get("/trace/:traceId/full")
+  async getTraceFull(
+    @Param("traceId") traceId: string,
+    @Query("depth") depth?: string,
+    @Query("depthType") depthType?: string
+  ) {
+    const rawDepth = depth ? parseInt(depth, 10) : undefined;
+    console.log(`[LogController] Full unified fetch request for trace ${traceId} (depth: ${rawDepth}, depthType: ${depthType})`);
+    
+    return await this.logService.logTraceFull(traceId, rawDepth, depthType as 'global' | 'local');
+  }
+
+  // Fetch metadata for a specific trace, such as whether zoom is fully materialized
+  @Get("/trace/:traceId/metadata")
+  async getTraceMetadata(@Param("traceId") traceId: string) {
+    console.log(`[LogController] Fetching metadata for trace ${traceId}`);
+    return await this.logService.fetchTraceMetadata(traceId);
   }
 }
 

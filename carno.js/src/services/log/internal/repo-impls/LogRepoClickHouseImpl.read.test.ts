@@ -6,15 +6,25 @@ class MockClickHouseClient {
   queriesRan: { query: string; query_params: any }[] = [];
   mockedNodesData: any[] = [];
   mockedEdgesData: any[] = [];
+  mockedMetadataData: any[] = [];
+  mockedReadEdgesData: any[] = [];
 
   async query(options: { query: string; query_params: any; format: string }): Promise<any> {
     this.queriesRan.push({ query: options.query, query_params: options.query_params });
     
-    const isEdgesQuery = options.query.includes("toco_tracer.edges");
-    const data = isEdgesQuery ? this.mockedEdgesData : this.mockedNodesData;
+    let data: any[] = [];
+    if (options.query.includes("toco_tracer.edges")) {
+      data = this.mockedEdgesData;
+    } else if (options.query.includes("toco_tracer.trace_metadata")) {
+      data = this.mockedMetadataData;
+    } else if (options.query.includes("toco_tracer.read_edges")) {
+      data = this.mockedReadEdgesData;
+    } else {
+      data = this.mockedNodesData;
+    }
     
     return {
-      json: async () => ({ data })
+      json: async () => data
     };
   }
 }
@@ -31,6 +41,13 @@ describe("LogRepoClickHouseImpl - Reads Unit Tests", () => {
     const repo = new LogRepoClickHouseImpl(mockService);
 
     // Mock returned rows from ClickHouse
+    mockClient.mockedMetadataData = [
+      {
+        is_zoom_ready: 1,
+        max_available_depth: 2
+      }
+    ];
+
     mockClient.mockedNodesData = [
       {
         id: "node_A",
@@ -67,17 +84,21 @@ describe("LogRepoClickHouseImpl - Reads Unit Tests", () => {
     });
 
     // 3. Assert
-    expect(mockClient.queriesRan.length).toBe(2);
+    expect(mockClient.queriesRan.length).toBe(3);
 
-    // First query should seek nodes chronologically using composite keyset cursors
-    const nodeQuery = mockClient.queriesRan[0]!;
+    // First query should check metadata
+    const metaQuery = mockClient.queriesRan[0]!;
+    expect(metaQuery.query).toContain("toco_tracer.trace_metadata");
+
+    // Second query should seek nodes chronologically using composite keyset cursors
+    const nodeQuery = mockClient.queriesRan[1]!;
     expect(nodeQuery.query).toContain("toco_tracer.nodes");
     expect(nodeQuery.query).toContain("initiatedAtLocal > {afterTime: Int64}");
     expect(nodeQuery.query_params.afterTime).toBe(1779904700000);
     expect(nodeQuery.query_params.afterId).toBe("node_start");
 
-    // Second query must fetch matching edges with Strict Graph Coherence
-    const edgeQuery = mockClient.queriesRan[1]!;
+    // Third query must fetch matching edges with Strict Graph Coherence
+    const edgeQuery = mockClient.queriesRan[2]!;
     expect(edgeQuery.query).toContain("toco_tracer.edges");
     expect(edgeQuery.query).toContain("fromNodeId IN {nodeIds: Array(String)}");
     expect(edgeQuery.query).toContain("toNodeId IN {nodeIds: Array(String)}");
@@ -107,8 +128,9 @@ describe("LogRepoClickHouseImpl - Reads Unit Tests", () => {
     // Act: Request a massive, database-crashing limit of 50000
     await repo.fetchTracePaginated("trace_123", { limit: 50000 });
 
-    // Assert: It must be capped at our defensive limit of 100 (+1 fetch limit for page indicators)
-    const nodeQuery = mockClient.queriesRan[0]!;
+    // Assert: The nodes query (index 1 after metadata check) must be capped at our defensive limit of 100 (+1 fetch limit for page indicators)
+    expect(mockClient.queriesRan.length).toBe(2);
+    const nodeQuery = mockClient.queriesRan[1]!;
     expect(nodeQuery.query_params.fetchLimit).toBe(101);
   });
 });
