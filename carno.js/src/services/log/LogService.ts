@@ -33,6 +33,10 @@ export class LogService {
   async fetchTraceMetadata(traceId: string): Promise<import("./types").TraceMetadataResult> {
     return { isZoomReady: false, maxAvailableDepth: 0, maxAvailableLocalDepth: 0 };
   }
+
+  async listTraces(params: import("./types").TracePaginationParams): Promise<import("./types").PaginatedResult<import("./types").TraceSummary>> {
+    return { data: [], pagination: { prevTimeCursor: null, prevIdCursor: null, nextTimeCursor: null, nextIdCursor: null, hasPrev: false, hasNext: false } };
+  }
 }
 
 

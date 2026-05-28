@@ -100,5 +100,24 @@ export class LogController {
     console.log(`[LogController] Fetching metadata for trace ${traceId}`);
     return await this.logService.fetchTraceMetadata(traceId);
   }
+
+  @Get("/traces")
+  async listTraces(
+    @Query("limit") limit?: string,
+    @Query("beforeTime") beforeTime?: string,
+    @Query("afterTime") afterTime?: string
+  ) {
+    const rawLimit = limit ? parseInt(limit, 10) : undefined;
+    const rawBeforeTime = beforeTime ? parseInt(beforeTime, 10) : undefined;
+    const rawAfterTime = afterTime ? parseInt(afterTime, 10) : undefined;
+
+    console.log(`[LogController] Listing traces (limit: ${rawLimit}, beforeTime: ${rawBeforeTime}, afterTime: ${rawAfterTime})`);
+
+    return await this.logService.listTraces({
+      limit: rawLimit,
+      beforeTime: rawBeforeTime,
+      afterTime: rawAfterTime,
+    });
+  }
 }
 

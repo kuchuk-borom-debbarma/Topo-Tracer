@@ -61,4 +61,18 @@ export class MockLogRepo extends LogRepo {
     this.lastParamsUsed = params;
     return this.mockTraceResult;
   }
+
+  override async listTraces(params: import("../../types").TracePaginationParams): Promise<import("../../types").PaginatedResult<import("../../types").TraceSummary>> {
+    return {
+      data: [],
+      pagination: {
+        prevTimeCursor: null,
+        prevIdCursor: null,
+        nextTimeCursor: null,
+        nextIdCursor: null,
+        hasPrev: false,
+        hasNext: false
+      }
+    };
+  }
 }

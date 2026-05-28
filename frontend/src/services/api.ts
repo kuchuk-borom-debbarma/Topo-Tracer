@@ -56,6 +56,25 @@ export interface TraceMetadata {
   maxAvailableLocalDepth: number;
 }
 
+export interface TraceSummary {
+  traceId: string;
+  rootNodeName: string;
+  startTime: string;
+  nodeCount: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    prevTimeCursor: number | null;
+    prevIdCursor: string | null;
+    nextTimeCursor: number | null;
+    nextIdCursor: string | null;
+    hasPrev: boolean;
+    hasNext: boolean;
+  };
+}
+
 const BACKEND_BASE = 'http://localhost:3000/telemetry';
 
 // Robust offline mock fallback dataset based on real-world simulations
@@ -364,5 +383,42 @@ export async function fetchTraceMetadata(traceId: string): Promise<TraceMetadata
   } catch (err) {
     console.warn(`[API] Failed to fetch live metadata for ${traceId}, falling back to mock`, err);
     return MOCK_METADATA;
+  }
+}
+
+export async function fetchTraces(
+  limit: number = 20,
+  beforeTime?: number,
+  afterTime?: number
+): Promise<PaginatedResult<TraceSummary>> {
+  const params = new URLSearchParams();
+  params.set('limit', limit.toString());
+  if (beforeTime) params.set('beforeTime', beforeTime.toString());
+  if (afterTime) params.set('afterTime', afterTime.toString());
+
+  try {
+    const res = await fetch(`${BACKEND_BASE}/traces?${params.toString()}`);
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn(`[API] Failed to fetch live traces, returning mock list`, err);
+    return {
+      data: [
+        {
+          traceId: MOCK_TRACE_ID,
+          rootNodeName: 'POST /v1/checkout (Mock)',
+          startTime: new Date().toISOString(),
+          nodeCount: 10
+        }
+      ],
+      pagination: {
+        prevTimeCursor: null,
+        prevIdCursor: null,
+        nextTimeCursor: null,
+        nextIdCursor: null,
+        hasPrev: false,
+        hasNext: false
+      }
+    };
   }
 }

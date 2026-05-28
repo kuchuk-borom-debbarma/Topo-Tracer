@@ -146,6 +146,19 @@ export interface TraceMetadataResult {
 
 }
 
+export interface TraceSummary {
+  traceId: string;
+  rootNodeName: string;
+  startTime: Date;
+  nodeCount: number;
+}
+
+export interface TracePaginationParams {
+  limit?: number;
+  beforeTime?: number;
+  afterTime?: number;
+}
+
 export interface NodeMaterializationDTO {
   id: string;
   parentNodeId: string;

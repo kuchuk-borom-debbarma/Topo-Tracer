@@ -219,16 +219,24 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
       });
     }
 
-    // Determine which nodes actually match the search and are not hidden
+    // Determine which nodes match the search (ignoring collapse state)
+    const matchesSearchNodeIds = new Set<string>();
+    nodes.forEach(node => {
+      if (matchesSearch(node)) {
+        matchesSearchNodeIds.add(node.id);
+      }
+    });
+
+    // Determine which nodes are actually visible (not hidden by collapse AND match search)
     const visibleNodeIds = new Set<string>();
     nodes.forEach(node => {
-      if (!hiddenNodeIds.has(node.id) && matchesSearch(node)) {
+      if (!hiddenNodeIds.has(node.id) && matchesSearchNodeIds.has(node.id)) {
         visibleNodeIds.add(node.id);
       }
     });
 
-    // Helper to check if a group has any visible children (directly or recursively)
-    const hasVisibleDescendants = (parentId: string, groupName: string): boolean => {
+    // Helper to check if a group has any matching children (directly or recursively)
+    const hasMatchingDescendants = (parentId: string, groupName: string): boolean => {
       const children = parentToChildrenMap.get(parentId) || [];
       const groupChildren = children.filter(c => {
         const gName = c.group || `${nodes.find(n => n.id === parentId)?.name || 'Root'} group`;
@@ -236,7 +244,7 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
       });
 
       const checkDescendants = (nodeId: string): boolean => {
-        if (visibleNodeIds.has(nodeId)) return true;
+        if (matchesSearchNodeIds.has(nodeId)) return true;
         const subChildren = parentToChildrenMap.get(nodeId) || [];
         return subChildren.some(sc => checkDescendants(sc.id));
       };
@@ -251,7 +259,7 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
         // If parent is hidden, group is hidden
         if (item.parentNodeId && hiddenNodeIds.has(item.parentNodeId)) return false;
         // Only show group header if it contains matches or search is empty
-        return hasVisibleDescendants(item.parentNodeId, item.groupName);
+        return hasMatchingDescendants(item.parentNodeId, item.groupName);
       }
     });
   }, [renderItems, nodes, parentToChildrenMap, collapsedNodeIds, collapsedGroupKeys, matchesSearch]);
@@ -309,67 +317,78 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                       key={idx}
                       style={{
                         position: 'absolute',
-                        left: `calc(${idx} * 24px + 12px)`,
+                        left: `calc(${idx} * 32px + 16px)`,
                         top: 0,
                         bottom: 0,
                         width: '1px',
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        pointerEvents: 'none'
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        pointerEvents: 'none',
+                        zIndex: 1
                       }}
                     />
                   ))}
 
-                  {/* Folder chevron toggle trigger */}
                   <div 
                     style={{ 
-                      width: '20px', 
-                      height: '20px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      marginRight: '0.4rem',
-                      color: containerStyle.base,
-                      zIndex: 2
+                      marginLeft: `calc(${item.depth} * 32px)`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      flex: 1,
+                      minWidth: 0
                     }}
                   >
-                    {item.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                  </div>
-
-                  {/* Group Icon */}
-                  <div style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: containerStyle.base }}>
-                    {item.collapsed ? <Folder size={15} /> : <FolderOpen size={15} />}
-                  </div>
-
-                  {/* Logical Group Label Badge */}
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-                    <span 
-                      style={{
-                        fontSize: '0.75rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        fontWeight: 700,
-                        color: 'var(--text-primary)',
-                        textOverflow: 'ellipsis',
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {item.groupName}
-                    </span>
-                    <span 
-                      style={{
-                        fontSize: '0.65rem',
+                    {/* Folder chevron toggle trigger */}
+                    <div 
+                      style={{ 
+                        width: '20px', 
+                        height: '20px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        marginRight: '0.4rem',
                         color: containerStyle.base,
-                        background: containerStyle.bgTint,
-                        border: `1px solid ${containerStyle.border}`,
-                        padding: '0.1rem 0.4rem',
-                        borderRadius: '4px',
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap'
+                        zIndex: 2
                       }}
                     >
-                      {item.childCount} {item.childCount === 1 ? 'span' : 'spans'}
-                    </span>
+                      {item.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </div>
+
+                    {/* Group Icon */}
+                    <div style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: containerStyle.base }}>
+                      {item.collapsed ? <Folder size={15} /> : <FolderOpen size={15} />}
+                    </div>
+
+                    {/* Logical Group Label Badge */}
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                      <span 
+                        style={{
+                          fontSize: '0.75rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          fontWeight: 700,
+                          color: 'var(--text-primary)',
+                          textOverflow: 'ellipsis',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {item.groupName}
+                      </span>
+                      <span 
+                        style={{
+                          fontSize: '0.65rem',
+                          color: containerStyle.base,
+                          background: containerStyle.bgTint,
+                          border: `1px solid ${containerStyle.border}`,
+                          padding: '0.1rem 0.4rem',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {item.childCount} {item.childCount === 1 ? 'span' : 'spans'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
@@ -420,96 +439,122 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                     key={idx}
                     style={{
                       position: 'absolute',
-                      left: `calc(${idx} * 24px + 12px)`,
+                      left: `calc(${idx} * 32px + 16px)`,
                       top: 0,
                       bottom: 0,
                       width: '1px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      pointerEvents: 'none'
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      pointerEvents: 'none',
+                      zIndex: 1
                     }}
                   />
                 ))}
 
-                {/* Collapsible toggle trigger */}
+                {/* Horizontal connector "L" branch */}
+                {nodeDepth > 0 && (
+                  <div 
+                    style={{
+                      position: 'absolute',
+                      left: `calc(${(nodeDepth - 1)} * 32px + 16px)`,
+                      top: '50%',
+                      width: '16px',
+                      height: '1px',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      pointerEvents: 'none'
+                    }}
+                  />
+                )}
+
                 <div 
                   style={{ 
-                    width: '20px', 
-                    height: '20px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    marginRight: '0.25rem',
-                    color: 'var(--text-muted)',
-                    zIndex: 2
-                  }}
-                  onClick={(e) => {
-                    if (hasChildren) {
-                      e.stopPropagation();
-                      toggleCollapseNode(node.id);
-                    }
+                    marginLeft: `calc(${nodeDepth} * 32px)`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    flex: 1,
+                    minWidth: 0
                   }}
                 >
-                  {hasChildren ? (
-                    isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />
-                  ) : null}
-                </div>
-
-                {/* Styled Type Icon */}
-                <div style={{ marginRight: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {getNodeIcon(node.nodeType, isError)}
-                </div>
-
-                {/* Node Metadata Summary Info */}
-                <div style={{ flex: 1, minWidth: 0, paddingRight: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span 
-                      style={{ 
-                        fontWeight: 600, 
-                        fontSize: '0.875rem', 
-                        color: isError ? 'var(--accent-red)' : 'var(--text-primary)',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        maxWidth: '220px'
-                      }}
-                      title={node.name}
-                    >
-                      {node.name}
-                    </span>
-
-                    {/* Container Scope Badge */}
-                    {(() => {
-                      const containerStyle = getContainerStyle(node.containerId);
-                      return (
-                        <span 
-                          style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '0.2rem',
-                            fontSize: '0.7rem', 
-                            background: containerStyle.bgTint, 
-                            border: `1px solid ${containerStyle.border}`,
-                            padding: '0.1rem 0.4rem', 
-                            borderRadius: '4px',
-                            color: containerStyle.base,
-                            filter: `drop-shadow(0 0 2px ${containerStyle.glowing})`,
-                            fontWeight: 600
-                          }}
-                        >
-                          <Container size={10} style={{ color: containerStyle.base }} />
-                          {node.containerId}
-                        </span>
-                      );
-                    })()}
+                  {/* Collapsible toggle trigger */}
+                  <div 
+                    style={{ 
+                      width: '20px', 
+                      height: '20px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      marginRight: '0.25rem',
+                      color: 'var(--text-muted)',
+                      zIndex: 2
+                    }}
+                    onClick={(e) => {
+                      if (hasChildren) {
+                        e.stopPropagation();
+                        toggleCollapseNode(node.id);
+                      }
+                    }}
+                  >
+                    {hasChildren ? (
+                      isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />
+                    ) : null}
                   </div>
-                  
-                  {/* Subtle Subtitle Details */}
-                  <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                    <span style={{ textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700, color: nodeColor }}>
-                      {node.nodeType.replace('_', ' ')}
-                    </span>
-                    <span>•</span>
-                    <span>{totalDuration}ms duration {waitTime > 0 ? `(${selfTime}ms self + ${waitTime}ms wait)` : ''}</span>
+
+                  {/* Styled Type Icon */}
+                  <div style={{ marginRight: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {getNodeIcon(node.nodeType, isError)}
+                  </div>
+
+                  {/* Node Metadata Summary Info */}
+                  <div style={{ flex: 1, minWidth: 0, paddingRight: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span 
+                        style={{ 
+                          fontWeight: 600, 
+                          fontSize: '0.875rem', 
+                          color: isError ? 'var(--accent-red)' : 'var(--text-primary)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          maxWidth: '220px'
+                        }}
+                        title={node.name}
+                      >
+                        {node.name}
+                      </span>
+
+                      {/* Container Scope Badge */}
+                      {(() => {
+                        const containerStyle = getContainerStyle(node.containerId);
+                        return (
+                          <span 
+                            style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '0.2rem',
+                              fontSize: '0.7rem', 
+                              background: containerStyle.bgTint, 
+                              border: `1px solid ${containerStyle.border}`,
+                              padding: '0.1rem 0.4rem', 
+                              borderRadius: '4px',
+                              color: containerStyle.base,
+                              filter: `drop-shadow(0 0 2px ${containerStyle.glowing})`,
+                              fontWeight: 600
+                            }}
+                          >
+                            <Container size={10} style={{ color: containerStyle.base }} />
+                            {node.containerId}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    
+                    {/* Subtle Subtitle Details */}
+                    <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                      <span style={{ textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700, color: nodeColor }}>
+                        {node.nodeType.replace('_', ' ')}
+                      </span>
+                      <span>•</span>
+                      <span>{totalDuration}ms duration {waitTime > 0 ? `(${selfTime}ms self + ${waitTime}ms wait)` : ''}</span>
+                    </div>
                   </div>
                 </div>
 

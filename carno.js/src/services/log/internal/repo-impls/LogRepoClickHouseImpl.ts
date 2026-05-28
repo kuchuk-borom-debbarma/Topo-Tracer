@@ -175,6 +175,84 @@ export class LogRepoClickHouseImpl extends LogRepo {
     return await this.ensureMaterialized(traceId);
   }
 
+  override async listTraces(params: import("../../types").TracePaginationParams): Promise<import("../../types").PaginatedResult<import("../../types").TraceSummary>> {
+    const limit = params.limit || 50;
+    const fetchLimit = limit + 1;
+    
+    let havingClause = "1=1";
+    const queryParams: Record<string, any> = { fetchLimit };
+
+    const isBackward = params.beforeTime !== undefined;
+
+    if (isBackward) {
+      havingClause = "startTime < {beforeTime: Int64}";
+      queryParams.beforeTime = params.beforeTime;
+    } else if (params.afterTime !== undefined) {
+      havingClause = "startTime > {afterTime: Int64}";
+      queryParams.afterTime = params.afterTime;
+    }
+
+    const query = `
+      SELECT 
+          trace_id as traceId,
+          argMin(name, initiatedAtLocal) as rootNodeName,
+          min(initiatedAtLocal) as startTime,
+          count() as nodeCount
+      FROM toco_tracer.nodes
+      GROUP BY trace_id
+      HAVING ${havingClause}
+      ORDER BY startTime ${isBackward ? 'DESC' : 'ASC'}
+      LIMIT {fetchLimit: UInt32}
+    `;
+
+    const resultSet = await this.clickHouse.client.query({
+      query,
+      query_params: queryParams,
+      format: "JSONEachRow",
+    });
+
+    const rawRows = (await resultSet.json()) as any[];
+    
+    const mappedRows: import("../../types").TraceSummary[] = rawRows.map(row => ({
+      traceId: row.traceId,
+      rootNodeName: row.rootNodeName,
+      startTime: new Date(Number(row.startTime)),
+      nodeCount: Number(row.nodeCount)
+    }));
+
+    let data: import("../../types").TraceSummary[] = [];
+    let hasPrev = false;
+    let hasNext = false;
+
+    if (isBackward) {
+      const moreExist = mappedRows.length > limit;
+      data = moreExist ? mappedRows.slice(0, limit) : mappedRows;
+      hasPrev = moreExist;
+      hasNext = true;
+      data.reverse();
+    } else {
+      const moreExist = mappedRows.length > limit;
+      data = moreExist ? mappedRows.slice(0, limit) : mappedRows;
+      hasNext = moreExist;
+      hasPrev = params.afterTime !== undefined;
+    }
+
+    const firstItem = data[0];
+    const lastItem = data[data.length - 1];
+
+    return {
+      data,
+      pagination: {
+        prevTimeCursor: hasPrev && firstItem ? firstItem.startTime.getTime() : null,
+        prevIdCursor: null,
+        nextTimeCursor: hasNext && lastItem ? lastItem.startTime.getTime() : null,
+        nextIdCursor: null,
+        hasPrev,
+        hasNext
+      }
+    };
+  }
+
   override async fetchTrace(traceId: string, depthFilterThreshold: number = 0, depthType: 'global' | 'local' = 'global'): Promise<import("../../types").FullTraceResult> {
 
 

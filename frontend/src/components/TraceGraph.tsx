@@ -1,5 +1,5 @@
 import React from 'react';
-import { Network, Info } from 'lucide-react';
+import { Network, Info, ZoomIn, ZoomOut } from 'lucide-react';
 import type { TraceNode, VisualWire } from '../services/api';
 import { getContainerStyle, getNodeColor, getEdgeStyle, getSafeSvgId } from '../utils/styleUtils';
 
@@ -10,6 +10,9 @@ interface TraceGraphProps {
   selectedNode: TraceNode | null;
   onSelectNode: (node: TraceNode) => void;
   depthType: 'global' | 'local';
+  depth: number;
+  setDepth: (d: number) => void;
+  maxDepth: number;
 }
 
 interface GroupNode {
@@ -29,7 +32,10 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
   edges = [],
   selectedNode,
   onSelectNode,
-  depthType
+  depthType,
+  depth,
+  setDepth,
+  maxDepth
 }) => {
   // Compute unique edge types present to define dynamic SVG markers
   const uniqueEdgeTypes = React.useMemo(() => {
@@ -221,10 +227,49 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
           <Network size={16} style={{ color: 'var(--accent-purple)' }} />
           Snapped Trace Topology Canvas
         </h2>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-          <Info size={12} />
-          Click elements to inspect
-        </span>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', padding: '0.25rem', border: '1px solid var(--glass-border)' }}>
+            <button
+              onClick={() => setDepth(Math.max(0, depth - 1))}
+              disabled={depth <= 0}
+              style={{ 
+                background: 'transparent', 
+                border: 'none', 
+                color: depth <= 0 ? 'var(--text-muted)' : 'var(--text-primary)', 
+                cursor: depth <= 0 ? 'not-allowed' : 'pointer',
+                padding: '0.4rem',
+                display: 'flex',
+                borderRadius: '4px'
+              }}
+              title="Zoom Out (Reduce Resolution)"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <div style={{ width: '1px', background: 'var(--glass-border)', margin: '0.25rem 0.1rem' }} />
+            <button
+              onClick={() => setDepth(Math.min(maxDepth, depth + 1))}
+              disabled={depth >= maxDepth}
+              style={{ 
+                background: 'transparent', 
+                border: 'none', 
+                color: depth >= maxDepth ? 'var(--text-muted)' : 'var(--text-primary)', 
+                cursor: depth >= maxDepth ? 'not-allowed' : 'pointer',
+                padding: '0.4rem',
+                display: 'flex',
+                borderRadius: '4px'
+              }}
+              title="Zoom In (Increase Resolution)"
+            >
+              <ZoomIn size={16} />
+            </button>
+          </div>
+
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+            <Info size={12} />
+            Click elements to inspect
+          </span>
+        </div>
       </div>
 
       <div style={{ flex: 1, position: 'relative', background: 'rgba(5, 7, 12, 0.4)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.03)', minHeight: '380px', overflow: 'auto' }}>

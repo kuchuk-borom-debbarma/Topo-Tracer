@@ -3,16 +3,17 @@ import { TraceControls } from './TraceControls';
 import { TraceMetrics } from './TraceMetrics';
 import { TraceTree } from './TraceTree';
 import { TraceGraph } from './TraceGraph';
+import { TraceList } from './TraceList';
 import { NodeInspector } from './NodeInspector';
 import { fetchTraceFull, fetchTraceMetadata } from '../services/api';
 import type { TraceNode, VisualWire } from '../services/api';
 
-import { AlertCircle, UploadCloud, Terminal, List, Network } from 'lucide-react';
+import { AlertCircle, Terminal, List, Network, History } from 'lucide-react';
 
 
 export const TraceDashboard: React.FC = () => {
   // State definitions
-  const [activeTab, setActiveTab] = useState<'tree' | 'topology'>('tree');
+  const [activeTab, setActiveTab] = useState<'tree' | 'topology' | 'list'>('tree');
   const [traceId, setTraceId] = useState<string>('mock');
 
   const [depth, setDepth] = useState<number>(3);
@@ -61,7 +62,7 @@ export const TraceDashboard: React.FC = () => {
   // Run initial fetch on mount
   useEffect(() => {
     loadTraceTelemetry();
-  }, [depth, depthType]);
+  }, [traceId, depth, depthType]);
 
   // Handle manual explicit click query
   const handleFetch = () => {
@@ -101,24 +102,6 @@ export const TraceDashboard: React.FC = () => {
     setIsOpenInspector(true);
   };
 
-  // Offline drag & drop JSON parser fallback
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleFileDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
-    }
-  };
-
   const processFile = (file: File) => {
     setIsLoading(true);
     setErrorMsg(null);
@@ -146,38 +129,29 @@ export const TraceDashboard: React.FC = () => {
   return (
     <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '1.5rem 2rem 3rem' }}>
       
-      {/* Dynamic Glow Spotlight Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+      {/* Compact Header */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ 
-            fontSize: '2.25rem', 
+            fontSize: '1.75rem', 
             fontWeight: 800, 
             background: 'linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
-            letterSpacing: '-0.03em',
+            letterSpacing: '-0.02em',
             margin: 0
           }}>
-            Topo-Tracer Observability Console
+            Topo-Tracer
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginTop: '0.25rem' }}>
-            Interactive Multi-Resolution Trace Zoom & Infrastructure Topography
-          </p>
         </div>
 
-        {/* Status indicator tag */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.4rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--glass-border)' }}>
-          <Terminal size={14} style={{ color: 'var(--accent-teal)' }} />
-          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-            Service Layer Active:
-          </span>
-          <span style={{ 
-            fontSize: '0.8125rem', 
-            fontWeight: 700, 
-            color: traceId.startsWith('file:') ? 'var(--accent-purple)' : 'var(--accent-green)' 
-          }}>
-            {traceId.startsWith('file:') ? 'OFFLINE PLAYBACK' : 'LIVE TELEMETRY'}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.3rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--glass-border)' }}>
+            <Terminal size={12} style={{ color: 'var(--accent-teal)' }} />
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {traceId.startsWith('file:') ? 'OFFLINE' : 'LIVE'}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -211,10 +185,9 @@ export const TraceDashboard: React.FC = () => {
       {/* Core split layout workspace */}
       <div className="dashboard-grid">
         
-        {/* LEFT SIDEBAR - CONTROLS & INGESTION DROPZONE */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {/* LEFT SIDEBAR - CONTROLS */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           
-          {/* Slider and query deck */}
           <TraceControls
             traceId={traceId}
             setTraceId={setTraceId}
@@ -229,42 +202,8 @@ export const TraceDashboard: React.FC = () => {
             isLoading={isLoading}
             onExpandAll={handleExpandAll}
             onCollapseAll={handleCollapseAll}
+            onFileSelect={processFile}
           />
-
-          {/* Offline drop analyzer fallback */}
-          <div 
-            onDragOver={handleDragOver}
-            onDrop={handleFileDrop}
-            className="glass-panel"
-            style={{ 
-              padding: '1.5rem', 
-              textAlign: 'center', 
-              border: '1.5px dashed var(--glass-border)',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              transition: 'all 0.25s'
-            }}
-            onClick={() => document.getElementById('offline-select')?.click()}
-          >
-            <UploadCloud size={24} style={{ color: 'var(--accent-blue)', opacity: 0.8 }} />
-            <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Offline File Playback
-            </h4>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Drag simulated depth JSON here or click to browse.
-            </p>
-            <input 
-              id="offline-select"
-              type="file" 
-              accept=".json" 
-              onChange={handleFileSelect}
-              style={{ display: 'none' }}
-            />
-          </div>
 
         </div>
 
@@ -290,6 +229,13 @@ export const TraceDashboard: React.FC = () => {
               <Network size={16} />
               Architecture Topology Canvas
             </button>
+            <button 
+              className={`tab-trigger ${activeTab === 'list' ? 'active' : ''}`}
+              onClick={() => setActiveTab('list')}
+            >
+              <History size={16} />
+              Trace History & Logs
+            </button>
           </div>
 
           {/* Active Workspace Viewport */}
@@ -304,7 +250,7 @@ export const TraceDashboard: React.FC = () => {
                 search={search}
                 depthType={depthType}
               />
-            ) : (
+            ) : activeTab === 'topology' ? (
               <TraceGraph
                 nodes={nodes}
                 wires={wires}
@@ -312,8 +258,18 @@ export const TraceDashboard: React.FC = () => {
                 selectedNode={selectedNode}
                 onSelectNode={handleSelectNode}
                 depthType={depthType}
+                depth={depth}
+                setDepth={setDepth}
+                maxDepth={maxDepth}
               />
-
+            ) : (
+              <TraceList 
+                onSelectTrace={(id) => {
+                  setTraceId(id);
+                  setActiveTab('tree');
+                  setDepth(3);
+                }}
+              />
             )}
           </div>
 
