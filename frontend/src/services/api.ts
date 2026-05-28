@@ -25,9 +25,21 @@ export interface VisualWire {
   toTarget: WireTarget;
 }
 
+export interface TraceEdge {
+  id: string;
+  traceId: string;
+  fromContainerId: string;
+  toContainerId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  edgeType: string;
+  dispatchedAtLocal: string;
+  respondedAtLocal: string | null;
+}
+
 export interface FullTraceResult {
   nodes: TraceNode[];
-  edges: any[];
+  edges: TraceEdge[];
   visualWires: VisualWire[];
   isZoomReady: boolean;
   maxAvailableDepth: number;
@@ -282,9 +294,34 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
     }
   }
 
+  const mockEdges: TraceEdge[] = [
+    {
+      id: 'e-payment',
+      traceId: MOCK_TRACE_ID,
+      fromContainerId: 'container-order-api',
+      toContainerId: 'container-payment-svc',
+      fromNodeId: 'n-payment-call',
+      toNodeId: 'n-payment-recv',
+      edgeType: 'http_request',
+      dispatchedAtLocal: '2026-05-28T07:00:00.112Z',
+      respondedAtLocal: '2026-05-28T07:00:00.540Z'
+    },
+    {
+      id: 'e-dispatch',
+      traceId: MOCK_TRACE_ID,
+      fromContainerId: 'container-order-api',
+      toContainerId: 'container-inventory-worker',
+      fromNodeId: 'n-dispatch-pub',
+      toNodeId: 'n-dispatch-sub',
+      edgeType: 'kafka_message',
+      dispatchedAtLocal: '2026-05-28T07:00:00.560Z',
+      respondedAtLocal: '2026-05-28T07:00:00.600Z'
+    }
+  ];
+
   return {
     nodes: filteredNodes,
-    edges: [],
+    edges: mockEdges,
     visualWires,
     isZoomReady: true,
     maxAvailableDepth: MOCK_METADATA.maxAvailableDepth,

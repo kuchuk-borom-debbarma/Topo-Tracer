@@ -5,6 +5,7 @@ import type { TraceNode, VisualWire } from '../services/api';
 interface TraceGraphProps {
   nodes: TraceNode[];
   wires: VisualWire[];
+  edges: any[];
   selectedNode: TraceNode | null;
   onSelectNode: (node: TraceNode) => void;
   depthType: 'global' | 'local';
@@ -24,6 +25,7 @@ interface GroupNode {
 export const TraceGraph: React.FC<TraceGraphProps> = ({
   nodes,
   wires,
+  edges = [],
   selectedNode,
   onSelectNode,
   depthType
@@ -264,6 +266,25 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
               const dx = Math.abs(toX - fromX) * 0.5;
               const pathStr = `M ${fromX} ${fromY} C ${fromX + dx} ${fromY}, ${toX - dx} ${toY}, ${toX} ${toY}`;
 
+              // Find matching edge for real-time RTT & Transit delays
+              const matchedEdge = edges.find(e => 
+                (wire.fromTarget.type === 'node' && e.fromNodeId === wire.fromTarget.id && wire.toTarget.type === 'node' && e.toNodeId === wire.toTarget.id) ||
+                (wire.fromTarget.type === 'node' && e.fromNodeId === wire.fromTarget.id && wire.toTarget.type === 'container' && e.toContainerId === wire.toTarget.id) ||
+                (wire.fromTarget.type === 'container' && e.fromContainerId === wire.fromTarget.id && wire.toTarget.type === 'container' && e.toContainerId === wire.toTarget.id)
+              );
+
+              const rtt = matchedEdge && matchedEdge.respondedAtLocal 
+                ? new Date(matchedEdge.respondedAtLocal).getTime() - new Date(matchedEdge.dispatchedAtLocal).getTime()
+                : null;
+
+              const toNode = matchedEdge ? nodes.find(n => n.id === matchedEdge.toNodeId) : null;
+              const requestTransit = matchedEdge && toNode 
+                ? new Date(toNode.initiatedAtLocal).getTime() - new Date(matchedEdge.dispatchedAtLocal).getTime()
+                : null;
+
+              const midX = (fromX + toX) / 2;
+              const midY = (fromY + toY) / 2;
+
               return (
                 <g key={wire.id || idx}>
                   {/* Glowing blurred background line */}
@@ -288,6 +309,34 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                   <circle r="3" fill="#ffffff" style={{ filter: 'drop-shadow(0 0 4px var(--accent-pink))' }}>
                     <animateMotion dur="2.5s" repeatCount="indefinite" path={pathStr} />
                   </circle>
+
+                  {/* Glowing centered RTT/Overhead pill on the wire */}
+                  {rtt !== null && rtt > 0 && (
+                    <g transform={`translate(${midX}, ${midY})`} style={{ cursor: 'help' }}>
+                      <title>{`Network Round-Trip Time (RTT): ${rtt}ms${requestTransit !== null && requestTransit > 0 ? `\nRequest Transit Delay: ${requestTransit}ms` : ''}`}</title>
+                      <rect
+                        x="-48"
+                        y="-10"
+                        width="96"
+                        height="20"
+                        rx="5"
+                        fill="rgba(5, 7, 12, 0.88)"
+                        stroke="rgba(236, 72, 153, 0.3)"
+                        strokeWidth="1.2"
+                        style={{ filter: 'drop-shadow(0 0 6px rgba(236, 72, 153, 0.15))' }}
+                      />
+                      <text
+                        y="3"
+                        fill="var(--accent-pink)"
+                        fontSize="8.5"
+                        fontWeight="700"
+                        fontFamily="var(--font-mono)"
+                        textAnchor="middle"
+                      >
+                        ⚡ {rtt}ms RTT
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}
@@ -479,6 +528,12 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
               else if (node.nodeType === 'database') nodeColor = 'var(--accent-teal)';
               else if (node.nodeType === 'pubsub' || node.nodeType === 'queue') nodeColor = 'var(--accent-orange)';
 
+              // Compute precision node metrics
+              const selfTime = new Date(node.processedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime();
+              const waitTime = node.completedAtLocal 
+                ? new Date(node.completedAtLocal).getTime() - new Date(node.processedAtLocal).getTime()
+                : 0;
+
               return (
                 <g 
                   key={node.id} 
@@ -526,13 +581,25 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                   {/* Node label text */}
                   <text
                     x={pt.x - 74}
-                    y={pt.y + 4}
+                    y={pt.y - 1}
                     fill={isSelected ? '#ffffff' : 'var(--text-primary)'}
-                    fontSize="10"
+                    fontSize="9.5"
                     fontWeight="600"
                     fontFamily="var(--font-sans)"
                   >
                     {node.name.length > 25 ? `${node.name.substring(0, 23)}...` : node.name}
+                  </text>
+
+                  {/* Node self/wait timing tag */}
+                  <text
+                    x={pt.x - 74}
+                    y={pt.y + 9}
+                    fill="var(--text-secondary)"
+                    fontSize="7.5"
+                    fontWeight="500"
+                    fontFamily="var(--font-mono)"
+                  >
+                    ⏱️ {selfTime}ms self {waitTime > 0 ? `+ ${waitTime}ms wait` : ''}
                   </text>
                 </g>
               );

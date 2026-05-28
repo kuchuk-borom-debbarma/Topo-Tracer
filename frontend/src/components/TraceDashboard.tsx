@@ -22,6 +22,7 @@ export const TraceDashboard: React.FC = () => {
   
   const [nodes, setNodes] = useState<TraceNode[]>([]);
   const [wires, setWires] = useState<VisualWire[]>([]);
+  const [edges, setEdges] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<TraceNode | null>(null);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [isOpenInspector, setIsOpenInspector] = useState<boolean>(false);
@@ -38,6 +39,7 @@ export const TraceDashboard: React.FC = () => {
       const traceData = await fetchTraceFull(traceId, depth, depthType);
       setNodes(traceData.nodes || []);
       setWires(traceData.visualWires || []);
+      setEdges(traceData.edges || []);
 
       // Fetch metadata to find slider max values
       const meta = await fetchTraceMetadata(traceId);
@@ -126,6 +128,7 @@ export const TraceDashboard: React.FC = () => {
         const data = JSON.parse(evt.target?.result as string);
         setNodes(data.nodes || []);
         setWires(data.visualWires || []);
+        setEdges(data.edges || []);
         
         const activeMax = depthType === 'local' ? data.maxAvailableLocalDepth : data.maxAvailableDepth;
         setMaxDepth(activeMax ?? 3);
@@ -305,6 +308,7 @@ export const TraceDashboard: React.FC = () => {
               <TraceGraph
                 nodes={nodes}
                 wires={wires}
+                edges={edges}
                 selectedNode={selectedNode}
                 onSelectNode={handleSelectNode}
                 depthType={depthType}
@@ -320,6 +324,8 @@ export const TraceDashboard: React.FC = () => {
       {/* Floating sliding Inspector panel drawer */}
       <NodeInspector
         node={selectedNode}
+        nodes={nodes}
+        edges={edges}
         isOpen={isOpenInspector}
         onClose={() => setIsOpenInspector(false)}
       />

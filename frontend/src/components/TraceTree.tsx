@@ -375,10 +375,12 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
             const isCollapsed = collapsedNodeIds.has(node.id);
             const nodeDepth = item.depth;
             
-            // Duration calculation
-            const duration = node.completedAtLocal 
-              ? new Date(node.completedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime()
+            // Time Duration & Wait Calculations
+            const selfTime = new Date(node.processedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime();
+            const waitTime = node.completedAtLocal 
+              ? new Date(node.completedAtLocal).getTime() - new Date(node.processedAtLocal).getTime()
               : 0;
+            const totalDuration = selfTime + waitTime;
 
             const isSelected = selectedNode?.id === node.id;
             const isError = !!(node.metadata && (node.metadata.error || node.metadata.exception || (node.metadata.status >= 400)));
@@ -490,24 +492,70 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                       {node.nodeType.replace('_', ' ')}
                     </span>
                     <span>•</span>
-                    <span>{duration}ms duration</span>
+                    <span>{totalDuration}ms duration {waitTime > 0 ? `(${selfTime}ms self + ${waitTime}ms wait)` : ''}</span>
                   </div>
                 </div>
 
                 {/* Inline Performance Latency Visualizer bar */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '90px' }}>
-                  <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: 600, color: getLatencyColor(duration), width: '45px', textAlign: 'right' }}>
-                    {duration}ms
-                  </span>
-                  <div style={{ flex: 1, height: '4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'flex-end', 
+                    gap: '0.25rem', 
+                    width: '130px' 
+                  }}
+                  title={`Self Time: ${selfTime}ms | Wait Time: ${waitTime}ms`}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', fontWeight: 600, color: getLatencyColor(totalDuration) }}>
+                      {totalDuration}ms
+                    </span>
+                    {waitTime > 0 && (
+                      <span style={{ fontSize: '0.62rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                        ({selfTime}+{waitTime})
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    style={{ 
+                      width: '100%', 
+                      height: '5px', 
+                      background: 'rgba(255, 255, 255, 0.06)', 
+                      borderRadius: '3px', 
+                      overflow: 'hidden', 
+                      display: 'flex',
+                      justifyContent: 'flex-start'
+                    }}
+                  >
                     <div 
                       style={{ 
                         height: '100%', 
-                        width: `${Math.min(100, (duration / 800) * 100)}%`, 
-                        background: getLatencyColor(duration),
-                        borderRadius: '2px'
-                      }} 
-                    />
+                        width: `${Math.min(100, (totalDuration / 800) * 100)}%`, 
+                        display: 'flex',
+                        borderRadius: '3px',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {selfTime > 0 && (
+                        <div 
+                          style={{ 
+                            height: '100%', 
+                            width: `${(selfTime / totalDuration) * 100}%`, 
+                            background: 'var(--accent-green)'
+                          }} 
+                        />
+                      )}
+                      {waitTime > 0 && (
+                        <div 
+                          style={{ 
+                            height: '100%', 
+                            width: `${(waitTime / totalDuration) * 100}%`, 
+                            background: 'var(--accent-teal)'
+                          }} 
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 
