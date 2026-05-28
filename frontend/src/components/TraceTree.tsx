@@ -14,6 +14,7 @@ import {
   FolderOpen
 } from 'lucide-react';
 import type { TraceNode } from '../services/api';
+import { getContainerStyle, getNodeColor } from '../utils/styleUtils';
 
 interface TraceTreeProps {
   nodes: TraceNode[];
@@ -26,7 +27,7 @@ interface TraceTreeProps {
 }
 
 type RenderItem = 
-  | { type: 'group_header'; key: string; groupName: string; parentNodeId: string; depth: number; collapsed: boolean; childCount: number }
+  | { type: 'group_header'; key: string; groupName: string; parentNodeId: string; depth: number; collapsed: boolean; childCount: number; containerId: string }
   | { type: 'node'; node: TraceNode; depth: number };
 
 export const TraceTree: React.FC<TraceTreeProps> = ({
@@ -110,7 +111,8 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
           parentNodeId: parentId,
           depth: groupDepth,
           collapsed: isCollapsed,
-          childCount: group.nodes.length
+          childCount: group.nodes.length,
+          containerId: firstNode.containerId
         });
 
         // Render the children in this group, nested (depth + 1)
@@ -161,20 +163,22 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
     const size = 15;
     if (isError) return <AlertCircle size={size} style={{ color: 'var(--accent-red)' }} />;
     
+    const color = getNodeColor(type, isError);
+    
     switch (type) {
       case 'http_server':
-        return <Server size={size} style={{ color: 'var(--accent-green)' }} />;
+        return <Server size={size} style={{ color }} />;
       case 'http_client':
-        return <Network size={size} style={{ color: 'var(--accent-blue)' }} />;
+        return <Network size={size} style={{ color }} />;
       case 'database':
-        return <Database size={size} style={{ color: 'var(--accent-teal)' }} />;
+        return <Database size={size} style={{ color }} />;
       case 'pubsub':
       case 'queue':
-        return <Radio size={size} style={{ color: 'var(--accent-orange)' }} />;
+        return <Radio size={size} style={{ color }} />;
       case 'function':
-        return <Code size={size} style={{ color: 'var(--accent-purple)' }} />;
+        return <Code size={size} style={{ color }} />;
       default:
-        return <Cpu size={size} style={{ color: 'var(--text-muted)' }} />;
+        return <Cpu size={size} style={{ color }} />;
     }
   };
 
@@ -273,6 +277,8 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
         ) : (
           filteredRenderItems.map(item => {
             if (item.type === 'group_header') {
+              const containerStyle = getContainerStyle(item.containerId);
+              
               return (
                 <div
                   key={item.key}
@@ -281,9 +287,9 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                     '--depth': item.depth,
                     display: 'flex',
                     alignItems: 'center',
-                    background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.03) 100%)',
-                    border: '1px solid rgba(59, 130, 246, 0.15)',
-                    borderLeft: '4px solid var(--accent-blue)',
+                    background: `linear-gradient(90deg, ${containerStyle.bgTint} 0%, rgba(255,255,255,0.01) 100%)`,
+                    border: `1px solid ${containerStyle.border}`,
+                    borderLeft: `4px solid ${containerStyle.base}`,
                     padding: '0.5rem 0.75rem',
                     borderRadius: 'var(--radius-sm)',
                     cursor: 'pointer',
@@ -291,7 +297,7 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                     marginTop: '0.25rem',
                     position: 'relative',
                     backdropFilter: 'blur(8px)',
-                    boxShadow: '0 0 10px rgba(59, 130, 246, 0.04)',
+                    boxShadow: `0 0 10px ${containerStyle.glowing}`,
                     transition: 'all 0.15s ease',
                     zIndex: 5
                   } as React.CSSProperties}
@@ -322,7 +328,7 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                       alignItems: 'center', 
                       justifyContent: 'center',
                       marginRight: '0.4rem',
-                      color: 'var(--accent-blue)',
+                      color: containerStyle.base,
                       zIndex: 2
                     }}
                   >
@@ -330,7 +336,7 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                   </div>
 
                   {/* Group Icon */}
-                  <div style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
+                  <div style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: containerStyle.base }}>
                     {item.collapsed ? <Folder size={15} /> : <FolderOpen size={15} />}
                   </div>
 
@@ -353,9 +359,9 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                     <span 
                       style={{
                         fontSize: '0.65rem',
-                        color: 'var(--accent-blue)',
-                        background: 'rgba(59, 130, 246, 0.08)',
-                        border: '1px solid rgba(59, 130, 246, 0.15)',
+                        color: containerStyle.base,
+                        background: containerStyle.bgTint,
+                        border: `1px solid ${containerStyle.border}`,
                         padding: '0.1rem 0.4rem',
                         borderRadius: '4px',
                         fontWeight: 600,
@@ -385,6 +391,8 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
             const isSelected = selectedNode?.id === node.id;
             const isError = !!(node.metadata && (node.metadata.error || node.metadata.exception || (node.metadata.status >= 400)));
 
+            const nodeColor = getNodeColor(node.nodeType, isError);
+
             return (
               <div
                 key={node.id}
@@ -393,14 +401,16 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                   '--depth': nodeDepth,
                   display: 'flex',
                   alignItems: 'center',
-                  background: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                  border: isSelected ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+                  background: isSelected ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+                  border: isSelected ? `1px solid ${nodeColor}` : '1px solid transparent',
+                  borderLeft: isSelected ? `4px solid ${nodeColor}` : '1px solid transparent',
                   padding: '0.625rem 0.75rem',
                   borderRadius: 'var(--radius-sm)',
                   cursor: 'pointer',
                   marginBottom: '0.25rem',
                   transition: 'all 0.15s ease',
-                  position: 'relative'
+                  position: 'relative',
+                  boxShadow: isSelected ? `0 0 10px ${nodeColor}22` : 'none'
                 } as React.CSSProperties}
                 onClick={() => onSelectNode(node)}
               >
@@ -468,27 +478,34 @@ export const TraceTree: React.FC<TraceTreeProps> = ({
                     </span>
 
                     {/* Container Scope Badge */}
-                    <span 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.2rem',
-                        fontSize: '0.7rem', 
-                        background: 'rgba(255,255,255,0.04)', 
-                        border: '1px solid rgba(255,255,255,0.06)',
-                        padding: '0.1rem 0.4rem', 
-                        borderRadius: '4px',
-                        color: 'var(--text-secondary)' 
-                      }}
-                    >
-                      <Container size={10} />
-                      {node.containerId}
-                    </span>
+                    {(() => {
+                      const containerStyle = getContainerStyle(node.containerId);
+                      return (
+                        <span 
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.2rem',
+                            fontSize: '0.7rem', 
+                            background: containerStyle.bgTint, 
+                            border: `1px solid ${containerStyle.border}`,
+                            padding: '0.1rem 0.4rem', 
+                            borderRadius: '4px',
+                            color: containerStyle.base,
+                            filter: `drop-shadow(0 0 2px ${containerStyle.glowing})`,
+                            fontWeight: 600
+                          }}
+                        >
+                          <Container size={10} style={{ color: containerStyle.base }} />
+                          {node.containerId}
+                        </span>
+                      );
+                    })()}
                   </div>
                   
                   {/* Subtle Subtitle Details */}
                   <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                    <span style={{ textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    <span style={{ textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700, color: nodeColor }}>
                       {node.nodeType.replace('_', ' ')}
                     </span>
                     <span>•</span>

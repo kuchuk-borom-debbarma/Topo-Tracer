@@ -1,6 +1,7 @@
 import React from 'react';
 import { Network, Info } from 'lucide-react';
 import type { TraceNode, VisualWire } from '../services/api';
+import { getContainerStyle, getNodeColor, getEdgeStyle, getSafeSvgId } from '../utils/styleUtils';
 
 interface TraceGraphProps {
   nodes: TraceNode[];
@@ -30,6 +31,20 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
   onSelectNode,
   depthType
 }) => {
+  // Compute unique edge types present to define dynamic SVG markers
+  const uniqueEdgeTypes = React.useMemo(() => {
+    const types = new Set<string>();
+    edges.forEach(e => {
+      if (e.edgeType) types.add(e.edgeType);
+    });
+    // Add default fallbacks to ensure default markers always exist
+    if (types.size === 0) {
+      types.add('http_request');
+      types.add('kafka_message');
+    }
+    return Array.from(types);
+  }, [edges]);
+
   // Map containers and their children nodes
   const containersMap = React.useMemo(() => {
     const map = new Map<string, TraceNode[]>();
@@ -224,28 +239,42 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
             viewBox={`0 0 ${svgWidth} ${svgHeight}`}
             style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '580px', margin: 'auto' }}
           >
-            {/* Define neon drop shadow glowing filters */}
+            {/* Define dynamic neon drop shadow glowing filters and custom arrow markers */}
             <defs>
-              <filter id="glow-blue" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-              <filter id="glow-pink" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-              <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-blue)" />
-              </marker>
-              <marker id="arrow-blue-start" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                <path d="M 10 1 L 0 5 L 10 9 z" fill="var(--accent-blue)" />
-              </marker>
-              <marker id="arrow-pink" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-pink)" />
-              </marker>
-              <marker id="arrow-pink-start" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                <path d="M 10 1 L 0 5 L 10 9 z" fill="var(--accent-pink)" />
-              </marker>
+              {uniqueEdgeTypes.map(type => {
+                const safeId = getSafeSvgId(type);
+                const style = getEdgeStyle(type);
+                return (
+                  <React.Fragment key={type}>
+                    <filter id={`glow-${safeId}`} x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="4" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <marker
+                      id={`arrow-${safeId}`}
+                      viewBox="0 0 10 10"
+                      refX="6"
+                      refY="5"
+                      markerWidth="6"
+                      markerHeight="6"
+                      orient="auto-start-reverse"
+                    >
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill={style.base} />
+                    </marker>
+                    <marker
+                      id={`arrow-${safeId}-start`}
+                      viewBox="0 0 10 10"
+                      refX="4"
+                      refY="5"
+                      markerWidth="6"
+                      markerHeight="6"
+                      orient="auto"
+                    >
+                      <path d="M 10 1 L 0 5 L 10 9 z" fill={style.base} />
+                    </marker>
+                  </React.Fragment>
+                );
+              })}
             </defs>
 
             {/* 1. Draw Network Connections (Visual Wires) */}
@@ -299,61 +328,72 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
 
               return (
                 <g key={wire.id || idx}>
-                  {/* Glowing blurred background line */}
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke="rgba(236, 72, 153, 0.15)"
-                    strokeWidth="5"
-                    filter="url(#glow-pink)"
-                  />
-                  {/* Core vector wire */}
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke="var(--accent-pink)"
-                    strokeWidth="2"
-                    markerStart={matchedEdge && (matchedEdge.edgeType === 'http_request' || matchedEdge.edgeType === 'http_client_request') ? "url(#arrow-pink-start)" : undefined}
-                    markerEnd="url(#arrow-pink)"
-                    strokeDasharray={wire.fromTarget.type === 'container' ? "4 4" : undefined}
-                    style={{ transition: 'all 0.3s ease' }}
-                  />
-                  {/* Pulsing micro-animated packet */}
-                  <circle r="3" fill="#ffffff" style={{ filter: 'drop-shadow(0 0 4px var(--accent-pink))' }}>
-                    <animateMotion dur="2.5s" repeatCount="indefinite" path={pathStr} />
-                  </circle>
-
-                  {/* Glowing centered RTT/Overhead pill on the wire */}
-                  {rtt !== null && rtt > 0 && (() => {
-                    const labelText = requestTransit !== null && requestTransit > 0
-                      ? `⚡ RTT: ${rtt}ms (Transit: ${requestTransit}ms)`
-                      : `⚡ RTT: ${rtt}ms`;
-                    const labelWidth = labelText.length * 5.4 + 14;
+                  {(() => {
+                    const edgeType = matchedEdge?.edgeType || 'http_request';
+                    const edgeStyle = getEdgeStyle(edgeType);
+                    const safeTypeClass = getSafeSvgId(edgeType);
+                    
                     return (
-                      <g transform={`translate(${midX}, ${midY})`} style={{ cursor: 'help' }}>
-                        <title>{`Network Round-Trip Time (RTT): ${rtt}ms${requestTransit !== null && requestTransit > 0 ? `\nRequest Transit Delay: ${requestTransit}ms` : ''}`}</title>
-                        <rect
-                          x={-labelWidth / 2}
-                          y="-10"
-                          width={labelWidth}
-                          height="20"
-                          rx="5"
-                          fill="rgba(5, 7, 12, 0.88)"
-                          stroke="rgba(236, 72, 153, 0.3)"
-                          strokeWidth="1.2"
-                          style={{ filter: 'drop-shadow(0 0 6px rgba(236, 72, 153, 0.15))' }}
+                      <React.Fragment>
+                        {/* Glowing blurred background line */}
+                        <path
+                          d={pathStr}
+                          fill="none"
+                          stroke={edgeStyle.base}
+                          strokeWidth="5"
+                          opacity="0.15"
+                          filter={`url(#glow-${safeTypeClass})`}
                         />
-                        <text
-                          y="3"
-                          fill="var(--accent-pink)"
-                          fontSize="8.5"
-                          fontWeight="700"
-                          fontFamily="var(--font-mono)"
-                          textAnchor="middle"
-                        >
-                          {labelText}
-                        </text>
-                      </g>
+                        {/* Core vector wire */}
+                        <path
+                          d={pathStr}
+                          fill="none"
+                          stroke={edgeStyle.base}
+                          strokeWidth="2"
+                          markerStart={matchedEdge && (matchedEdge.edgeType === 'http_request' || matchedEdge.edgeType === 'http_client_request') ? `url(#arrow-${safeTypeClass}-start)` : undefined}
+                          markerEnd={`url(#arrow-${safeTypeClass})`}
+                          strokeDasharray={wire.fromTarget.type === 'container' ? "4 4" : undefined}
+                          style={{ transition: 'all 0.3s ease' }}
+                        />
+                        {/* Pulsing micro-animated packet */}
+                        <circle r="3" fill="#ffffff" style={{ filter: `drop-shadow(0 0 4px ${edgeStyle.base})` }}>
+                          <animateMotion dur="2.5s" repeatCount="indefinite" path={pathStr} />
+                        </circle>
+
+                        {/* Glowing centered RTT/Overhead pill on the wire */}
+                        {rtt !== null && rtt > 0 && (() => {
+                          const labelText = requestTransit !== null && requestTransit > 0
+                            ? `⚡ RTT: ${rtt}ms (Transit: ${requestTransit}ms)`
+                            : `⚡ RTT: ${rtt}ms`;
+                          const labelWidth = labelText.length * 5.4 + 14;
+                          return (
+                            <g transform={`translate(${midX}, ${midY})`} style={{ cursor: 'help' }}>
+                              <title>{`Network Round-Trip Time (RTT): ${rtt}ms${requestTransit !== null && requestTransit > 0 ? `\nRequest Transit Delay: ${requestTransit}ms` : ''}`}</title>
+                              <rect
+                                x={-labelWidth / 2}
+                                y="-10"
+                                width={labelWidth}
+                                height="20"
+                                rx="5"
+                                fill="rgba(5, 7, 12, 0.88)"
+                                stroke={edgeStyle.border}
+                                strokeWidth="1.2"
+                                style={{ filter: `drop-shadow(0 0 6px ${edgeStyle.glowing})` }}
+                              />
+                              <text
+                                y="3"
+                                fill={edgeStyle.base}
+                                fontSize="8.5"
+                                fontWeight="700"
+                                fontFamily="var(--font-mono)"
+                                textAnchor="middle"
+                              >
+                                {labelText}
+                              </text>
+                            </g>
+                          );
+                        })()}
+                      </React.Fragment>
                     );
                   })()}
                 </g>
@@ -392,6 +432,8 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
               const c = layout.coords[cId];
               const groups = layout.containerGroups[cId] || [];
               if (!c) return null;
+              const containerStyle = getContainerStyle(cId);
+
               return (
                 <g key={cId}>
                   {/* Container bounding box */}
@@ -402,9 +444,13 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                     height={c.h}
                     rx="12"
                     fill="rgba(13, 20, 35, 0.45)"
-                    stroke="rgba(255, 255, 255, 0.04)"
-                    strokeWidth="1"
-                    style={{ backdropFilter: 'blur(10px)', transition: 'all 0.3s' }}
+                    stroke={containerStyle.border}
+                    strokeWidth="1.2"
+                    style={{ 
+                      backdropFilter: 'blur(10px)', 
+                      transition: 'all 0.3s',
+                      filter: `drop-shadow(0 0 4px ${containerStyle.glowing})` 
+                    }}
                   />
                   
                   {/* Container title bar banner */}
@@ -414,14 +460,14 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                     width={c.w - 2}
                     height="32"
                     rx="11"
-                    fill="rgba(255, 255, 255, 0.02)"
+                    fill={containerStyle.bgTint}
                   />
                   <line
                     x1={c.x}
                     y1={c.y + 32}
                     x2={c.x + c.w}
                     y2={c.y + 32}
-                    stroke="rgba(255, 255, 255, 0.05)"
+                    stroke={containerStyle.border}
                     strokeWidth="1"
                   />
                   
@@ -429,7 +475,7 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                   <text
                     x={c.x + 12}
                     y={c.y + 21}
-                    fill="var(--text-secondary)"
+                    fill={containerStyle.base}
                     fontSize="11"
                     fontWeight="700"
                     fontFamily="var(--font-display)"
@@ -542,13 +588,8 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
               const isSelected = selectedNode?.id === node.id;
               const isError = !!(node.metadata && (node.metadata.error || node.metadata.exception || (node.metadata.status >= 400)));
               
-              // Node color resolver
-              let nodeColor = 'var(--accent-purple)';
-              if (isError) nodeColor = 'var(--accent-red)';
-              else if (node.nodeType === 'http_server') nodeColor = 'var(--accent-green)';
-              else if (node.nodeType === 'http_client') nodeColor = 'var(--accent-blue)';
-              else if (node.nodeType === 'database') nodeColor = 'var(--accent-teal)';
-              else if (node.nodeType === 'pubsub' || node.nodeType === 'queue') nodeColor = 'var(--accent-orange)';
+              // Resolve dynamic node color using style resolver
+              const nodeColor = getNodeColor(node.nodeType, isError);
 
               // Compute precision node metrics
               const selfTime = new Date(node.processedAtLocal).getTime() - new Date(node.initiatedAtLocal).getTime();
@@ -570,10 +611,10 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                       width={nWidth + 10}
                       height="40"
                       rx="8"
-                      fill="rgba(59, 130, 246, 0.05)"
-                      stroke="var(--accent-blue)"
+                      fill="rgba(255, 255, 255, 0.02)"
+                      stroke={nodeColor}
                       strokeWidth="1.5"
-                      filter="url(#glow-blue)"
+                      style={{ filter: `drop-shadow(0 0 6px ${nodeColor})` }}
                     />
                   )}
 
