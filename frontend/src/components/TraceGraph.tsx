@@ -45,7 +45,7 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
   // Coordinate mapper with recursive group nesting support
   const layout = React.useMemo(() => {
     const coords: Record<string, { x: number; y: number; w: number; h: number }> = {};
-    const nodeCoords: Record<string, { x: number; y: number }> = {};
+    const nodeCoords: Record<string, { x: number; y: number; width: number }> = {};
     const containerGroups: Record<string, GroupNode[]> = {};
     const groupParentMap: Record<string, string | null> = {}; // Tracks parent-group name of each group
     
@@ -62,7 +62,8 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
       // 1. Group nodes inside this container
       const groupNodesMap = new Map<string, TraceNode[]>();
       containerNodes.forEach(node => {
-        const gName = node.group || `${node.name} group`;
+        const depth = depthType === 'local' ? node.localDepthIndex : node.depthIndex;
+        const gName = node.group || `${node.containerId}_${depth}`;
         if (!groupNodesMap.has(gName)) groupNodesMap.set(gName, []);
         groupNodesMap.get(gName)!.push(node);
       });
@@ -76,7 +77,8 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
             // Find parent node inside same container
             const parentNode = containerNodes.find(p => p.id === node.parentNodeId);
             if (parentNode) {
-              const pGName = parentNode.group || `${parentNode.name} group`;
+              const pDepth = depthType === 'local' ? parentNode.localDepthIndex : parentNode.depthIndex;
+              const pGName = parentNode.group || `${parentNode.containerId}_${pDepth}`;
               if (pGName !== gName) {
                 parentGroupName = pGName;
                 break;
@@ -143,10 +145,12 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
         // Position nodes inside this group card
         group.nodes.forEach((node) => {
           const nodeDepth = depthType === 'local' ? node.localDepthIndex : node.depthIndex;
+          const nodeWidth = Math.min(170, width - 24);
           nodeCoords[node.id] = {
             // Center node horizontally in current card + depth slant offset
             x: startX + (width / 2) + (nodeDepth * 4),
-            y: currentY + 18
+            y: currentY + 18,
+            width: nodeWidth
           };
           currentY += 50; // Size of node (30px) + margin (20px)
         });
@@ -233,8 +237,14 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
               <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-blue)" />
               </marker>
+              <marker id="arrow-blue-start" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 10 1 L 0 5 L 10 9 z" fill="var(--accent-blue)" />
+              </marker>
               <marker id="arrow-pink" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-pink)" />
+              </marker>
+              <marker id="arrow-pink-start" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 10 1 L 0 5 L 10 9 z" fill="var(--accent-pink)" />
               </marker>
             </defs>
 
@@ -273,8 +283,10 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                 (wire.fromTarget.type === 'container' && e.fromContainerId === wire.fromTarget.id && wire.toTarget.type === 'container' && e.toContainerId === wire.toTarget.id)
               );
 
-              const rtt = matchedEdge && matchedEdge.respondedAtLocal 
-                ? new Date(matchedEdge.respondedAtLocal).getTime() - new Date(matchedEdge.dispatchedAtLocal).getTime()
+              const respondedAt = matchedEdge?.respondedAtLocal;
+
+              const rtt = matchedEdge && respondedAt 
+                ? new Date(respondedAt).getTime() - new Date(matchedEdge.dispatchedAtLocal).getTime()
                 : null;
 
               const toNode = matchedEdge ? nodes.find(n => n.id === matchedEdge.toNodeId) : null;
@@ -301,6 +313,7 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                     fill="none"
                     stroke="var(--accent-pink)"
                     strokeWidth="2"
+                    markerStart={matchedEdge && (matchedEdge.edgeType === 'http_request' || matchedEdge.edgeType === 'http_client_request') ? "url(#arrow-pink-start)" : undefined}
                     markerEnd="url(#arrow-pink)"
                     strokeDasharray={wire.fromTarget.type === 'container' ? "4 4" : undefined}
                     style={{ transition: 'all 0.3s ease' }}
@@ -311,32 +324,38 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                   </circle>
 
                   {/* Glowing centered RTT/Overhead pill on the wire */}
-                  {rtt !== null && rtt > 0 && (
-                    <g transform={`translate(${midX}, ${midY})`} style={{ cursor: 'help' }}>
-                      <title>{`Network Round-Trip Time (RTT): ${rtt}ms${requestTransit !== null && requestTransit > 0 ? `\nRequest Transit Delay: ${requestTransit}ms` : ''}`}</title>
-                      <rect
-                        x="-48"
-                        y="-10"
-                        width="96"
-                        height="20"
-                        rx="5"
-                        fill="rgba(5, 7, 12, 0.88)"
-                        stroke="rgba(236, 72, 153, 0.3)"
-                        strokeWidth="1.2"
-                        style={{ filter: 'drop-shadow(0 0 6px rgba(236, 72, 153, 0.15))' }}
-                      />
-                      <text
-                        y="3"
-                        fill="var(--accent-pink)"
-                        fontSize="8.5"
-                        fontWeight="700"
-                        fontFamily="var(--font-mono)"
-                        textAnchor="middle"
-                      >
-                        ⚡ {rtt}ms RTT
-                      </text>
-                    </g>
-                  )}
+                  {rtt !== null && rtt > 0 && (() => {
+                    const labelText = requestTransit !== null && requestTransit > 0
+                      ? `⚡ RTT: ${rtt}ms (Transit: ${requestTransit}ms)`
+                      : `⚡ RTT: ${rtt}ms`;
+                    const labelWidth = labelText.length * 5.4 + 14;
+                    return (
+                      <g transform={`translate(${midX}, ${midY})`} style={{ cursor: 'help' }}>
+                        <title>{`Network Round-Trip Time (RTT): ${rtt}ms${requestTransit !== null && requestTransit > 0 ? `\nRequest Transit Delay: ${requestTransit}ms` : ''}`}</title>
+                        <rect
+                          x={-labelWidth / 2}
+                          y="-10"
+                          width={labelWidth}
+                          height="20"
+                          rx="5"
+                          fill="rgba(5, 7, 12, 0.88)"
+                          stroke="rgba(236, 72, 153, 0.3)"
+                          strokeWidth="1.2"
+                          style={{ filter: 'drop-shadow(0 0 6px rgba(236, 72, 153, 0.15))' }}
+                        />
+                        <text
+                          y="3"
+                          fill="var(--accent-pink)"
+                          fontSize="8.5"
+                          fontWeight="700"
+                          fontFamily="var(--font-mono)"
+                          textAnchor="middle"
+                        >
+                          {labelText}
+                        </text>
+                      </g>
+                    );
+                  })()}
                 </g>
               );
             })}
@@ -517,6 +536,9 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
               const pt = layout.nodeCoords[node.id];
               if (!pt) return null;
 
+              const nWidth = pt.width || 170;
+              const halfWidth = nWidth / 2;
+
               const isSelected = selectedNode?.id === node.id;
               const isError = !!(node.metadata && (node.metadata.error || node.metadata.exception || (node.metadata.status >= 400)));
               
@@ -543,9 +565,9 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
                   {/* Glowing background ring if selected */}
                   {isSelected && (
                     <rect
-                      x={pt.x - 90}
+                      x={pt.x - halfWidth - 5}
                       y={pt.y - 20}
-                      width="180"
+                      width={nWidth + 10}
                       height="40"
                       rx="8"
                       fill="rgba(59, 130, 246, 0.05)"
@@ -557,9 +579,9 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
 
                   {/* Node solid body */}
                   <rect
-                    x={pt.x - 85}
+                    x={pt.x - halfWidth}
                     y={pt.y - 15}
-                    width="170"
+                    width={nWidth}
                     height="30"
                     rx="6"
                     fill="rgba(5, 7, 12, 0.85)"
@@ -570,7 +592,7 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
 
                   {/* Left edge colored badge */}
                   <rect
-                    x={pt.x - 85}
+                    x={pt.x - halfWidth}
                     y={pt.y - 15}
                     width="4"
                     height="30"
@@ -580,26 +602,41 @@ export const TraceGraph: React.FC<TraceGraphProps> = ({
 
                   {/* Node label text */}
                   <text
-                    x={pt.x - 74}
+                    x={pt.x - halfWidth + 11}
                     y={pt.y - 1}
                     fill={isSelected ? '#ffffff' : 'var(--text-primary)'}
                     fontSize="9.5"
                     fontWeight="600"
                     fontFamily="var(--font-sans)"
                   >
-                    {node.name.length > 25 ? `${node.name.substring(0, 23)}...` : node.name}
+                    {node.name.length > Math.floor((nWidth - 30) / 6.5) 
+                      ? `${node.name.substring(0, Math.floor((nWidth - 30) / 6.5) - 2)}...` 
+                      : node.name}
                   </text>
 
-                  {/* Node self/wait timing tag */}
+                  {/* Node timing tag */}
                   <text
-                    x={pt.x - 74}
+                    x={pt.x - halfWidth + 11}
                     y={pt.y + 9}
                     fill="var(--text-secondary)"
                     fontSize="7.5"
                     fontWeight="500"
                     fontFamily="var(--font-mono)"
                   >
-                    ⏱️ {selfTime}ms self {waitTime > 0 ? `+ ${waitTime}ms wait` : ''}
+                    {(() => {
+                      const totalTime = selfTime + waitTime;
+                      if (waitTime === 0) {
+                        return `⏱️ Exec: ${selfTime}ms`;
+                      } else {
+                        if (nWidth >= 160) {
+                          return `⏱️ Total: ${totalTime}ms (Exec: ${selfTime}ms)`;
+                        } else if (nWidth >= 130) {
+                          return `⏱️ ${totalTime}ms (Exec: ${selfTime}ms)`;
+                        } else {
+                          return `⏱️ ${totalTime}ms / ${selfTime}ms`;
+                        }
+                      }
+                    })()}
                   </text>
                 </g>
               );

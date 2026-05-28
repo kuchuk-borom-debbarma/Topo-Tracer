@@ -37,7 +37,7 @@ export class TraceNode {
     this.parentNodeId = opts.parentNodeId;
     this.depthIndex = opts.depthIndex;
     this.localDepthIndex = opts.localDepthIndex;
-    this.group = opts.group;
+    this.group = opts.group || `${opts.containerId}_${opts.depthIndex}`;
     this.initiatedAtLocal = new Date();
   }
 
@@ -53,7 +53,7 @@ export class TraceNode {
       parentNodeId: this.id,
       depthIndex: this.depthIndex + 1,
       localDepthIndex: this.localDepthIndex + 1,
-      group: group || `${name} group`
+      group
     });
   }
 
