@@ -21,6 +21,7 @@ export class TraceNode {
   public cpuActiveDurationUs?: number;
   public suspendedAtLocal: Date[] = [];
   public resumedAtLocal: Date[] = [];
+  public incomingEdge?: ActiveEdge;
   
   private isFinished = false;
   private activeEdges: ActiveEdge[] = [];
@@ -69,6 +70,55 @@ export class TraceNode {
   }
 
   /**
+   * Starts a child node in a different logical container, automatically establishing
+   * and tracking the network egress edge transition with zero boilerplate.
+   */
+  public startChildInContainer(opts: {
+    containerId: string;
+    containerName?: string;
+    containerType?: string;
+    name: string;
+    nodeType: NodeType | string;
+    edgeType?: EdgeType | string;
+    group?: string;
+    scheduledAtLocal?: Date;
+  }): TraceNode {
+    // 1. Auto-register the logical container if details are provided
+    if (opts.containerName) {
+      Tracer.registerContainer({
+        id: opts.containerId,
+        name: opts.containerName,
+        containerType: opts.containerType || 'Logical Module'
+      });
+    }
+
+    // 2. Instantiate child node (resets localDepthIndex back to 0 across boundaries)
+    const childNode = new TraceNode({
+      traceId: this.traceId,
+      containerId: opts.containerId,
+      name: opts.name,
+      nodeType: opts.nodeType,
+      parentNodeId: this.id,
+      depthIndex: this.depthIndex + 1,
+      localDepthIndex: 0,
+      group: opts.group,
+      scheduledAtLocal: opts.scheduledAtLocal
+    });
+
+    // 3. Mark context transition as processed
+    childNode.markProcessed();
+
+    // 4. Create and wire the stateful connection edge (egress arrow) from this node to child node
+    const edgeType = opts.edgeType || EdgeType.HTTP_REQUEST;
+    const activeEdge = this.recordEgressEdge(opts.containerId, childNode.id, edgeType);
+
+    // 5. Store a reference to the active edge on child node so it completes automatically!
+    childNode.incomingEdge = activeEdge;
+
+    return childNode;
+  }
+
+  /**
    * Suspend context execution (e.g. paused waiting for async I/O).
    */
   public suspend() {
@@ -110,6 +160,11 @@ export class TraceNode {
     // Auto-complete any active edges that were forgotten/never completed
     for (const edge of this.activeEdges) {
       edge.autoComplete();
+    }
+
+    // Auto-complete incoming edge transition if dynamic context helper was used
+    if (this.incomingEdge) {
+      this.incomingEdge.complete();
     }
 
     Tracer.exportNode(this);

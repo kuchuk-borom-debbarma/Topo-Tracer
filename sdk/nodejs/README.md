@@ -88,6 +88,56 @@ process.on('SIGINT', async () => {
 
 ## Advanced API
 
+### Tracing Monolithic Sub-Modules & Logical Boundaries (`startChildInContainer`)
+
+If you have a non-distributed monolithic system and want to partition it logically on the topology map (e.g. separating the Web API gateway from `Billing` and `Inventory` modules), you can easily spawn child nodes inside custom logical containers. 
+
+The SDK automatically registers the container details and handles the complex stateful recording and completion of the inter-module connection edge arrows under the hood with zero configuration!
+
+```typescript
+import { Tracer, NodeType, EdgeType } from '@topo-tracer/sdk';
+
+// From a node executing inside the parent container (e.g., Express API Gateway):
+const viewProductNode = Tracer.startTrace('GET /products/:id', NodeType.HTTP_SERVER);
+viewProductNode.markProcessed();
+
+// Invoke the Inventory Subsystem logically (crosses logical container boundaries in-process)
+const invCheckNode = viewProductNode.startChildInContainer({
+  containerId: 'module-inventory-svc',
+  containerName: 'Inventory Subsystem',     // Optional: Registers the container on the fly!
+  containerType: 'Logical Domain Module',    // Optional container type
+  name: 'reserveProductStock',
+  nodeType: NodeType.FUNCTION,
+  edgeType: EdgeType.HTTP_REQUEST           // Auto-wires the visual edge transition!
+});
+
+// Run business logic...
+invCheckNode.markCompleted(); // Auto-completes the child node AND the recorded network transition!
+
+// Finalize parent context
+viewProductNode.markCompleted();
+```
+
+### Complete IDE Autocompletion with Enums
+
+To avoid typing strings manually and leverage autocomplete details in your editor, import the native typescript string Enums:
+
+* **`ContainerType`**: e.g., `ContainerType.EXPRESS_API`, `ContainerType.GRPC_SERVICE`, `ContainerType.BACKGROUND_WORKER`, `ContainerType.CRON_JOB`.
+* **`NodeType`**: e.g., `NodeType.HTTP_SERVER`, `NodeType.HTTP_CLIENT`, `NodeType.DATABASE`, `NodeType.MESSAGE_PRODUCER`, `NodeType.MESSAGE_CONSUMER`, `NodeType.FUNCTION`.
+* **`EdgeType`**: e.g., `EdgeType.HTTP_REQUEST`, `EdgeType.KAFKA_MESSAGE`, `EdgeType.SQS_MESSAGE`.
+
+```typescript
+import { Tracer, ContainerType, NodeType } from '@topo-tracer/sdk';
+
+Tracer.init(
+  { baseUrl: 'http://localhost:3000' },
+  { 
+    name: 'BillingService', 
+    containerType: ContainerType.BACKGROUND_WORKER 
+  }
+);
+```
+
 ### Continuing an Existing Trace
 If your service receives an incoming request that was already traced by an upstream service, you shouldn't call `startTrace()`. Instead, use `continueTrace()` using the IDs propagated via the HTTP headers.
 

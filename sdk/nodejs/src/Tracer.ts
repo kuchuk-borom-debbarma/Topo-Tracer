@@ -30,6 +30,20 @@ export class Tracer {
   }
 
   /**
+   * Dynamically registers a logical container/service on the fly.
+   */
+  public static registerContainer(containerConfig: Omit<ContainerInput, "createdAtLocal">) {
+    if (this.exporter) {
+      this.exporter.addContainer({
+        id: containerConfig.id,
+        name: containerConfig.name,
+        containerType: containerConfig.containerType,
+        createdAtLocal: new Date()
+      });
+    }
+  }
+
+  /**
    * Get the generated or provided ID for the current container.
    */
   public static getContainerId(): string {
