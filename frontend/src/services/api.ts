@@ -7,6 +7,7 @@ export interface TraceNode {
   nodeType: 'http_server' | 'http_client' | 'database' | 'queue' | 'pubsub' | 'function' | 'internal';
   depthIndex: number;
   localDepthIndex: number;
+  group?: string;
   metadata: Record<string, any> | null;
   initiatedAtLocal: string;
   processedAtLocal: string;
@@ -52,7 +53,7 @@ const MOCK_METADATA: TraceMetadata = {
 
 // Generates high-fidelity mock responses at various global/local depths
 export function getMockTrace(depth: number, depthType: 'global' | 'local'): FullTraceResult {
-  // Let's model a 6-node distributed e-commerce checkout trace
+  // Let's model a 7-node distributed e-commerce checkout trace
   const allNodes: TraceNode[] = [
     {
       id: 'n-checkout-gate',
@@ -63,6 +64,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'http_server',
       depthIndex: 0,
       localDepthIndex: 0,
+      group: 'Gateway Ingestion',
       metadata: { status: 200, client_ip: '192.168.1.45', route: '/v1/checkout', user_agent: 'Mozilla/5.0' },
       initiatedAtLocal: '2026-05-28T07:00:00.000Z',
       processedAtLocal: '2026-05-28T07:00:00.002Z',
@@ -77,10 +79,26 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'function',
       depthIndex: 1,
       localDepthIndex: 1,
+      group: 'Validation Layer',
       metadata: { items_count: 3, cart_validation: 'success', stock_reserved: true },
       initiatedAtLocal: '2026-05-28T07:00:00.010Z',
       processedAtLocal: '2026-05-28T07:00:00.011Z',
       completedAtLocal: '2026-05-28T07:00:00.095Z'
+    },
+    {
+      id: 'n-validate-perms',
+      traceId: MOCK_TRACE_ID,
+      containerId: 'container-order-api',
+      parentNodeId: 'n-checkout-gate',
+      name: 'checkUserPermissions()',
+      nodeType: 'function',
+      depthIndex: 1,
+      localDepthIndex: 1,
+      group: 'Validation Layer',
+      metadata: { roles: ['user', 'customer'], scopes: ['read:checkout', 'write:checkout'] },
+      initiatedAtLocal: '2026-05-28T07:00:00.020Z',
+      processedAtLocal: '2026-05-28T07:00:00.021Z',
+      completedAtLocal: '2026-05-28T07:00:00.080Z'
     },
     {
       id: 'n-payment-call',
@@ -91,6 +109,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'http_client',
       depthIndex: 1,
       localDepthIndex: 1,
+      group: 'Payment Integration',
       metadata: { method: 'POST', endpoint: '/charge', retry_count: 0 },
       initiatedAtLocal: '2026-05-28T07:00:00.110Z',
       processedAtLocal: '2026-05-28T07:00:00.112Z',
@@ -105,6 +124,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'http_server',
       depthIndex: 2,
       localDepthIndex: 0,
+      group: 'Charge Processor',
       metadata: { gateway: 'stripe', currency: 'USD', amount: 249.99 },
       initiatedAtLocal: '2026-05-28T07:00:00.120Z',
       processedAtLocal: '2026-05-28T07:00:00.125Z',
@@ -119,6 +139,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'database',
       depthIndex: 3,
       localDepthIndex: 1,
+      group: 'Stripe Processor',
       metadata: { query: 'SELECT * FROM ledger WHERE tx_id = ?', rows_returned: 1, pool_connections: 4 },
       initiatedAtLocal: '2026-05-28T07:00:00.140Z',
       processedAtLocal: '2026-05-28T07:00:00.140Z',
@@ -133,6 +154,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'http_client',
       depthIndex: 3,
       localDepthIndex: 1,
+      group: 'Stripe Processor',
       metadata: { provider: 'stripe', timeout_ms: 5000 },
       initiatedAtLocal: '2026-05-28T07:00:00.200Z',
       processedAtLocal: '2026-05-28T07:00:00.202Z',
@@ -147,6 +169,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'pubsub',
       depthIndex: 1,
       localDepthIndex: 1,
+      group: 'Event Ingestion',
       metadata: { topic: 'order-dispatched', partition: 2, offset: 194452 },
       initiatedAtLocal: '2026-05-28T07:00:00.560Z',
       processedAtLocal: '2026-05-28T07:00:00.560Z',
@@ -161,6 +184,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'pubsub',
       depthIndex: 2,
       localDepthIndex: 0,
+      group: 'Event Ingestion',
       metadata: { consumer_group: 'inv-workers', lag: 0 },
       initiatedAtLocal: '2026-05-28T07:00:00.605Z',
       processedAtLocal: '2026-05-28T07:00:00.608Z',
@@ -175,6 +199,7 @@ export function getMockTrace(depth: number, depthType: 'global' | 'local'): Full
       nodeType: 'database',
       depthIndex: 3,
       localDepthIndex: 1,
+      group: 'Stock Database',
       metadata: { query: 'UPDATE stock SET qty = qty - 3 WHERE sku = ?', affected_rows: 1 },
       initiatedAtLocal: '2026-05-28T07:00:00.620Z',
       processedAtLocal: '2026-05-28T07:00:00.622Z',

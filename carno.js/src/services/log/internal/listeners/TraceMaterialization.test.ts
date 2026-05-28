@@ -6,7 +6,9 @@ import type { LogRepo } from "../LogRepo";
 import type { MessageBroker } from "../../../../infra/message/MessageBroker";
 import type { NodeMaterializationDTO, NodeAncestryRecord, EdgeMaterializationDTO, EdgeEgressAncestryRecord, TraceMetadataUpdate, TraceMetadataResult } from "../../types";
 
-class MockLogRepo implements LogRepo {
+class MockLogRepo {
+
+
   mockedNodesData: NodeMaterializationDTO[] = [];
   mockedAncestryData: NodeAncestryRecord[] = [];
   mockedEdgeAncestryData: EdgeEgressAncestryRecord[] = [];
@@ -84,7 +86,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     const mockBroker = new MockMessageBroker();
     const broker = mockBroker as any as MessageBroker;
 
-    const resolver = new TraceNodeResolver(mockRepo, broker);
+    const resolver = new TraceNodeResolver(mockRepo as any, broker);
 
     mockRepo.mockedNodesData = [
       { id: "node_b", parentNodeId: "node_a", depthIndex: 0 },
@@ -114,7 +116,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     const mockBroker = new MockMessageBroker();
     const broker = mockBroker as any as MessageBroker;
 
-    const resolver = new TraceNodeResolver(mockRepo, broker);
+    const resolver = new TraceNodeResolver(mockRepo as any, broker);
 
     mockRepo.mockedNodesData = [
       { id: "node_child", parentNodeId: "node_parent_1", depthIndex: 0 },
@@ -135,7 +137,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     const mockBroker = new MockMessageBroker();
     const broker = mockBroker as any as MessageBroker;
 
-    const resolver = new TraceEdgeResolver(mockRepo, broker);
+    const resolver = new TraceEdgeResolver(mockRepo as any, broker);
 
     mockRepo.mockedEdgesData = [
       { id: "edge_1", fromNodeId: "node_b", toNodeId: "node_c", fromContainerId: "container_a", toContainerId: "container_b" }
@@ -159,7 +161,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     const mockBroker = new MockMessageBroker();
     const broker = mockBroker as any as MessageBroker;
 
-    const resolver = new TraceClosureBuilder(mockRepo, broker);
+    const resolver = new TraceClosureBuilder(mockRepo as any, broker);
 
     mockRepo.mockedEdgesData = [
       { id: "edge_1", fromNodeId: "node_b", toNodeId: "node_c", fromContainerId: "pod_front", toContainerId: "pod_back" }
@@ -190,7 +192,7 @@ describe("Trace Materialization Engine - Operator Tests", () => {
     const mockBroker = new MockMessageBroker();
     const broker = mockBroker as any as MessageBroker;
 
-    const resolver = new TraceClosureBuilder(mockRepo, broker);
+    const resolver = new TraceClosureBuilder(mockRepo as any, broker);
 
     mockRepo.mockedEdgesData = [
       { id: "edge_deep", fromNodeId: "node_5", toNodeId: "node_c", fromContainerId: "pod_front", toContainerId: "pod_back" }

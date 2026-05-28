@@ -136,6 +136,12 @@ export const NodeInspector: React.FC<NodeInspectorProps> = ({ node, onClose, isO
               <span style={{ color: 'var(--text-muted)' }}>Local Container Depth:</span>
               <span style={{ fontWeight: 600 }}>{node.localDepthIndex}</span>
             </div>
+            {node.group && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Logical Depth Group:</span>
+                <span style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{node.group}</span>
+              </div>
+            )}
           </div>
         </div>
 
