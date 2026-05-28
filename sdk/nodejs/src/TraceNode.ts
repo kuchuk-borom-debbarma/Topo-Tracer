@@ -119,6 +119,56 @@ export class TraceNode {
   }
 
   /**
+   * Executes a child async operation under this node in the current container, automatically
+   * managing lifecycle processes, error catch logs, and guaranteed completion.
+   */
+  public async traceChild<T>(
+    name: string,
+    nodeType: NodeType | string,
+    fn: (childNode: TraceNode) => Promise<T>,
+    group?: string
+  ): Promise<T> {
+    const childNode = this.startChild(name, nodeType, group);
+    childNode.markProcessed();
+    try {
+      return await fn(childNode);
+    } catch (error: any) {
+      childNode.metadata = { ...childNode.metadata, error: error.message || String(error) };
+      throw error;
+    } finally {
+      childNode.markCompleted();
+    }
+  }
+
+  /**
+   * Executes a child async operation in a different logical container, automatically
+   * establishing edge connections and managing node lifecycles with guaranteed auto-completion.
+   */
+  public async traceChildInContainer<T>(
+    opts: {
+      containerId: string;
+      containerName?: string;
+      containerType?: string;
+      name: string;
+      nodeType: NodeType | string;
+      edgeType?: EdgeType | string;
+      group?: string;
+      scheduledAtLocal?: Date;
+    },
+    fn: (childNode: TraceNode) => Promise<T>
+  ): Promise<T> {
+    const childNode = this.startChildInContainer(opts);
+    try {
+      return await fn(childNode);
+    } catch (error: any) {
+      childNode.metadata = { ...childNode.metadata, error: error.message || String(error) };
+      throw error;
+    } finally {
+      childNode.markCompleted();
+    }
+  }
+
+  /**
    * Suspend context execution (e.g. paused waiting for async I/O).
    */
   public suspend() {

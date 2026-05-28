@@ -88,6 +88,54 @@ process.on('SIGINT', async () => {
 
 ## Advanced API
 
+### Foolproof Functional Tracing (Automatic Span Lifecycles)
+
+Manually calling `markProcessed()` and `markCompleted()` can be error-prone. If a developer forgets to call `markCompleted()`, it can cause telemetry data loss or memory leaks.
+
+To prevent this, the SDK provides functional execution wrappers (`Tracer.trace`, `node.traceChild`, and `node.traceChildInContainer`) that **automatically manage the span's lifecycle** inside a guaranteed `try...finally` block. This ensures that the node is completed and exported even if the internal async logic throws an error!
+
+#### 1. Starting a Root Trace
+```typescript
+import { Tracer, NodeType } from '@topo-tracer/sdk';
+
+const result = await Tracer.trace('GET /checkout', NodeType.HTTP_SERVER, async (rootNode) => {
+  // Run your async checkout logic here...
+  // rootNode is automatically marked as processed, and completed when this block returns.
+  return { orderId: 'ord-123', status: 'success' };
+});
+```
+
+#### 2. Spawning a Child Span
+```typescript
+const result = await Tracer.trace('GET /checkout', NodeType.HTTP_SERVER, async (rootNode) => {
+  
+  // Traces a local child database call seamlessly
+  const dbResult = await rootNode.traceChild('INSERT INTO orders', NodeType.DATABASE, async (dbNode) => {
+    return await db.insertOrder();
+  });
+  
+  return { status: 'success' };
+});
+```
+
+#### 3. Tracing In-Process Cross-Container Modular Transitions
+```typescript
+const result = await Tracer.trace('GET /checkout', NodeType.HTTP_SERVER, async (rootNode) => {
+  
+  // Crosses a modular container boundary and auto-wires network arrows/completes seamlessly!
+  const billingResult = await rootNode.traceChildInContainer({
+    containerId: 'module-billing',
+    containerName: 'Billing Module',
+    name: 'chargePayment',
+    nodeType: NodeType.FUNCTION
+  }, async (billingNode) => {
+    return await billing.charge();
+  });
+
+  return { status: 'success' };
+});
+```
+
 ### Tracing Monolithic Sub-Modules & Logical Boundaries (`startChildInContainer`)
 
 If you have a non-distributed monolithic system and want to partition it logically on the topology map (e.g. separating the Web API gateway from `Billing` and `Inventory` modules), you can easily spawn child nodes inside custom logical containers. 

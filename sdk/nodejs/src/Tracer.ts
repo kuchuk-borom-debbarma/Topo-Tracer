@@ -54,6 +54,27 @@ export class Tracer {
   }
 
   /**
+   * Executes a root async operation, automatically managing the span's lifecycle (processing, error catching, and completion).
+   */
+  public static async trace<T>(
+    name: string,
+    nodeType: NodeType | string,
+    fn: (node: TraceNode) => Promise<T>,
+    group?: string
+  ): Promise<T> {
+    const node = this.startTrace(name, nodeType, group);
+    node.markProcessed();
+    try {
+      return await fn(node);
+    } catch (error: any) {
+      node.metadata = { ...node.metadata, error: error.message || String(error) };
+      throw error;
+    } finally {
+      node.markCompleted();
+    }
+  }
+
+  /**
    * Starts a completely new distributed trace.
    */
   public static startTrace(name: string, nodeType: NodeType | string, group?: string): TraceNode {
