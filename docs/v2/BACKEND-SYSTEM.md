@@ -47,7 +47,7 @@ Blocks have no local timestamp fields in this stage. Future read logic can deriv
 
 ### Node
 
-Primitive point inside block.
+Primitive point inside block. Stored as append-only lifecycle events.
 
 ```txt
 traceId + node id + blockId + name + type
@@ -57,7 +57,7 @@ Stored table: `toco_tracer.nodes`
 
 ### Edge
 
-Primitive flow connection between nodes.
+Primitive flow connection between nodes. Stored as append-only lifecycle events.
 
 ```txt
 traceId + fromNodeId + toNodeId + type
@@ -194,8 +194,9 @@ blockId String
 name String
 type String
 metadata String
-startedAtLocal Int64
-endedAtLocal Nullable(Int64)
+eventType Enum8('started' = 1, 'ended' = 2)
+eventAtLocal Int64
+ingestedAtRemote Int64
 ```
 
 ### `edges`
@@ -207,10 +208,35 @@ fromNodeId String
 toNodeId String
 type String
 metadata String
-requestedAtLocal Int64
-respondedAtLocal Nullable(Int64)
+eventType Enum8('requested' = 1, 'responded' = 2)
+eventAtLocal Int64
+ingestedAtRemote Int64
 ```
 
 ## Next Step
 
 Best next step: create one sample trace JSON with containers, blocks, nodes, edges. Use it to verify model before adding reads.
+
+Future read collapse for nodes:
+
+```sql
+SELECT
+  id,
+  minIf(eventAtLocal, eventType = 'started') AS startedAtLocal,
+  maxIf(eventAtLocal, eventType = 'ended') AS endedAtLocal
+FROM toco_tracer.nodes
+WHERE trace_id = {traceId: String}
+GROUP BY id
+```
+
+Future read collapse for edges:
+
+```sql
+SELECT
+  id,
+  minIf(eventAtLocal, eventType = 'requested') AS requestedAtLocal,
+  maxIf(eventAtLocal, eventType = 'responded') AS respondedAtLocal
+FROM toco_tracer.edges
+WHERE trace_id = {traceId: String}
+GROUP BY id
+```

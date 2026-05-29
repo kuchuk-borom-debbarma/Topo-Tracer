@@ -45,7 +45,7 @@ Block has no parent field and no timestamp fields. Later reads can calculate blo
 
 ## Node
 
-Node represents primitive point inside block.
+Node represents primitive point inside block. Node writes are append-only lifecycle events.
 
 Examples:
 
@@ -63,14 +63,15 @@ Fields:
 - `name`
 - `type`
 - `metadata`
-- `startedAtLocal`
-- `endedAtLocal`
+- `eventType`: `started` or `ended`
+- `eventAtLocal`
+- `ingestedAtRemote`
 
 Node has no parent field.
 
 ## Edge
 
-Edge connects nodes.
+Edge connects nodes. Edge writes are append-only lifecycle events.
 
 ```txt
 fromNodeId -> toNodeId
@@ -84,10 +85,12 @@ Fields:
 - `toNodeId`
 - `type`
 - `metadata`
-- `requestedAtLocal`
-- `respondedAtLocal`
+- `eventType`: `requested` or `responded`
+- `eventAtLocal`
+- `ingestedAtRemote`
 
 Edge is source of flow truth.
+Later read logic can collapse node events into `startedAtLocal` / `endedAtLocal` and edge events into `requestedAtLocal` / `respondedAtLocal`.
 
 ## Why This Stage Is Primitive
 

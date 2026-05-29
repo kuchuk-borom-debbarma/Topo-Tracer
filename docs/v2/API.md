@@ -51,8 +51,8 @@ Only write endpoints exist in this stage.
     "name": "validate request",
     "type": "step",
     "metadata": { "valid": true },
-    "startedAtLocal": "2026-05-29T10:00:00.100Z",
-    "endedAtLocal": "2026-05-29T10:00:00.140Z"
+    "eventType": "started",
+    "eventAtLocal": "2026-05-29T10:00:00.100Z"
   }
 ]
 ```
@@ -70,8 +70,8 @@ Only write endpoints exist in this stage.
     "toNodeId": "node_call_bar",
     "type": "flow",
     "metadata": { "branch": "success" },
-    "requestedAtLocal": "2026-05-29T10:00:00.200Z",
-    "respondedAtLocal": "2026-05-29T10:00:00.500Z"
+    "eventType": "requested",
+    "eventAtLocal": "2026-05-29T10:00:00.200Z"
   }
 ]
 ```

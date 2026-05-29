@@ -39,18 +39,22 @@ export class LogServiceImpl extends LogService {
   }
 
   override async logNodes(nodes: TraceNodeInput[]): Promise<void> {
+    const ingestedAtRemote = new Date();
     const enriched: TraceNode[] = nodes.map(node => ({
       ...node,
       metadata: node.metadata ?? null,
+      ingestedAtRemote,
     }));
 
     await this.logRepo.saveNodes(enriched);
   }
 
   override async logEdges(edges: TraceEdgeInput[]): Promise<void> {
+    const ingestedAtRemote = new Date();
     const enriched: TraceEdge[] = edges.map(edge => ({
       ...edge,
       metadata: edge.metadata ?? null,
+      ingestedAtRemote,
     }));
 
     await this.logRepo.saveEdges(enriched);

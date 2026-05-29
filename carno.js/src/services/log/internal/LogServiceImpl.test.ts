@@ -65,8 +65,8 @@ describe("LogServiceImpl", () => {
         blockId: "block",
         name: "validate",
         type: "step",
-        startedAtLocal: new Date(11),
-        endedAtLocal: new Date(12),
+        eventType: "started",
+        eventAtLocal: new Date(11),
       },
     ]);
     await service.logEdges([
@@ -76,13 +76,15 @@ describe("LogServiceImpl", () => {
         fromNodeId: "node_a",
         toNodeId: "node_b",
         type: "flow",
-        requestedAtLocal: new Date(13),
-        respondedAtLocal: new Date(14),
+        eventType: "requested",
+        eventAtLocal: new Date(13),
       },
     ]);
 
     expect(repo.blocks[0]?.metadata).toBeNull();
     expect(repo.nodes[0]?.metadata).toBeNull();
+    expect(repo.nodes[0]?.ingestedAtRemote).toBeInstanceOf(Date);
     expect(repo.edges[0]?.metadata).toBeNull();
+    expect(repo.edges[0]?.ingestedAtRemote).toBeInstanceOf(Date);
   });
 });

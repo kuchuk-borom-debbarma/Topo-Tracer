@@ -56,8 +56,9 @@ export class LogRepoClickHouseImpl extends LogRepo {
         name: node.name,
         type: node.type,
         metadata: stringifyJson(node.metadata),
-        startedAtLocal: node.startedAtLocal.getTime(),
-        endedAtLocal: node.endedAtLocal ? node.endedAtLocal.getTime() : null,
+        eventType: node.eventType,
+        eventAtLocal: node.eventAtLocal.getTime(),
+        ingestedAtRemote: node.ingestedAtRemote.getTime(),
       })),
       format: "JSONEachRow",
     });
@@ -75,8 +76,9 @@ export class LogRepoClickHouseImpl extends LogRepo {
         toNodeId: edge.toNodeId,
         type: edge.type,
         metadata: stringifyJson(edge.metadata),
-        requestedAtLocal: edge.requestedAtLocal.getTime(),
-        respondedAtLocal: edge.respondedAtLocal ? edge.respondedAtLocal.getTime() : null,
+        eventType: edge.eventType,
+        eventAtLocal: edge.eventAtLocal.getTime(),
+        ingestedAtRemote: edge.ingestedAtRemote.getTime(),
       })),
       format: "JSONEachRow",
     });

@@ -26,8 +26,9 @@ export type TraceNode = {
   name: string;
   type: string;
   metadata?: JsonValue;
-  startedAtLocal: Date;
-  endedAtLocal?: Date;
+  eventType: "started" | "ended";
+  eventAtLocal: Date;
+  ingestedAtRemote: Date;
 };
 
 export type TraceEdge = {
@@ -37,11 +38,12 @@ export type TraceEdge = {
   toNodeId: string;
   type: string;
   metadata?: JsonValue;
-  requestedAtLocal: Date;
-  respondedAtLocal?: Date;
+  eventType: "requested" | "responded";
+  eventAtLocal: Date;
+  ingestedAtRemote: Date;
 };
 
 export type TraceContainerInput = Omit<TraceContainer, "createdAtRemote">;
 export type TraceBlockInput = TraceBlock;
-export type TraceNodeInput = TraceNode;
-export type TraceEdgeInput = TraceEdge;
+export type TraceNodeInput = Omit<TraceNode, "ingestedAtRemote">;
+export type TraceEdgeInput = Omit<TraceEdge, "ingestedAtRemote">;

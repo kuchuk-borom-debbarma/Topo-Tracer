@@ -49,8 +49,9 @@ describe("LogRepoClickHouseImpl", () => {
         toNodeId: "node_b",
         type: "call",
         metadata: { sync: true },
-        requestedAtLocal: new Date(30),
-        respondedAtLocal: new Date(50),
+        eventType: "requested",
+        eventAtLocal: new Date(30),
+        ingestedAtRemote: new Date(40),
       },
     ]);
 
@@ -61,8 +62,37 @@ describe("LogRepoClickHouseImpl", () => {
       toNodeId: "node_b",
       type: "call",
       metadata: JSON.stringify({ sync: true }),
-      requestedAtLocal: 30,
-      respondedAtLocal: 50,
+      eventType: "requested",
+      eventAtLocal: 30,
+      ingestedAtRemote: 40,
+    });
+  });
+
+  it("writes nodes as append-only lifecycle events", async () => {
+    const client = new MockClickHouseClient();
+    const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
+
+    await repo.saveNodes([
+      {
+        id: "node_a",
+        traceId: "trace",
+        blockId: "block",
+        name: "validate",
+        type: "step",
+        metadata: { ok: true },
+        eventType: "ended",
+        eventAtLocal: new Date(60),
+        ingestedAtRemote: new Date(70),
+      },
+    ]);
+
+    expect(client.insertedTable).toBe("toco_tracer.nodes");
+    expect(client.insertedValues[0]).toMatchObject({
+      trace_id: "trace",
+      blockId: "block",
+      eventType: "ended",
+      eventAtLocal: 60,
+      ingestedAtRemote: 70,
     });
   });
 });

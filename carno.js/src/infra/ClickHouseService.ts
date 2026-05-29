@@ -65,10 +65,11 @@ export class ClickHouseService {
           name String,
           type String,
           metadata String,
-          startedAtLocal Int64,
-          endedAtLocal Nullable(Int64)
+          eventType Enum8('started' = 1, 'ended' = 2),
+          eventAtLocal Int64,
+          ingestedAtRemote Int64
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, blockId, startedAtLocal, id);
+        ORDER BY (trace_id, blockId, id, eventAtLocal);
       `,
     });
 
@@ -81,10 +82,11 @@ export class ClickHouseService {
           toNodeId String,
           type String,
           metadata String,
-          requestedAtLocal Int64,
-          respondedAtLocal Nullable(Int64)
+          eventType Enum8('requested' = 1, 'responded' = 2),
+          eventAtLocal Int64,
+          ingestedAtRemote Int64
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, requestedAtLocal, id);
+        ORDER BY (trace_id, id, eventAtLocal);
       `,
     });
   }
