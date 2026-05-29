@@ -33,9 +33,7 @@ Only write endpoints exist in this stage.
     "containerId": "api",
     "name": "foo()",
     "type": "function",
-    "metadata": { "file": "checkout.ts" },
-    "startedAtLocal": "2026-05-29T10:00:00.000Z",
-    "endedAtLocal": "2026-05-29T10:00:01.000Z"
+    "metadata": { "file": "checkout.ts" }
   }
 ]
 ```
@@ -53,7 +51,8 @@ Only write endpoints exist in this stage.
     "name": "validate request",
     "type": "step",
     "metadata": { "valid": true },
-    "occurredAtLocal": "2026-05-29T10:00:00.100Z"
+    "startedAtLocal": "2026-05-29T10:00:00.100Z",
+    "endedAtLocal": "2026-05-29T10:00:00.140Z"
   }
 ]
 ```
@@ -71,7 +70,8 @@ Only write endpoints exist in this stage.
     "toNodeId": "node_call_bar",
     "type": "flow",
     "metadata": { "branch": "success" },
-    "occurredAtLocal": "2026-05-29T10:00:00.200Z"
+    "requestedAtLocal": "2026-05-29T10:00:00.200Z",
+    "respondedAtLocal": "2026-05-29T10:00:00.500Z"
   }
 ]
 ```

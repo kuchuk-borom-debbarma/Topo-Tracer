@@ -43,6 +43,8 @@ traceId + block id + containerId + name + type
 
 Stored table: `toco_tracer.blocks`
 
+Blocks have no local timestamp fields in this stage. Future read logic can derive block timing from nodes.
+
 ### Node
 
 Primitive point inside block.
@@ -181,8 +183,6 @@ containerId String
 name String
 type String
 metadata String
-startedAtLocal Int64
-endedAtLocal Nullable(Int64)
 ```
 
 ### `nodes`
@@ -194,7 +194,8 @@ blockId String
 name String
 type String
 metadata String
-occurredAtLocal Int64
+startedAtLocal Int64
+endedAtLocal Nullable(Int64)
 ```
 
 ### `edges`
@@ -206,7 +207,8 @@ fromNodeId String
 toNodeId String
 type String
 metadata String
-occurredAtLocal Int64
+requestedAtLocal Int64
+respondedAtLocal Nullable(Int64)
 ```
 
 ## Next Step

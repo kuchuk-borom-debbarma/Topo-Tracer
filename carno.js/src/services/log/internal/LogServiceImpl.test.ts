@@ -56,7 +56,6 @@ describe("LogServiceImpl", () => {
         containerId: "api",
         name: "foo()",
         type: "function",
-        startedAtLocal: new Date(10),
       },
     ]);
     await service.logNodes([
@@ -66,7 +65,8 @@ describe("LogServiceImpl", () => {
         blockId: "block",
         name: "validate",
         type: "step",
-        occurredAtLocal: new Date(11),
+        startedAtLocal: new Date(11),
+        endedAtLocal: new Date(12),
       },
     ]);
     await service.logEdges([
@@ -76,7 +76,8 @@ describe("LogServiceImpl", () => {
         fromNodeId: "node_a",
         toNodeId: "node_b",
         type: "flow",
-        occurredAtLocal: new Date(12),
+        requestedAtLocal: new Date(13),
+        respondedAtLocal: new Date(14),
       },
     ]);
 

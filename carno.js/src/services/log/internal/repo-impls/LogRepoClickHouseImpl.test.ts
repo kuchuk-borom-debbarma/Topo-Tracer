@@ -25,8 +25,6 @@ describe("LogRepoClickHouseImpl", () => {
         name: "foo()",
         type: "function",
         metadata: { route: "/orders" },
-        startedAtLocal: new Date(10),
-        endedAtLocal: new Date(20),
       },
     ]);
 
@@ -36,8 +34,6 @@ describe("LogRepoClickHouseImpl", () => {
       containerId: "api",
       type: "function",
       metadata: JSON.stringify({ route: "/orders" }),
-      startedAtLocal: 10,
-      endedAtLocal: 20,
     });
   });
 
@@ -53,7 +49,8 @@ describe("LogRepoClickHouseImpl", () => {
         toNodeId: "node_b",
         type: "call",
         metadata: { sync: true },
-        occurredAtLocal: new Date(30),
+        requestedAtLocal: new Date(30),
+        respondedAtLocal: new Date(50),
       },
     ]);
 
@@ -64,7 +61,8 @@ describe("LogRepoClickHouseImpl", () => {
       toNodeId: "node_b",
       type: "call",
       metadata: JSON.stringify({ sync: true }),
-      occurredAtLocal: 30,
+      requestedAtLocal: 30,
+      respondedAtLocal: 50,
     });
   });
 });

@@ -40,10 +40,8 @@ Fields:
 - `name`
 - `type`
 - `metadata`
-- `startedAtLocal`
-- `endedAtLocal`
 
-Block has no parent field.
+Block has no parent field and no timestamp fields. Later reads can calculate block timing from child nodes.
 
 ## Node
 
@@ -65,7 +63,8 @@ Fields:
 - `name`
 - `type`
 - `metadata`
-- `occurredAtLocal`
+- `startedAtLocal`
+- `endedAtLocal`
 
 Node has no parent field.
 
@@ -85,7 +84,8 @@ Fields:
 - `toNodeId`
 - `type`
 - `metadata`
-- `occurredAtLocal`
+- `requestedAtLocal`
+- `respondedAtLocal`
 
 Edge is source of flow truth.
 

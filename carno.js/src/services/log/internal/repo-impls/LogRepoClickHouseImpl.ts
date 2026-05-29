@@ -39,8 +39,6 @@ export class LogRepoClickHouseImpl extends LogRepo {
         name: block.name,
         type: block.type,
         metadata: stringifyJson(block.metadata),
-        startedAtLocal: block.startedAtLocal.getTime(),
-        endedAtLocal: block.endedAtLocal ? block.endedAtLocal.getTime() : null,
       })),
       format: "JSONEachRow",
     });
@@ -58,7 +56,8 @@ export class LogRepoClickHouseImpl extends LogRepo {
         name: node.name,
         type: node.type,
         metadata: stringifyJson(node.metadata),
-        occurredAtLocal: node.occurredAtLocal.getTime(),
+        startedAtLocal: node.startedAtLocal.getTime(),
+        endedAtLocal: node.endedAtLocal ? node.endedAtLocal.getTime() : null,
       })),
       format: "JSONEachRow",
     });
@@ -76,7 +75,8 @@ export class LogRepoClickHouseImpl extends LogRepo {
         toNodeId: edge.toNodeId,
         type: edge.type,
         metadata: stringifyJson(edge.metadata),
-        occurredAtLocal: edge.occurredAtLocal.getTime(),
+        requestedAtLocal: edge.requestedAtLocal.getTime(),
+        respondedAtLocal: edge.respondedAtLocal ? edge.respondedAtLocal.getTime() : null,
       })),
       format: "JSONEachRow",
     });

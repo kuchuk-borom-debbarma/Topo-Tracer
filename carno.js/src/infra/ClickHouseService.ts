@@ -50,11 +50,9 @@ export class ClickHouseService {
           containerId String,
           name String,
           type String,
-          metadata String,
-          startedAtLocal Int64,
-          endedAtLocal Nullable(Int64)
+          metadata String
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, containerId, startedAtLocal, id);
+        ORDER BY (trace_id, containerId, id);
       `,
     });
 
@@ -67,9 +65,10 @@ export class ClickHouseService {
           name String,
           type String,
           metadata String,
-          occurredAtLocal Int64
+          startedAtLocal Int64,
+          endedAtLocal Nullable(Int64)
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, blockId, occurredAtLocal, id);
+        ORDER BY (trace_id, blockId, startedAtLocal, id);
       `,
     });
 
@@ -82,9 +81,10 @@ export class ClickHouseService {
           toNodeId String,
           type String,
           metadata String,
-          occurredAtLocal Int64
+          requestedAtLocal Int64,
+          respondedAtLocal Nullable(Int64)
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, occurredAtLocal, id);
+        ORDER BY (trace_id, requestedAtLocal, id);
       `,
     });
   }
