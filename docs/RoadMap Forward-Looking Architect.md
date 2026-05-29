@@ -1,8 +1,10 @@
 # Topo-Tracer: Forward-Looking Architectural Features Specification
 
-This document defines the advanced, high-scale features made possible by Topo-Tracer’s backend-driven **Multi-Resolution Closure Tables** and flat **Generational Ingest Architecture**.
+This document defines forward-looking, not-yet-implemented features made possible by Topo-Tracer’s backend-driven **Multi-Resolution Closure Tables** and flat **Generational Ingest Architecture**.
 
-Because raw execution trees are distilled into constant-time ($O(1)$) read models indexed by a sliding `visual_depth_filter`, the platform can layer intensive topological analysis directly over the live query engine without degrading database performance.
+> Implementation note: current backend code creates `toco_tracer.read_edges`, `node_ancestry`, `edge_egress_ancestry`, and `trace_metadata`. It does not yet create `read_layouts`, tenant baggage indexes, fleet aggregation tables, or blast-radius query APIs.
+
+Because raw execution trees are distilled into constant-time read models indexed by `depth_type` and `visual_depth`, the platform can later layer intensive topological analysis over the live query engine without degrading database performance.
 
 ---
 
@@ -25,9 +27,10 @@ SELECT
     from_target_id,
     from_target_type,
     count() AS total_impacted_calls
-FROM topo_tracer.read_edges
+FROM toco_tracer.read_edges
 WHERE trace_id = :active_trace_id
-  AND visual_depth_filter = :current_viewport_zoom
+  AND depth_type = :current_depth_type
+  AND visual_depth <= :current_viewport_zoom
   -- Using ClickHouse Array functions to locate specific nodes efficiently across the network
   AND has(egress_ancestry_path, 'node_db_failure_uuid') = 1
 GROUP BY 
@@ -63,9 +66,9 @@ SELECT
     max_visible_depth,
     total_visible_rows,
     groupArray(trace_id) AS present_in_traces
-FROM topo_tracer.read_layouts
+FROM toco_tracer.read_layouts -- proposed table, not implemented
 WHERE trace_id IN (:trace_alpha, :trace_beta)
-  AND visual_depth_filter = :current_user_zoom_level
+  AND visual_depth = :current_user_zoom_level
 GROUP BY 
     container_id, 
     max_visible_depth, 
@@ -103,9 +106,10 @@ SELECT
     count() AS total_transaction_volume,
     quantile(0.95)(edge_transit_ms) AS p95_wire_transit_latency,
     quantile(0.95)(queue_lag_ms) AS p95_broker_queue_lag
-FROM topo_tracer.read_edges
+FROM toco_tracer.read_edges
 WHERE distributed_timestamp >= now() - INTERVAL 5 MINUTE
-  AND visual_depth_filter = :current_canvas_zoom_level
+  AND depth_type = :current_depth_type
+  AND visual_depth <= :current_canvas_zoom_level
 GROUP BY 
     from_container_id, 
     from_target_id, 
@@ -135,10 +139,11 @@ To load an infrastructure blueprint isolated exclusively to the footprint of a s
 
 ```sql
 -- Fetch layout records restricted to a single tenant context
-SELECT * FROM topo_tracer.read_edges
+SELECT * FROM toco_tracer.read_edges
 WHERE trace_id = :active_trace_id
-  AND visual_depth_filter = :current_zoom_level
-  AND baggage.tenant_id = :target_tenant_id;
+  AND depth_type = :current_depth_type
+  AND visual_depth <= :current_zoom_level
+  AND baggage.tenant_id = :target_tenant_id; -- proposed column, not implemented
 
 ```
 

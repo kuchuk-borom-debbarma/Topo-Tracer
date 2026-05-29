@@ -2,6 +2,8 @@
 
 This document details the core design, database architecture, and backend implementation patterns for **Multi-Resolution Zoom** within the Topo-Tracer ecosystem utilizing a CQRS (Command Query Responsibility Segregation) and Closure Table model.
 
+> Implementation note: current `carno.js` backend uses sparse `toco_tracer.read_edges` rows, `depth_type`, and `visual_depth <= requestedDepth` lookup. It does not implement dynamic mutex fallback closure building inside the read request.
+
 ---
 
 ## 1. What is Multi-Resolution Zoom?
@@ -73,7 +75,7 @@ To protect the database from heavy runtime calculations, the platform implements
 [ Telemetry Ingestion ] ──> [ Flat Write DB ] ──> [ UI Initial Load: Deepest Version Only ]
                                                         │ (is_zoom_ready: false)
                                                         ▼
-                                            [ Async Async Background Worker ]
+                                            [ Async Background Worker ]
                                                         │ (Computes Hopping Points)
                                                         ▼
                                             [ Read-Optimized Closure Table ]
@@ -111,7 +113,7 @@ When a trace is first loaded, the query server drops the flat lines and injects 
 
 Once `is_zoom_ready` toggles to `true`, the user interfaces can pass explicit zoom layer thresholds. The query service handles this via zero-computation indexing lookups straight from the cached read store.
 
-If a cache miss occurs before processing finishes, the backend falls back to calculating anchors dynamically using a mutex cache-lock to prevent stampedes:
+The current backend does not compute closure anchors inside the read request. If materialization is missing or incomplete, reads trigger background materialization and return `isZoomReady: false` while still returning raw nodes/edges where available.
 
 ```typescript
 type ResolutionTarget = { id: string; type: 'node' | 'container' };
@@ -124,45 +126,26 @@ interface OptimizedEdgePayload {
 
 async function getTraceWiresForResolution(
   traceId: string,
-  depthFilterThreshold: number
+  depth: number,
+  depthType: 'global' | 'local'
 ): Promise<OptimizedEdgePayload[]> {
-  
-  // 1. Direct O(1) optimized index fetch from the Read Store
-  const cachedEdges = await readDatabase.find({ trace_id: traceId, visual_depth: depthFilterThreshold });
-  if (cachedEdges.length > 0) {
-    return cachedEdges.map(edge => ({
-      id: edge.edge_id,
-      from_target: { id: edge.from_target_id, type: edge.from_target_type },
-      to_target: { id: edge.to_target_id, type: edge.to_target_type }
-    }));
-  }
+  const rows = await readDatabase.query(`
+    SELECT *
+    FROM toco_tracer.read_edges
+    WHERE trace_id = {traceId: String}
+      AND depth_type = {depthType: String}
+      AND visual_depth <= {depth: UInt32}
+    ORDER BY visual_depth DESC
+    LIMIT 1 BY edge_id
+  `, { traceId, depthType, depth });
 
-  // 2. Lock-Protected Fallback Routine (Prevents Concurrent Query Stampedes)
-  return await acquireMutexLock(traceId, async () => {
-    const rawNodes = await writeDatabase.fetchNodes(traceId);
-    const rawEdges = await writeDatabase.fetchEdges(traceId);
-    
-    // Compute closures dynamically and write through to the Read Store cache
-    const visibleNodes = rawNodes.filter(node => node.depth_index <= depthFilterThreshold);
-    const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
-
-    return rawEdges.map(edge => {
-      // Use parallel arrays (ancestryDepths) to find the deepest node whose absolute depthIndex <= threshold
-      const resolvedFromNodeId = findDeepestVisible(edge.egress_ancestry_path, edge.egress_ancestry_depths, depthFilterThreshold);
-      const resolvedToNodeId = findDeepestVisible(edge.ingress_ancestry_path, edge.ingress_ancestry_depths, depthFilterThreshold);
-      
-      return {
-        id: edge.id,
-        from_target: resolvedFromNodeId 
-          ? { id: resolvedFromNodeId, type: 'node' }
-          : { id: edge.from_container_id, type: 'container' }, // Fallback to container boundary if root is deeper than threshold
-        to_target: resolvedToNodeId
-          ? { id: resolvedToNodeId, type: 'node' }
-          : { id: edge.to_container_id, type: 'container' }
-      };
-    });
-  });
+  return rows.map(edge => ({
+    id: edge.edge_id,
+    from_target: { id: edge.from_target_id, type: edge.from_target_type },
+    to_target: { id: edge.to_target_id, type: edge.to_target_type }
+  }));
 }
+```
 
 ### Parallel Array Architecture for Depth Resolution
 Because `depthIndex` spans across network boundaries (e.g., a target container might start at Depth 2), array indices cannot reliably map to absolute depth. Topo-Tracer uses **Parallel Arrays** in ClickHouse (`ancestryPath`, `ancestryDepths`, and `ancestryLocalDepths`) to explicitly map node IDs to their absolute global depth and local container depth. This ensures the builder can safely truncate paths or snap to outer container bounds without array offset bugs.
@@ -228,8 +211,6 @@ At `d = 0`:
 - Egress: searches `[0,1,2]` for `<=0`. Finds `N1` (0). Snaps to `N1`.
 - Ingress: searches `[0]` for `<=0`. Finds `N4` (0). Snaps to `N4`.
 - **Result:** `N1 (POST /api) -> N4 (Kafka Sub)` *(A direct API-to-API view!)*
-
-```
 
 ---
 

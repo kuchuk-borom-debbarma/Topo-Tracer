@@ -1,556 +1,274 @@
-# Multi-Resolution Zoom Closure Engine
+# Multi-Resolution Zoom Engine
 
-**Document Version:** 1.0  
-**Branch:** `feat/multi-resolution-zoom`  
-**Status:** Implemented — Idempotency delegated to Message Broker
+**Status:** Backend implemented in `carno.js`; frontend and production broker integration are separate concerns.
 
----
+This document is code-verified against `carno.js/src` as of 2026-05-29.
 
-## 1. Overview
+## Purpose
 
-The Multi-Resolution Zoom Closure Engine is a background materialization system built into `carno.js` that pre-computes call-graph visual connections at every possible stack depth level for any distributed trace.
+Topo-Tracer stores telemetry as flat append-only ClickHouse rows, then builds sparse read models for zoomable graph views. The read model lets a UI ask: "At depth `d`, should this network edge snap to a container boundary or to a visible node?"
 
-Its primary goal is to enable **instant, zero-join, sub-millisecond visual zoom queries** — allowing a frontend to "zoom in" to a trace from the outermost container view all the way down to an individual function span — without performing any graph traversal at query time.
+## Implemented Backend Shape
 
-### Core Design Axioms
-
-| Axiom | Detail |
-|---|---|
-| **CQRS Separation** | Writes (telemetry ingestion) and reads (trace queries) are completely decoupled. They never block each other. |
-| **Append-Only Ingestion** | Primary tables (`nodes`, `edges`) are strictly append-only. No in-place updates ever happen to ingested telemetry. |
-| **Background Materialization** | All hierarchy resolution and visual wire pre-computation happen asynchronously in the background after ingestion. |
-| **Constant Memory Footprint** | The background engine processes records in fixed batches of 1000. At no point does it hold more than 1000 records in RAM, regardless of trace size. |
-| **Database-Backed Caching** | Instead of passing large in-memory maps across message broker payloads, resolved ancestry paths are persisted in dedicated ClickHouse cache tables between processing stages. |
-| **Non-Blocking Event Loop** | Each batch yields the server event loop by publishing a broker event to process the next chunk rather than running a synchronous loop. |
-| **Broker-Owned Idempotency** | The message broker implementation is responsible for ensuring each materialization event is delivered and processed exactly once per `traceId`. The application layer makes no idempotency assumptions beyond that contract. |
-
----
-
-## 2. System Architecture
-
-### 2.1 High-Level Data Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          INGESTION PATH (Fast Writes)                           │
-│                                                                                 │
-│   Client  ──►  LogController  ──►  LogServiceImpl  ──►  LogRepoClickHouseImpl  │
-│                                                              │                  │
-│                                              Inserts into:  │                  │
-│                                        toco_tracer.nodes    │                  │
-│                                        toco_tracer.edges    │                  │
-│                                                              │                  │
-│                                      Publishes trigger ──►  MessageBroker      │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                                              │
-                                                              ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                     BACKGROUND MATERIALIZATION ENGINE                           │
-│                                                                                 │
-│  TraceMaterializationListener                                                   │
-│        │                                                                        │
-│        ├──► Stage 1: TraceNodeResolver                                         │
-│        │         Resolves node ancestry paths ──► node_ancestry                │
-│        │                                                                        │
-│        ├──► Stage 2: TraceEdgeResolver                                         │
-│        │         Resolves edge egress paths ──► edge_egress_ancestry            │
-│        │                                                                        │
-│        └──► Stage 3: TraceClosureBuilder                                       │
-│                  Generates visual wires ──► read_edges                         │
-│                  Marks is_zoom_ready = 1 ──► trace_metadata                    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                                              │
-                                                              ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          QUERY PATH (Fast Reads)                                │
-│                                                                                 │
-│   Client  ──►  fetchTracePaginated(traceId, { depth: d })                      │
-│                     │                                                           │
-│                     ├── SELECT nodes WHERE depthIndex <= d                      │
-│                     ├── SELECT edges WHERE fromNodeId IN (...)                  │
-│                     └── SELECT * FROM read_edges WHERE visual_depth = d         │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```text
+POST /telemetry/nodes or /telemetry/edges
+  -> LogController
+  -> LogServiceImpl
+  -> LogRepoClickHouseImpl
+  -> ClickHouse primary tables
+  -> MessageBroker publish(trace_materialization)
+  -> TraceMaterializationListener
+  -> TraceNodeResolver
+  -> TraceEdgeResolver
+  -> TraceClosureBuilder
+  -> read_edges + trace_metadata
 ```
 
----
+Current application services are registered in `carno.js/src/index.ts`:
 
-## 3. Database Schema
+- `ClickHouseService`
+- `LogRepoClickHouseImpl`
+- `LogServiceImpl`
+- `InMemoryMessageBroker`
+- `TraceNodeResolver`
+- `TraceEdgeResolver`
+- `TraceClosureBuilder`
+- `TraceMaterializationListener`
 
-All tables live in the `toco_tracer` ClickHouse database.
+## Database Namespace
 
-### 3.1 Primary Telemetry Tables (Append-Only, Never Updated)
+The actual ClickHouse database is `toco_tracer`, not `topo_tracer`.
 
-#### `toco_tracer.nodes`
-Stores every individual checkpoint (span) within a distributed trace.
+`ClickHouseService` creates:
+
+- `containers`
+- `nodes`
+- `edges`
+- `node_ancestry`
+- `edge_egress_ancestry`
+- `read_edges`
+- `trace_metadata`
+
+No current migration creates `read_layouts`, per-container layout bounds, tenant baggage indexes, or aggregate fleet-map tables.
+
+## Primary Tables
+
+### `toco_tracer.nodes`
+
+Key columns:
 
 ```sql
-CREATE TABLE IF NOT EXISTS toco_tracer.nodes (
-  id              String,
-  trace_id        String,         -- Groups all spans of a single request
-  containerId     String,         -- The physical host that ran this span
-  parentNodeId    String,         -- Direct parent span ID (empty string if root)
-  name            String,
-  nodeType        String,
-  depthIndex      UInt32,         -- Call stack depth (0 = root)
-  metadata        String,         -- JSON-serialized bag
-  initiatedAtLocal  Int64,        -- Epoch ms (local clock)
-  processedAtLocal  Int64,
-  completedAtLocal  Nullable(Int64),
-  ancestryPath    Array(String)   -- Reserved; populated by background engine
-) ENGINE = MergeTree()
-ORDER BY (trace_id, depthIndex, initiatedAtLocal);
+id String,
+trace_id String,
+containerId String,
+parentNodeId String,
+name String,
+nodeType String,
+group String,
+depthIndex UInt32,
+localDepthIndex UInt32,
+metadata String,
+initiatedAtLocal Int64,
+processedAtLocal Int64,
+completedAtLocal Nullable(Int64),
+ancestryPath Array(String),
+scheduledAtLocal Nullable(Int64),
+cpuActiveDurationUs Nullable(Int64),
+suspendedAtLocal Array(Int64),
+resumedAtLocal Array(Int64)
 ```
 
-#### `toco_tracer.edges`
-Stores every network hop between two containers within a trace.
+`ORDER BY (trace_id, depthIndex, initiatedAtLocal)`.
+
+### `toco_tracer.edges`
+
+Key columns:
 
 ```sql
-CREATE TABLE IF NOT EXISTS toco_tracer.edges (
-  id                String,
-  trace_id          String,
-  fromContainerId   String,
-  toContainerId     String,
-  fromNodeId        String,       -- The originating span ID
-  toNodeId          String,       -- The receiving span ID
-  edgeType          String,       -- e.g. "http", "grpc", "queue"
-  dispatchedAtLocal   Int64,
-  respondedAtLocal    Nullable(Int64),
-  egressAncestryPath  Array(String)  -- Reserved; populated by background engine
-) ENGINE = MergeTree()
-ORDER BY (trace_id, dispatchedAtLocal);
+id String,
+trace_id String,
+fromContainerId String,
+toContainerId String,
+fromNodeId String,
+toNodeId String,
+edgeType String,
+dispatchedAtLocal Int64,
+respondedAtLocal Nullable(Int64),
+egressAncestryPath Array(String)
 ```
 
-### 3.2 Materialization Cache Tables (Written by Background Engine)
+`ORDER BY (trace_id, dispatchedAtLocal)`.
 
-These tables store intermediate computed results between the three processing stages.
-They are internal to the materialization system and are never exposed via the public API.
+## Materialization Tables
 
-#### `toco_tracer.node_ancestry`
-Stores the fully-resolved call stack ancestry path for every node in a trace, keyed by `(trace_id, node_id)` for O(1) point lookups.
+### `toco_tracer.node_ancestry`
+
+Stores node path plus depth arrays:
 
 ```sql
-CREATE TABLE IF NOT EXISTS toco_tracer.node_ancestry (
-  node_id       String,
-  trace_id      String,
-  ancestryPath  Array(String)   -- ['root_id', 'parent_id', ..., 'self_id']
-) ENGINE = MergeTree()
-ORDER BY (trace_id, node_id);
+node_id String,
+trace_id String,
+ancestryPath Array(String),
+ancestryDepths Array(UInt32),
+ancestryLocalDepths Array(UInt32)
 ```
 
-**Written by:** `TraceNodeResolver` (Stage 1)  
-**Read by:** `TraceEdgeResolver` (Stage 2)
+Parallel arrays matter because global depth and local container depth are not always equal to `ancestryPath` array index.
 
-#### `toco_tracer.edge_egress_ancestry`
-Stores the ancestry path of the originating node for each edge.
+### `toco_tracer.edge_egress_ancestry`
+
+Stores pre-resolved egress paths for each edge:
 
 ```sql
-CREATE TABLE IF NOT EXISTS toco_tracer.edge_egress_ancestry (
-  edge_id             String,
-  trace_id            String,
-  egressAncestryPath  Array(String)
-) ENGINE = MergeTree()
-ORDER BY (trace_id, edge_id);
+edge_id String,
+trace_id String,
+egressAncestryPath Array(String),
+egressAncestryDepths Array(UInt32),
+egressAncestryLocalDepths Array(UInt32)
 ```
 
-**Written by:** `TraceEdgeResolver` (Stage 2)  
-**Read by:** `TraceClosureBuilder` (Stage 3)
+### `toco_tracer.read_edges`
 
-### 3.3 Read-Optimized Output Tables
-
-These tables are the final output of the materialization engine and are directly queried by the API.
-
-#### `toco_tracer.read_edges`
-Stores pre-computed, snapped visual connection endpoints for every visual depth level.
-For a trace with `D` max depth and `E` edges, this table will contain `E × (D+1)` rows.
+Final sparse visual wire output:
 
 ```sql
-CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
-  id                String,          -- Composite key: "{edge_id}_{depth}"
-  edge_id           String,
-  trace_id          String,
-  visual_depth      UInt32,          -- The zoom depth this wire belongs to
-  from_target_id    String,          -- The snapped origin ID
-  from_target_type  String,          -- "container" or "node"
-  to_node_id        String
-) ENGINE = MergeTree()
-ORDER BY (trace_id, visual_depth, id);
+id String,
+edge_id String,
+trace_id String,
+depth_type Enum8('global' = 1, 'local' = 2),
+visual_depth UInt32,
+from_target_id String,
+from_target_type Enum8('node' = 1, 'container' = 2),
+to_target_id String,
+to_target_type Enum8('node' = 1, 'container' = 2)
 ```
 
-**Written by:** `TraceClosureBuilder` (Stage 3)  
-**Read by:** `LogRepoClickHouseImpl.fetchTracePaginated`
+Rows are sparse. The engine inserts a new row only when a wire endpoint changes. Do not assume `E * (D + 1)` rows.
 
-#### `toco_tracer.trace_metadata`
-Stores the real-time materialization progress and final completion status for a trace.
+### `toco_tracer.trace_metadata`
 
 ```sql
-CREATE TABLE IF NOT EXISTS toco_tracer.trace_metadata (
-  trace_id              String,
-  is_zoom_ready         UInt8,    -- 1 = fully materialized, 0 = in progress
-  max_available_depth   UInt32,   -- Deepest stack depth index in this trace
-  materialized_offset   UInt32    -- How many records have been processed
-) ENGINE = MergeTree()
-ORDER BY trace_id;
+trace_id String,
+is_zoom_ready UInt8,
+max_available_depth UInt32,
+max_available_local_depth UInt32,
+materialized_offset UInt32
 ```
 
-**Written by:** All three stages  
-**Read by:** `LogRepoClickHouseImpl.ensureMaterialized`
+Current writes populate readiness and max-depth fields. `materialized_offset` exists in schema but current inserts do not set it explicitly.
 
----
+## Materialization Pipeline
 
-## 4. The Message Broker
+### Stage 1: Resolve Nodes
 
-**File:** [`src/infra/message/MessageBroker.ts`](../carno.js/src/infra/message/MessageBroker.ts)  
-**Implementation:** [`src/infra/message/InMemoryMessageBroker.ts`](../carno.js/src/infra/message/InMemoryMessageBroker.ts)
+`TraceNodeResolver`:
 
-The message broker is the backbone of the event-driven background system. It enables the three stages to execute non-blocking and independently, with the event loop able to handle other server requests between each batch.
+- Fetches `1000` nodes per batch.
+- Resolves parent paths from current batch, `node_ancestry`, and fallback `nodes` queries.
+- Writes `node_ancestry`.
+- Tracks `max_available_depth` and `max_available_local_depth`.
+- Publishes next `RESOLVE_NODES` batch or starts `RESOLVE_EDGES`.
 
-### Idempotency Contract
+### Stage 2: Resolve Edges
 
-The broker implementation owns the idempotency guarantee for the entire materialization system:
+`TraceEdgeResolver`:
 
-> **The broker MUST guarantee that for any given message key (`traceId`), at most one consumer processes a specific `stage` + `offset` combination at any point in time — even across multiple horizontally-scaled application instances.**
+- Fetches `1000` edges per batch.
+- Looks up `fromNodeId` in `node_ancestry`.
+- Writes `edge_egress_ancestry`.
+- Publishes next `RESOLVE_EDGES` batch or starts `BUILD_CLOSURES`.
 
-This means the application layer — operators, listener, repository — makes **zero idempotency assumptions**. The operators are purely stateless processors. They fetch, compute, and write. Deduplication is entirely the broker's responsibility.
+### Stage 3: Build Closures
 
-In practice this maps to well-known broker semantics:
-- **Kafka / Redpanda**: partition by `traceId` as the message key, use a single consumer group. Kafka guarantees at-most-once delivery per partition per consumer group, so only one instance ever processes events for a given `traceId`.
-- **InMemoryMessageBroker** (current dev/test implementation): single-process, naturally serialised — no concurrent processing of the same key is possible.
+`TraceClosureBuilder`:
 
-### Message Payload Schema
+- Fetches `1000` edges per batch.
+- Reads egress ancestry from `edge_egress_ancestry`.
+- Reads ingress ancestry from `node_ancestry` by `toNodeId`.
+- Builds both `global` and `local` wire rows.
+- Caps depth iteration at `100`.
+- Writes sparse rows to `read_edges`.
+- Marks trace ready when done.
 
-Every message published to the `trace_materialization` topic carries a **constant-size, tiny payload**:
+## Zoom Semantics
 
-```typescript
-{
-  traceId: string;    // The trace being processed — also used as the broker partition key
-  stage:
-    | "RESOLVE_NODES"   // Stage 1: resolve node ancestry paths
-    | "RESOLVE_EDGES"   // Stage 2: resolve edge egress paths
-    | "BUILD_CLOSURES"; // Stage 3: build snapped visual wires
-  offset: number;     // The row offset to start processing from (for chunking)
-  maxDepth: number;   // The current known maximum stack depth
-  iteration: number;  // Safety counter; aborts if > 100 (prevents runaway loops)
-}
-```
+`global` mode uses absolute `depthIndex`.
 
-> **Critical Design Note:** The payload never carries large arrays, ancestry maps, or any data that grows with trace size. The broker is strictly a lightweight signalling system. All heavy data is stored in and retrieved from the database.
+- At global depth `0`, code forces wires to container boundaries.
+- For `d > 0`, it snaps to the deepest ancestor with depth `<= d`, or falls back to container if no ancestor is visible.
 
----
+`local` mode uses `localDepthIndex`.
 
-## 5. The Materialization Engine (3-Stage Pipeline)
+- At local depth `0`, the code may snap to the root node inside each container.
+- This supports API-to-API blueprint views where every service exposes its local entry node.
 
-The engine is coordinated by the `TraceMaterializationListener`, which subscribes to the `trace_materialization` topic on boot and delegates to the appropriate isolated operator based on the `stage` field.
+## Query Path
 
-### How Chunking Works
+`fetchTracePaginated(traceId, params)`:
 
-Each operator processes exactly `BATCH_SIZE = 1000` records per invocation. If there are more records remaining:
+- Calls `ensureMaterialized`.
+- Caps `limit` to max `100`.
+- Applies keyset pagination using `initiatedAtLocal` and `id`.
+- Applies depth filter only when `params.depth` is set.
+- Fetches raw edges only when both node IDs are in the current page.
+- Fetches sparse visual wires with:
 
-1. It processes the current 1000 records.
-2. It writes the results to the database.
-3. It publishes a **new broker event** with `offset: offset + 1000`.
-4. It returns — yielding the event loop.
-
-The next invocation picks up at the new offset. This continues until the batch returns fewer than 1000 records, signalling completion.
-
-```
-offset=0      → process rows 0–999     → publish { offset: 1000 }
-offset=1000   → process rows 1000–1999 → publish { offset: 2000 }
-offset=2000   → process rows 2000–2749 → batch < 1000, stage complete
-                                        → publish next stage event
-```
-
-### Safety Guards
-
-| Guard | Value | Purpose |
-|---|---|---|
-| `BATCH_SIZE` | `1000` | Maximum rows loaded into RAM per invocation |
-| `MAX_DEPTH_LIMIT` | `100` | Maximum depth traversal in the fallback path to prevent infinite loops on cyclic/malformed traces |
-| `iteration` cap | `100` | Absolute maximum broker re-emissions per trace to prevent runaway processing |
-| Debounce lock | `15 seconds` | **Best-effort local optimisation** — prevents flooding the broker with duplicate trigger events during rapid ingestion bursts within a single process. Not a correctness guarantee; correctness is owned by the broker. |
-
----
-
-### Stage 1: `TraceNodeResolver` — Node Ancestry Resolution
-
-**File:** [`src/services/log/internal/listeners/operators/TraceNodeResolver.ts`](../carno.js/src/services/log/internal/listeners/operators/TraceNodeResolver.ts)
-
-**Responsibility:** For every node in the trace, compute the full ancestry path — an ordered array of ancestor node IDs from the root span down to the node itself: `['root', 'grandparent', 'parent', 'self']`.
-
-#### Algorithm (per batch of 1000 nodes)
-
-**Step 1 — Fetch 1000 nodes chronologically.**
-```sql
-SELECT * FROM toco_tracer.nodes
-WHERE trace_id = :traceId
-ORDER BY initiatedAtLocal ASC, id ASC
-LIMIT 1000 OFFSET :offset
-```
-Since nodes are fetched in chronological order, and distributed traces are typically recorded in execution order, parents will almost always appear before their children in this sequence.
-
-**Step 2 — Iterative Batch Parent Fetch.**
-Instead of lazy, one-by-one recursive DB queries, we resolve all missing parents upfront:
-1. Build a `localNodeMap` and identify all `parentNodeId`s missing from the batch.
-2. Query `node_ancestry` for these missing parents using a single `IN (...)` query.
-3. For any parents still missing, query the `nodes` table using a single `IN (...)` query and add them to the local map.
-4. Repeat this layer-by-layer up to `MAX_DEPTH_LIMIT` until no parents are missing.
-
-This bounds DB fallback queries strictly to the stack depth (typically 1 or 2 batch queries) rather than 100 sequential individual queries per out-of-order span.
-
-**Step 3 — Resolve paths for all 1000 nodes (100% In-Memory).**
-Since step 2 ensures all ancestors are pre-fetched into the `localNodeMap` or `dbAncestryMap`, the actual path traversal is now purely synchronous and in-memory. A `resolvedPaths` cache avoids redundant tree-climbing within the same batch.
-
-**Step 5 — Bulk insert into `node_ancestry`.**
-```sql
-INSERT INTO toco_tracer.node_ancestry VALUES (node_id, trace_id, ancestryPath)
-```
-
-**Step 6 — Update `trace_metadata` offset progress.**
-
-**Step 7 — Publish next event.**
-- If `rawNodes.length < 1000` → Stage 1 is complete. Publish `{ stage: "RESOLVE_EDGES", offset: 0 }`.
-- Otherwise → Publish `{ stage: "RESOLVE_NODES", offset: offset + 1000 }`.
-
-#### Memory Guarantee
-
-At any point during Stage 1, RAM holds at most:
-- `1000` raw node rows from ClickHouse
-- `≤ 1000` parent ancestry arrays fetched from `node_ancestry`
-- `1000` resolved ancestry arrays being built
-- The `resolvedPaths` Map (in-batch deduplication, bounded by batch size)
-
-**Total peak RAM: < 5MB regardless of total trace size.**
-
----
-
-### Stage 2: `TraceEdgeResolver` — Edge Egress Path Resolution
-
-**File:** [`src/services/log/internal/listeners/operators/TraceEdgeResolver.ts`](../carno.js/src/services/log/internal/listeners/operators/TraceEdgeResolver.ts)
-
-**Responsibility:** For every edge in the trace, attach the fully-resolved ancestry path of its originating node (`fromNodeId`). This is called the **egress ancestry path** — it tells Stage 3 which call stack the network call was dispatched from.
-
-**Precondition:** Stage 2 only begins after Stage 1 is 100% complete. This guarantees that **every node's ancestry path is already in `node_ancestry`** by the time Stage 2 starts. There is no recursion, tree climbing, or fallback needed.
-
-#### Algorithm (per batch of 1000 edges)
-
-**Step 1 — Fetch 1000 edges chronologically.**
-```sql
-SELECT * FROM toco_tracer.edges
-WHERE trace_id = :traceId
-ORDER BY dispatchedAtLocal ASC, id ASC
-LIMIT 1000 OFFSET :offset
-```
-
-**Step 2 — Collect all distinct `fromNodeId`s from the batch.**
-Deduplicate using a `Set` to avoid redundant DB lookups.
-
-**Step 3 — Single batch lookup against `node_ancestry`.**
-```sql
-SELECT node_id, ancestryPath FROM toco_tracer.node_ancestry
-WHERE trace_id = :traceId AND node_id IN (:fromNodeIds)
-```
-Since Stage 1 is fully complete, every `fromNodeId` is guaranteed to have an entry. This is an O(1) primary key index seek per node ID.
-
-**Step 4 — Map each edge to its egress path and bulk insert into `edge_egress_ancestry`.**
-```sql
-INSERT INTO toco_tracer.edge_egress_ancestry VALUES (edge_id, trace_id, egressAncestryPath)
-```
-
-**Step 5 — Publish next event.**
-- If `rawEdges.length < 1000` → Stage 2 complete. Publish `{ stage: "BUILD_CLOSURES", offset: 0 }`.
-- Otherwise → Publish `{ stage: "RESOLVE_EDGES", offset: offset + 1000 }`.
-
----
-
-### Stage 3: `TraceClosureBuilder` — Visual Wire Snapping
-
-**File:** [`src/services/log/internal/listeners/operators/TraceClosureBuilder.ts`](../carno.js/src/services/log/internal/listeners/operators/TraceClosureBuilder.ts)
-
-**Responsibility:** Generate one snapped visual wire per edge per depth level (from depth `0` to `maxDepth`). These pre-computed wires are what the frontend queries directly when a user zooms in to a specific call stack depth.
-
-**Precondition:** Stage 3 only begins after Stage 2 is 100% complete. Every edge's egress ancestry path is pre-computed and available in `edge_egress_ancestry`.
-
-#### Visual Wire Snapping Logic
-
-For each edge and for each depth level `d`:
-
-```
-d = 0  →  from_target = { id: edge.fromContainerId, type: "container" }
-          (Zoomed all the way out — connections snap to physical containers)
-
-d > 0  →  if d < egressAncestryPath.length:
-               from_target = { id: egressAncestryPath[d], type: "node" }
-               (Snap to the ancestor node at depth d in the call stack)
-           else:
-               from_target = { id: edge.fromNodeId, type: "node" }
-               (Path is shallower than requested depth; snap to leaf node)
-```
-
-#### Example
-
-Suppose an edge is dispatched from a node with this ancestry path:
-```
-ancestryPath = ['span_gateway', 'span_auth', 'span_db_query']
-                    depth=0          depth=1        depth=2
-```
-
-The generated visual wires for this edge would be:
-
-| `visual_depth` | `from_target_id`   | `from_target_type` |
-|---|---|---|
-| `0` | `con_gateway` (container) | `container` |
-| `1` | `span_gateway` | `node` |
-| `2` | `span_auth` | `node` |
-| `3` | `span_db_query` (leaf fallback) | `node` |
-
-**Sparse Inserts (Row Explosion Prevention):**
-Notice that for any depth `≥ 3`, the origin node stays exactly the same (`span_db_query`). Rather than inserting 97 identical duplicate rows for depths 4 through 100, the builder tracks the origin target and **only inserts a new row if the origin target changes from the previous depth**. 
-
-This slashes `read_edges` storage by 95% for deep traces.
-
-#### Algorithm (per batch of 1000 edges)
-
-**Step 1 — Fetch 1000 edges chronologically from `toco_tracer.edges`.**
-
-**Step 2 — Batch lookup against `edge_egress_ancestry`.**
-```sql
-SELECT edge_id, egressAncestryPath FROM toco_tracer.edge_egress_ancestry
-WHERE trace_id = :traceId AND edge_id IN (:edgeIds)
-```
-
-**Step 3 — Generate sparse visual wires.**
-For each edge, iterate `d` from `0` to `min(maxDepth, 100)` and apply the snapping logic above. If the computed target differs from the target at `d - 1`, a new wire row is added to the insert batch.
-
-**Step 4 — Bulk insert into `read_edges`.**
-```sql
-INSERT INTO toco_tracer.read_edges VALUES (id, edge_id, trace_id, visual_depth, from_target_id, from_target_type, to_node_id)
-```
-
-**Step 5 — Update `trace_metadata` and publish next event.**
-- If `rawEdges.length < 1000` → Mark `is_zoom_ready = 1`. Stage 3 complete. No further events published.
-- Otherwise → Publish `{ stage: "BUILD_CLOSURES", offset: offset + 1000 }`.
-
----
-
-## 6. Materialization Trigger & Debouncing
-
-**File:** [`src/services/log/internal/repo-impls/LogRepoClickHouseImpl.ts`](../carno.js/src/services/log/internal/repo-impls/LogRepoClickHouseImpl.ts)
-
-### Proactive Write-Time Trigger
-
-When nodes or edges are saved, `LogRepoClickHouseImpl` immediately fires a background materialization trigger for each distinct `traceId` in the ingested batch:
-
-```typescript
-const distinctTraceIds = Array.from(new Set(nodes.map(n => n.traceId))).filter(Boolean);
-for (const traceId of distinctTraceIds) {
-  this.triggerMaterialization(traceId).catch(...);
-}
-```
-
-This is a **fire-and-forget async call** that does not block the write response to the client.
-
-### 15-Second Debounce Lock (Best-Effort Local Optimisation)
-
-To avoid flooding the broker with redundant trigger events during rapid burst ingestion of the same trace, a static in-memory `Set` suppresses re-triggers within a 15-second window per process:
-
-```typescript
-private static triggeredTraces = new Set<string>();
-
-if (LogRepoClickHouseImpl.triggeredTraces.has(traceId)) return;
-LogRepoClickHouseImpl.triggeredTraces.add(traceId);
-setTimeout(() => triggeredTraces.delete(traceId), 15000);
-```
-
-> **This is not the idempotency mechanism.** It is purely a broker traffic optimisation. Correctness under concurrent multi-instance deployments is guaranteed by the broker's partition-by-key delivery semantics, not by this Set.
-
-### Read-Time Fallback Trigger
-
-During `fetchTracePaginated`, if `trace_metadata` is missing or `is_zoom_ready = 0`, a materialization is triggered. This covers edge cases such as the first query arriving before any writes have fired the proactive trigger.
-
----
-
-## 7. Query Path — `fetchTracePaginated`
-
-When a client requests a trace at a specific zoom depth `d`:
-
-```typescript
-await repo.fetchTracePaginated(traceId, { depth: 2, limit: 50 });
-```
-
-The following queries execute in sequence:
-
-**1. Metadata check**
-```sql
-SELECT is_zoom_ready, max_available_depth
-FROM toco_tracer.trace_metadata
-WHERE trace_id = :traceId
-LIMIT 1
-```
-
-**2. Paginated nodes (depth-filtered if depth is provided)**
-```sql
-SELECT * FROM toco_tracer.nodes
-WHERE trace_id = :traceId
-  AND depthIndex <= :depth          -- Only if depth param is provided
-  AND initiatedAtLocal > :afterTime -- Keyset cursor pagination
-ORDER BY initiatedAtLocal ASC, id ASC
-LIMIT :fetchLimit
-```
-
-**3. Coherent edges (strict graph membership)**
-```sql
-SELECT * FROM toco_tracer.edges
-WHERE trace_id = :traceId
-  AND fromNodeId IN (:nodeIds)
-  AND toNodeId IN (:nodeIds)
-```
-
-**4. Pre-computed visual wires (Sparse Read via `LIMIT BY`)**
 ```sql
 SELECT * FROM toco_tracer.read_edges
-WHERE trace_id = :traceId
-  AND visual_depth <= :depth
+WHERE trace_id = {traceId: String}
+  AND depth_type = {depthType: String}
+  AND visual_depth <= {depth: UInt32}
 ORDER BY visual_depth DESC
 LIMIT 1 BY edge_id
 ```
 
-Because `read_edges` uses sparse inserts, we don't query for an exact `visual_depth`. We query for the closest available pre-computed depth up to the requested depth, and use ClickHouse's native `LIMIT 1 BY` to pick the single highest depth row per edge. This sub-millisecond query seamlessly resolves the exact wire endpoints without storing massive duplicates.
+`fetchTraceFull(traceId, depth, depthType)` uses similar depth filtering and visual wire lookup, without cursor pagination.
 
----
+## Broker And Idempotency Status
 
-## 8. Code Map
+Current backend uses `InMemoryMessageBroker`. It buffers payloads per topic and invokes one local handler batch at a time.
 
-```
+Current trigger debounce:
+
+- `LogRepoClickHouseImpl.triggeredTraces` suppresses duplicate trace triggers for `15` seconds.
+- This is process-local and best effort.
+
+Production gaps:
+
+- No durable broker implementation is wired.
+- No cross-process idempotency exists.
+- Re-running materialization can append duplicate rows because ClickHouse tables are append-oriented and cache tables are not replacement-keyed per logical row.
+
+Before horizontal deployment, implement a durable broker keyed by `traceId` and a dedupe strategy for `(traceId, stage, offset)`.
+
+## Code Map
+
+```text
 carno.js/src/
-│
+├── index.ts
 ├── infra/
-│   ├── ClickHouseService.ts                     — Database connection & all table migrations
+│   ├── ClickHouseService.ts
 │   └── message/
-│       ├── MessageBroker.ts                     — Abstract broker interface
-│       └── InMemoryMessageBroker.ts             — In-process implementation (for dev/test)
-│
+│       ├── MessageBroker.ts
+│       └── InMemoryMessageBroker.ts
+├── routes/
+│   └── LogController.ts
 └── services/log/
-    ├── types.ts                                 — Node, Edge, VisualWire, PaginationParams types
-    ├── LogService.ts                            — Public read/write service interface
+    ├── LogService.ts
+    ├── types.ts
     └── internal/
-        ├── LogRepo.ts                           — Abstract repository interface
-        ├── LogServiceImpl.ts                    — Service implementation (enrichment & delegation)
+        ├── LogRepo.ts
+        ├── LogServiceImpl.ts
         ├── repo-impls/
-        │   └── LogRepoClickHouseImpl.ts         — ClickHouse repository: writes, trigger, reads
+        │   └── LogRepoClickHouseImpl.ts
         └── listeners/
-            ├── TraceMaterializationListener.ts  — Central broker subscriber & stage router
+            ├── TraceMaterializationListener.ts
             └── operators/
-                ├── TraceNodeResolver.ts         — Stage 1: node ancestry resolution
-                ├── TraceEdgeResolver.ts         — Stage 2: edge egress path resolution
-                └── TraceClosureBuilder.ts       — Stage 3: visual wire snapping
+                ├── TraceNodeResolver.ts
+                ├── TraceEdgeResolver.ts
+                └── TraceClosureBuilder.ts
 ```
 
----
+## Known Doc Boundary
 
-## 9. Future Work (Deferred)
-
-| Feature | Description |
-|---|---|
-| **Real Message Broker** | Replace `InMemoryMessageBroker` with a Kafka/Redpanda implementation keyed by `traceId` to enforce the broker idempotency contract in production (infrastructure already provisioned in `docker-compose.yml`). |
-| **Fallback Path Optimisation** | Replace the recursive one-node-at-a-time DB fallback in `TraceNodeResolver` with a single batch ancestor traversal query for out-of-order span scenarios. |
-| **Partial Trace Updates** | Support appending late-arriving spans to an already-materialized trace without full re-processing. |
-| **Visual Wire Pagination** | Apply cursor-based pagination to `read_edges` queries for traces with extreme depth × edge counts. |
+Older concept docs in `docs/` describe future layout tables, tenant filtering, fleet maps, and advanced analysis queries. Treat those as product direction unless a matching table/method exists in `carno.js/src`.

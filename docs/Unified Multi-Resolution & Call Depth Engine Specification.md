@@ -2,7 +2,9 @@
 
 This document details the layout mechanics and backend compilation rules that govern how **Call Depth** and **Multi-Resolution Zoom** work together.
 
-Specifically, it addresses how the system computes the varying vertical heights (longer or shorter vertical indentation guide lines) of container lanes on the canvas using pre-calculated depth summaries stored directly in the read-optimized closure tables.
+Specifically, it addresses how row filtering and wire snapping work today, plus one proposed future layout cache for container lane heights.
+
+> Implementation note: current backend materializes sparse `read_edges` and `trace_metadata` only. It does not create a container layout cache table.
 
 ---
 
@@ -41,7 +43,9 @@ Consider a distributed system execution trace where `web-service` executes a nes
 
 ## 3. Database & System Architecture
 
-To calculate how long or short a container's vertical track layout should be without running expensive loops at query time, the background sync worker calculates the **`max_visible_depth`** for every single resolution step and caches it directly into the read-optimized closure database.
+Current backend filters nodes by `depthIndex` or `localDepthIndex` and fetches sparse wire targets from `read_edges`. It exposes `max_available_depth` and `max_available_local_depth` through `trace_metadata`.
+
+The container layout cache below is proposed, not implemented. Current UI code should derive lane height from returned nodes plus metadata.
 
 ### The Read-Optimized Trace Layout Properties
 
@@ -52,7 +56,7 @@ interface ClosureContainerLayout {
   id: string;
   trace_id: string;
   container_id: string;
-  visual_depth_filter: number; // The current viewport zoom threshold
+  visual_depth: number;        // The current viewport zoom threshold
   max_visible_depth: number;   // Dictates lane height and vertical guide line lengths
   total_visible_rows: number;  // Used by the canvas grid engine to space peer swimlanes
 }
@@ -63,28 +67,28 @@ interface ClosureContainerLayout {
 
 ## 4. Production Data Payload
 
-When the background worker builds the closure tables for our example trace, it outputs a flat matrix mapping the physical boundaries of the containers across all zoom levels:
+If implemented later, the background worker could output a flat matrix mapping physical container boundaries across zoom levels:
 
 ```json
 [
   {
     "trace_id": "tx_987654321_kbd",
     "container_id": "con_api_prod_7a81",
-    "visual_depth_filter": 0,
+    "visual_depth": 0,
     "max_visible_depth": 0,
     "total_visible_rows": 1
   },
   {
     "trace_id": "tx_987654321_kbd",
     "container_id": "con_api_prod_7a81",
-    "visual_depth_filter": 2,
+    "visual_depth": 2,
     "max_visible_depth": 2,
     "total_visible_rows": 3
   },
   {
     "trace_id": "tx_987654321_kbd",
     "container_id": "con_api_prod_7a81",
-    "visual_depth_filter": 4,
+    "visual_depth": 4,
     "max_visible_depth": 3,
     "total_visible_rows": 4
   }
@@ -100,12 +104,12 @@ The UI layout manager takes these pre-calculated integers and scales the physica
 
 ### Macro Mode Layout (`depthFilterThreshold = 0`)
 
-* **Container Indentation Length:** The backend returns `max_visible_depth: 0`. The internal code tree inside `web-service` vanishes. The vertical indentation guide lines collapse down to their **shortest possible length** (completely hidden). The container area condenses into a clean, single-row infrastructure block card.
+* **Container Indentation Length:** Current backend returns filtered nodes plus `max_available_depth` metadata; a future layout cache could return `max_visible_depth: 0`. The internal code tree inside `web-service` vanishes. The vertical indentation guide lines collapse down to their shortest possible length.
 * **The Wiring:** The wire engine reads the edge ancestry path, sees that rows 3, 2, and 1 are squashed, and routes the cross-service wire generically from the outer physical boundary of the `web-service` card straight to the `billing-worker` card.
 
 ### Meso Mode Layout (`depthFilterThreshold = 2`)
 
-* **Container Indentation Length:** The backend serves the cached metrics: `max_visible_depth: 2` and `total_visible_rows: 3`. The `web-service` swimlane scales its height downward to clear vertical room. The vertical indentation guide lines **stretch out to a medium length**, cleanly cascading from the root request down through `auth_middleware()` and anchoring onto `TaskController()`.
+* **Container Indentation Length:** Current backend serves nodes where depth is within the requested threshold; a future layout cache could add `max_visible_depth: 2` and `total_visible_rows: 3`. The `web-service` swimlane scales its height downward to clear vertical room.
 * **The Wiring:** The edge re-anchoring logic scans the edge breadcrumbs and finds that row `2` (`TaskController`) is now active on the screen. The network wire **slides down the family tree**, dropping inside the container margins to anchor onto the `TaskController()` row component.
 
 ### Micro Mode Layout (Full Depth / Fallback Default)
@@ -133,5 +137,5 @@ This is the system's unrestricted path view, used while data sync loops finish.
 
 ## 6. Performance Benefits
 
-* **Zero Frontend Computation:** The frontend never has to guess how tall a container swimlane should be, nor does it need to trace parent paths recursively to calculate vertical line heights. The backend pre-computes the physical boundaries of the graph blueprint upfront.
-* **Jitter-Free Scaling:** Because the heights, rows, and wire targets are delivered in a single atomic payload matching the user's zoom factor, the canvas transitions instantly. Lines don't drift or tear away from rows during zoom shifts because the spatial boundaries are locked on the backend.
+* **Low Frontend Traversal:** The frontend does not need to recursively trace wire ancestry; backend returns snapped `visualWires`.
+* **Future Jitter-Free Scaling:** A future layout cache can deliver heights, rows, and wire targets in one atomic payload. Current backend supplies wire targets and depth metadata, while lane height remains a UI concern.

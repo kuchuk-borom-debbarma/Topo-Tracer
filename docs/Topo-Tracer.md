@@ -2,6 +2,8 @@
 
 This document details the core features, architectural primitives, and production data specifications for **Topo-Tracer**—a distributed tracing framework built on graph theory, microsecond-level latency tracking, and an asynchronous, CQRS-backed progressive topology canvas.
 
+> Implementation note: current backend code lives in `carno.js/src` and uses ClickHouse database `toco_tracer`. The implemented read cache is `read_edges` plus `trace_metadata`; container layout bounds remain a proposed UI/read-model feature.
+
 ---
 
 ## 1. Core Features
@@ -124,23 +126,25 @@ An asynchronous background worker processes the flat tables above to populate th
   "id": "closure_edge_001a",
   "edge_id": "edge_cross_wire_331",
   "trace_id": "tx_987654321_kbd",
-  "visual_depth_filter": 2,
+  "depth_type": "global",
+  "visual_depth": 2,
   "from_target_id": "node_service_bar_12c",
   "from_target_type": "node",
-  "to_node_id": "node_worker_consume_002"
+  "to_target_id": "node_worker_consume_002",
+  "to_target_type": "node"
 }
 
 ```
 
-### D. Materialized Tier: Container Layout Bounds (Dedicated Read Store)
+### D. Proposed Tier: Container Layout Bounds (Not Implemented)
 
-Caches layout dimensions for container swimlanes and vertical hierarchy guide lines per resolution layer.
+Container layout bounds would cache swimlane heights and vertical hierarchy guide lines per resolution layer. Current backend does not create this table; UI code must derive layout from returned nodes, edges, `visualWires`, and `trace_metadata`.
 
 ```json
 {
   "trace_id": "tx_987654321_kbd",
   "container_id": "con_api_prod_7a81",
-  "visual_depth_filter": 2,
+  "visual_depth": 2,
   "max_visible_depth": 2,
   "total_visible_rows": 3
 }
@@ -178,7 +182,7 @@ The primary transactional application database serves initial metadata and track
 
 ### B. Resolution Materialization Engine
 
-Once `is_zoom_ready` shifts to `true`, the UI utilizes explicit zoom layer parameters. The query engine serves lookups directly from the read index in constant time ($O(1)$ complexity). A lock-protected mutex fallback guards against cache stampedes:
+Once `is_zoom_ready` shifts to `true`, the UI utilizes explicit zoom layer parameters. The query engine serves lookups directly from the sparse `read_edges` index:
 
 ```typescript
 type ResolutionTarget = { id: string; type: 'node' | 'container' };
@@ -191,38 +195,24 @@ interface VisualWirePayload {
 
 async function fetchWiresForResolution(
   traceId: string,
-  depthFilterThreshold: number
+  depth: number,
+  depthType: 'global' | 'local'
 ): Promise<VisualWirePayload[]> {
-  
-  // 1. O(1) Fetch from Read Store Closure Tables
-  const cachedEdges = await readStore.find({ trace_id: traceId, visual_depth_filter: depthFilterThreshold });
-  if (cachedEdges.length > 0) {
-    return cachedEdges.map(edge => ({
-      id: edge.edge_id,
-      from_target: { id: edge.from_target_id, type: edge.from_target_type },
-      to_target: { id: edge.to_node_id, type: 'node' }
-    }));
-  }
+  const rows = await readStore.query(`
+    SELECT *
+    FROM toco_tracer.read_edges
+    WHERE trace_id = {traceId: String}
+      AND depth_type = {depthType: String}
+      AND visual_depth <= {depth: UInt32}
+    ORDER BY visual_depth DESC
+    LIMIT 1 BY edge_id
+  `, { traceId, depthType, depth });
 
-  // 2. Mutex-Locked Fallback Routine to Prevent Concurrent Query Stampedes
-  return await acquireMutexLock(traceId, async () => {
-    const rawNodes = await writeStore.fetchNodes(traceId);
-    const rawEdges = await writeStore.fetchEdges(traceId);
-    
-    const visibleNodes = rawNodes.filter(node => node.depth_index <= depthFilterThreshold);
-    const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
-
-    return rawEdges.map(edge => {
-      const resolvedFromNodeId = edge.egress_ancestry_path.find(id => visibleNodeIds.has(id));
-      return {
-        id: edge.id,
-        to_target: { id: edge.to_node_id, type: 'node' },
-        from_target: resolvedFromNodeId 
-          ? { id: resolvedFromNodeId, type: 'node' }
-          : { id: edge.from_container_id, type: 'container' }
-      };
-    });
-  });
+  return rows.map(edge => ({
+    id: edge.edge_id,
+    from_target: { id: edge.from_target_id, type: edge.from_target_type },
+    to_target: { id: edge.to_target_id, type: edge.to_target_type }
+  }));
 }
 
 ```
