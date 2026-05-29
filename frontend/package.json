@@ -1,8 +1,0 @@
-{
-  "name": "topo-tracer-web",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "bun --hot server.ts"
-  }
-}
