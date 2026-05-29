@@ -1,123 +1,32 @@
-import { Controller, Post, Body, Get, Param, Query } from "@carno.js/core";
+import { Body, Controller, Post } from "@carno.js/core";
 import { LogService } from "../services/log/LogService";
-import type { ContainerInput, NodeInput, EdgeInput } from "../services/log/types";
+import type { TraceBlockInput, TraceContainerInput, TraceEdgeInput, TraceNodeInput } from "../services/log/types";
 
 @Controller("/telemetry")
 export class LogController {
   constructor(private logService: LogService) {}
 
-  // Push a batch of container limits to the database
   @Post("/containers")
-  async logContainers(@Body() containers: ContainerInput[]) {
-    console.log(`[LogController] Received batch of ${containers.length} containers`);
+  async logContainers(@Body() containers: TraceContainerInput[]) {
     await this.logService.logContainers(containers);
     return { ok: true, count: containers.length };
   }
 
-  // Push a batch of execution stack nodes to the database
+  @Post("/blocks")
+  async logBlocks(@Body() blocks: TraceBlockInput[]) {
+    await this.logService.logBlocks(blocks);
+    return { ok: true, count: blocks.length };
+  }
+
   @Post("/nodes")
-  async logNodes(@Body() nodes: NodeInput[]) {
-    console.log(`[LogController] Received batch of ${nodes.length} nodes`);
+  async logNodes(@Body() nodes: TraceNodeInput[]) {
     await this.logService.logNodes(nodes);
     return { ok: true, count: nodes.length };
   }
 
-  // Push a batch of network transition edges to the database
   @Post("/edges")
-  async logEdges(@Body() edges: EdgeInput[]) {
-    console.log(`[LogController] Received batch of ${edges.length} edges`);
+  async logEdges(@Body() edges: TraceEdgeInput[]) {
     await this.logService.logEdges(edges);
     return { ok: true, count: edges.length };
   }
-
-  // Shift and align a batch of container timestamps in-memory
-  @Post("/containers/update-times")
-  async updateContainerTimes(@Body() containers: ContainerInput[]) {
-    console.log(`[LogController] Shifting times for ${containers.length} containers`);
-    return await this.logService.updateContainerLocalTimes(containers);
-  }
-
-  // Shift and align a batch of stack node timestamps in-memory, preserving relative offsets
-  @Post("/nodes/update-times")
-  async updateNodeTimes(@Body() nodes: NodeInput[]) {
-    console.log(`[LogController] Shifting times for ${nodes.length} nodes`);
-    return await this.logService.updateNodeLocalTimes(nodes);
-  }
-
-  // Shift and align a batch of network edge timestamps in-memory, preserving relative offsets
-  @Post("/edges/update-times")
-  async updateEdgeTimes(@Body() edges: EdgeInput[]) {
-    console.log(`[LogController] Shifting times for ${edges.length} edges`);
-    return await this.logService.updateEdgeLocalTimes(edges);
-  }
-
-  // Fetch a paginated chunk of nodes and matching edges for a given trace sequentially
-  @Get("/trace/:traceId")
-  async getTrace(
-    @Param("traceId") traceId: string,
-    @Query("limit") limit?: string,
-    @Query("depth") depth?: string,
-    @Query("beforeTime") beforeTime?: string,
-    @Query("beforeId") beforeId?: string,
-    @Query("afterTime") afterTime?: string,
-    @Query("afterId") afterId?: string,
-    @Query("depthType") depthType?: string
-  ) {
-    const rawLimit = limit ? parseInt(limit, 10) : undefined;
-    const rawDepth = depth ? parseInt(depth, 10) : undefined;
-    const rawBeforeTime = beforeTime ? parseInt(beforeTime, 10) : undefined;
-    const rawAfterTime = afterTime ? parseInt(afterTime, 10) : undefined;
-
-    console.log(`[LogController] Paginated unified fetch request for trace ${traceId} (limit: ${rawLimit}, depth: ${rawDepth})`);
-
-    return await this.logService.logTracePaginated(traceId, {
-      limit: rawLimit,
-      depth: rawDepth,
-      beforeTime: rawBeforeTime,
-      beforeId,
-      afterTime: rawAfterTime,
-      afterId,
-      depthType: depthType as "global" | "local" | undefined,
-    });
-  }
-
-  // Fetch all nodes and matching edges for a given trace up to a specific depth without pagination limits
-  @Get("/trace/:traceId/full")
-  async getTraceFull(
-    @Param("traceId") traceId: string,
-    @Query("depth") depth?: string,
-    @Query("depthType") depthType?: string
-  ) {
-    const rawDepth = depth ? parseInt(depth, 10) : undefined;
-    console.log(`[LogController] Full unified fetch request for trace ${traceId} (depth: ${rawDepth}, depthType: ${depthType})`);
-    
-    return await this.logService.logTraceFull(traceId, rawDepth, depthType as 'global' | 'local');
-  }
-
-  // Fetch metadata for a specific trace, such as whether zoom is fully materialized
-  @Get("/trace/:traceId/metadata")
-  async getTraceMetadata(@Param("traceId") traceId: string) {
-    console.log(`[LogController] Fetching metadata for trace ${traceId}`);
-    return await this.logService.fetchTraceMetadata(traceId);
-  }
-
-  @Get("/traces")
-  async listTraces(
-    @Query("limit") limit?: string,
-    @Query("beforeTime") beforeTime?: string,
-    @Query("afterTime") afterTime?: string
-  ) {
-    const rawLimit = limit ? parseInt(limit, 10) : undefined;
-    const rawBeforeTime = beforeTime ? parseInt(beforeTime, 10) : undefined;
-    const rawAfterTime = afterTime ? parseInt(afterTime, 10) : undefined;
-
-    console.log(`[LogController] Listing traces (limit: ${rawLimit}, beforeTime: ${rawBeforeTime}, afterTime: ${rawAfterTime})`);
-
-    return await this.logService.listTraces({
-      limit: rawLimit,
-      beforeTime: rawBeforeTime,
-      afterTime: rawAfterTime,
-    });
-  }
 }
-
