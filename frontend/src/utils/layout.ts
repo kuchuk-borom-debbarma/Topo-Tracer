@@ -307,6 +307,9 @@ export function computeLayout(
     currentY += height + 48; // vertical gap between independent root spans
   }
 
+  // Sort container layouts by depth to ensure child cards stack on top of parents in DOM order
+  containerLayouts.sort((a, b) => a.depth - b.depth);
+
   const containerLayoutsMap = new Map<string, ContainerLayout>();
   for (const cl of containerLayouts) {
     containerLayoutsMap.set(cl.containerId, cl);

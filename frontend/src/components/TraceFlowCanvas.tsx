@@ -107,6 +107,7 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 height: cl.height,
                 borderLeftColor: depthColor,
                 opacity: isDimmed ? 0.28 : 1,
+                zIndex: 3 + cl.depth,
                 transition: "opacity 180ms ease, box-shadow 180ms ease",
                 boxShadow: isHighlighted
                   ? `0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px ${depthColor}55, 0 0 24px ${depthColor}18`
