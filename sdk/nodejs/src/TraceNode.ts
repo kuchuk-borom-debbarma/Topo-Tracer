@@ -29,6 +29,14 @@ export class TraceContainer {
     this.tags = opts.tags || [];
     this.depthIndex = opts.depthIndex || 0;
 
+    // Automatically append dynamic depth tag for internal functions (nested sub-containers)
+    if (this.depthIndex > 0) {
+      const depthTag = `internal_function_depth_${this.depthIndex}`;
+      if (!this.tags.includes(depthTag)) {
+        this.tags.push(depthTag);
+      }
+    }
+
     // Export "started" event for this container
     Tracer.exportContainer({
       id: this.id,
@@ -176,7 +184,6 @@ export class TraceContainer {
     nodeType: NodeType | string;
     edgeType?: EdgeType | string;
   }): TraceContainer {
-    // If container isn't registered yet, register it dynamically
     if (opts.containerName) {
       Tracer.registerContainer({
         id: opts.containerId,
@@ -185,7 +192,6 @@ export class TraceContainer {
       });
     }
 
-    // Spawn sub-container under different physical containerId
     const child = new TraceContainer({
       id: opts.containerId,
       traceId: this.traceId,
@@ -195,7 +201,6 @@ export class TraceContainer {
       tags: [],
     });
 
-    // Log the ingress connection edge
     const callerNodeId = this.logNode(`Call: ${opts.name}`, [], null, opts.nodeType);
     const entryNodeId = child.logNode(`Enter: ${opts.name}`, [], null, opts.nodeType);
     this.logEdge(callerNodeId, entryNodeId, opts.edgeType);
@@ -248,10 +253,8 @@ export class TraceContainer {
     const callerNodeId = toNodeId + "_caller";
     const edgeId = toNodeId + "_edge";
 
-    // 1. Log the starting caller node inside this container
     this.logNode(`Egress Call to Container ${toContainerId}`, [], null, NodeType.HTTP_CLIENT);
 
-    // 2. Export the egress network edge
     return new ActiveEdge({
       id: edgeId,
       traceId: this.traceId,
@@ -282,7 +285,6 @@ export class ActiveEdge {
     this.toNodeId = opts.toNodeId;
     this.edgeType = opts.edgeType;
 
-    // Export edge immediately
     Tracer.exportEdge({
       id: this.id,
       traceId: this.traceId,

@@ -5,7 +5,8 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function runSophisticatedSimulation() {
   console.log("=========================================");
-  console.log("🚀 Starting Sophisticated Tracing Simulation");
+  console.log("🚀 Starting V3 Sophisticated Simulation");
+  console.log("   (Containers = Functions, Nodes = Logs)");
   console.log("=========================================\n");
 
   const orderSvcId = "container-order-api";
@@ -16,172 +17,161 @@ async function runSophisticatedSimulation() {
   // --- INTER-SERVICE PAYLOADS ---
   let httpRequestHeaders: any = {};
   let kafkaMessagePayload: any = {};
-  let batchQueuePayloads: any[] = []; // Simulating a queue that a batch worker pulls from
+  let batchQueuePayloads: any[] = []; 
 
   // =======================================================================
   // SERVICE A: Order API Gateway
   // =======================================================================
   console.log("🟢 [Service A] Initializing Order API Gateway...");
-  Tracer.init({ baseUrl: "http://localhost:3000" }, { name: "Order API Gateway", containerType: ContainerType.EXPRESS_API, id: orderSvcId });
+  Tracer.init(
+    { baseUrl: "http://localhost:3000" }, 
+    { name: "Order API Gateway", containerType: ContainerType.EXPRESS_API, id: orderSvcId }
+  );
 
-  const rootNode = Tracer.startTrace("1. POST /v1/checkout", NodeType.HTTP_SERVER);
-  console.log(`   [Service A] Started Trace: ${rootNode.traceId}`);
+  // Root container representing the ingress gateway service scope
+  const gatewayContainer = Tracer.startContainer("1. POST /v1/checkout", ["service", "checkout"]);
+  console.log(`   [Service A] Started Trace: ${gatewayContainer.traceId}`);
+  
   await delay(15);
-  rootNode.markProcessed();
+  gatewayContainer.logNode("Gateway received request", ["checkout", "gateway"]);
 
-  // 1. Linear Step 1: Validation
-  const validationNode = rootNode.startChild("1.1 validateOrder()", NodeType.FUNCTION);
-  validationNode.markProcessed();
-  console.log(`   [Service A] Executing concurrent queries in validation...`);
-  
-  // Simulate database queue delay (scheduled 35ms ago)
-  const userQueryScheduled = new Date(Date.now() - 35);
-  const userQueryNode = validationNode.startChild("1.1.1 DB: Fetch User", NodeType.DATABASE, undefined, userQueryScheduled);
-  const fraudScoreNode = validationNode.startChild("1.1.2 API: Fraud Check", NodeType.HTTP_CLIENT);
-  
-  await Promise.all([
-    (async () => {
-      userQueryNode.suspend(); // Waiting on DB connection pool
-      await delay(15);
-      userQueryNode.resume(); // Connection acquired, resuming!
-      
-      await delay(10);
-      userQueryNode.markProcessed();
-      
-      // Simulate CPU-intensive deserialization and validation loop
-      let count = 0;
-      for (let i = 0; i < 4000000; i++) {
-        count += (i * 3) % 2;
-      }
-      
-      userQueryNode.markCompleted({ userId: 42, cpuResult: count });
-    })(),
-    (async () => {
-      await delay(40);
-      fraudScoreNode.markProcessed();
-      fraudScoreNode.markCompleted({ score: 0.05 });
-    })()
-  ]);
-  validationNode.markCompleted({ valid: true });
+  // 1. Nested Function Call: validateOrder() [Sub-Container - will get auto tag internal_function_depth_1]
+  const validateTx = gatewayContainer.startChildContainer("1.1 validateOrder()", ["checkout"]);
+  validateTx.logNode("Validation started", ["checkout"]);
 
-  // 2. Linear Step 2: Payment Processing
-  const processPaymentNode = rootNode.startChild("1.2 processPayment()", NodeType.FUNCTION);
-  processPaymentNode.markProcessed();
-  
-  const paymentClientNode = processPaymentNode.startChild("1.2.1 HTTP POST /payments/charge", NodeType.HTTP_CLIENT);
+  // Fetch User DB Query [Node - log event]
+  const dbFetchNodeId = validateTx.logNode("1.1.1 DB: Fetch User", ["database", "read"]);
+  await delay(15);
+
+  // Fraud check API Call [Node - log event]
+  const fraudCheckNodeId = validateTx.logNode("1.1.2 API: Fraud Check", ["network"]);
+  await delay(25);
+
+  validateTx.logNode("Validation succeeded", ["checkout"]);
+  validateTx.complete();
+
+  // 2. Nested Function Call: processPayment() [Sub-Container - depth 1]
+  const processPaymentTx = gatewayContainer.startChildContainer("1.2 processPayment()", ["checkout"]);
+  processPaymentTx.logNode("Payment flow started", ["checkout"]);
+
+  // HTTP Gateway Client Request [Node - log event]
+  const paymentClientNodeId = processPaymentTx.logNode("1.2.1 HTTP POST /payments/charge", ["network"]);
   await delay(5);
-  paymentClientNode.markProcessed();
+
+  const paymentIncomingNodeId = uuidv4();
   
-  const paymentIncomingNodeId = uuidv4(); 
-  const paymentEdge = paymentClientNode.recordEgressEdge(paymentSvcId, paymentIncomingNodeId, EdgeType.HTTP_REQUEST);
+  // Register network egress crossing from caller node to payment incoming node
+  processPaymentTx.logEdge(paymentClientNodeId, paymentIncomingNodeId, EdgeType.HTTP_REQUEST);
 
   httpRequestHeaders = {
-    "x-trace-id": rootNode.traceId,
-    "x-parent-node-id": paymentClientNode.id,
+    "x-trace-id": gatewayContainer.traceId,
+    "x-parent-node-id": paymentClientNodeId,
     "x-target-node-id": paymentIncomingNodeId,
-    "x-depth-index": paymentClientNode.depthIndex.toString(),
+    "x-depth-index": processPaymentTx.depthIndex.toString(),
   };
 
-  await delay(45); // Simulate downstream round-trip processing time
-  paymentEdge.complete();
-  
-  paymentClientNode.markCompleted({ status: 500 }); // We'll simulate a failure downstream
-  processPaymentNode.markCompleted({ status: "payment_failed_fallback" });
+  await delay(45); // Downstream processing time
+  processPaymentTx.logNode("Payment failed fallback triggered", ["checkout", "payment_failure"]);
+  processPaymentTx.complete();
 
-  // 3. Linear Step 3: Dispatch & Reporting
-  const dispatchOrderNode = rootNode.startChild("1.3 dispatchOrder()", NodeType.FUNCTION);
-  dispatchOrderNode.markProcessed();
+  // 3. Nested Function Call: dispatchOrder() [Sub-Container - depth 1]
+  const dispatchOrderTx = gatewayContainer.startChildContainer("1.3 dispatchOrder()", ["checkout"]);
+  dispatchOrderTx.logNode("Dispatch flow started", ["checkout"]);
 
-  const eventPublisherNode = dispatchOrderNode.startChild("1.3.1 Kafka Produce: OrderCreated", NodeType.MESSAGE_PRODUCER);
+  // Kafka Produce event [Node - log event]
+  const kafkaProduceNodeId = dispatchOrderTx.logNode("1.3.1 Kafka Produce: OrderCreated", ["pub_sub", "network"]);
   await delay(5);
-  eventPublisherNode.markProcessed();
 
   const inventoryConsumerNodeId = uuidv4();
-  const kafkaEdge = eventPublisherNode.recordEgressEdge(inventorySvcId, inventoryConsumerNodeId, EdgeType.KAFKA_MESSAGE);
+  dispatchOrderTx.logEdge(kafkaProduceNodeId, inventoryConsumerNodeId, EdgeType.KAFKA_MESSAGE);
 
   kafkaMessagePayload = {
     orderId: 999,
     _traceContext: {
-      traceId: rootNode.traceId,
-      parentNodeId: eventPublisherNode.id,
+      traceId: gatewayContainer.traceId,
+      parentNodeId: kafkaProduceNodeId,
       targetNodeId: inventoryConsumerNodeId,
-      depthIndex: eventPublisherNode.depthIndex
+      depthIndex: dispatchOrderTx.depthIndex
     }
   };
 
-  await delay(12); // Simulate broker write latency
-  kafkaEdge.complete();
+  await delay(12);
 
-  eventPublisherNode.markCompleted({ topic: "orders.events" });
-
-  // 4. Send to Reporting Queue for Fan-out batching (Also nested under Dispatch)
+  // 4. nested Queue dispatch to Reporting Chron batch [Sub-Container - depth 1]
+  const sqsProduceNodeId = dispatchOrderTx.logNode("1.3.2 SQS Produce: Nightly Batch Queue", ["pub_sub", "network"]);
   const reportingTargetNodeId = uuidv4();
-  const sqsEdge = dispatchOrderNode.recordEgressEdge(reportSvcId, reportingTargetNodeId, EdgeType.SQS_MESSAGE);
+  dispatchOrderTx.logEdge(sqsProduceNodeId, reportingTargetNodeId, EdgeType.SQS_MESSAGE);
+
   batchQueuePayloads.push({
-    traceId: rootNode.traceId,
-    parentNodeId: dispatchOrderNode.id,
+    traceId: gatewayContainer.traceId,
+    parentNodeId: sqsProduceNodeId,
     targetNodeId: reportingTargetNodeId,
-    depthIndex: dispatchOrderNode.depthIndex
+    depthIndex: dispatchOrderTx.depthIndex
   });
 
-  await delay(8); // Simulate queue delivery latency
-  sqsEdge.complete();
+  await delay(8);
+  dispatchOrderTx.complete();
 
-  dispatchOrderNode.markCompleted({ dispatched: true });
+  gatewayContainer.logNode("Gateway completed response", ["checkout", "gateway"]);
+  gatewayContainer.complete();
 
-  rootNode.markCompleted({ status: 200, message: "Checkout complete" });
-  
   console.log("   [Service A] Flushing telemetry and shutting down...\n");
   try { await Tracer.flush(); } catch (e) {}
   await Tracer.shutdown();
 
 
   // =======================================================================
-  // SERVICE B: Payment Service (Error Flow)
+  // SERVICE B: Payment Service (Error / Fallback Flow)
   // =======================================================================
   console.log("🔵 [Service B] Initializing Payment Service...");
-  Tracer.init({ baseUrl: "http://localhost:3000" }, { name: "Payment Processing Service", containerType: ContainerType.GRPC_SERVICE, id: paymentSvcId });
+  Tracer.init(
+    { baseUrl: "http://localhost:3000" }, 
+    { name: "Payment Processing Service", containerType: ContainerType.GRPC_SERVICE, id: paymentSvcId }
+  );
 
   const bTraceId = httpRequestHeaders["x-trace-id"];
   const bParentId = httpRequestHeaders["x-parent-node-id"];
   const bDepth = parseInt(httpRequestHeaders["x-depth-index"], 10);
   
-  const paymentRootNode = Tracer.continueTrace(
+  // Continue trace as payment root container
+  const paymentRootContainer = Tracer.continueTrace(
     bTraceId, bParentId, 
     "1.2.1.1 POST /payments/charge", NodeType.HTTP_SERVER, 
     bDepth, undefined, undefined,
-    httpRequestHeaders["x-target-node-id"]  // overrideId — matches the egress edge destination
+    httpRequestHeaders["x-target-node-id"]
   );
-  // No id mutation needed — _blockId is locked to x-target-node-id from construction
 
-  console.log(`   [Service B] Continuing Trace: ${paymentRootNode.traceId}`);
+  console.log(`   [Service B] Continuing Trace: ${paymentRootContainer.traceId}`);
   await delay(10);
-  paymentRootNode.markProcessed();
+  paymentRootContainer.logNode("Payment service request accepted", ["payment"]);
 
-  // 5. Error & Exception Flow
-  const stripeNode = paymentRootNode.startChild("1.2.1.1.1 Stripe API Charge", NodeType.HTTP_CLIENT);
+  // 5. Nested Function Call: stripeCharge() [Sub-Container - depth 1]
+  const stripeTx = paymentRootContainer.startChildContainer("1.2.1.1.1 stripeCharge()", ["payment", "stripe"]);
+  
+  // Stripe API HTTP call [Node - log event]
+  const stripeApiNodeId = stripeTx.logNode("HTTP POST api.stripe.com/v3/charges", ["network", "stripe"]);
   await delay(15);
-  stripeNode.markProcessed();
   
   try {
     console.log("   [Service B] Simulating Stripe API Crash...");
     throw new Error("Stripe Gateway Timeout");
   } catch (err: any) {
-    // Record the explicit failure
-    stripeNode.markCompleted({ 
-      error: true, 
-      errorMessage: err.message, 
-      stack: err.stack 
-    });
+    stripeTx.logNode("Stripe API charge failed", ["stripe", "error"], { message: err.message });
+    stripeTx.complete();
 
-    // Fallback/Retry flow
-    const fallbackNode = paymentRootNode.startChild("1.2.1.1.2 Paypal API Fallback", NodeType.HTTP_CLIENT);
+    // 6. Nested Fallback Function Call: paypalFallback() [Sub-Container - depth 1]
+    const paypalTx = paymentRootContainer.startChildContainer("1.2.1.1.2 paypalFallback()", ["payment", "paypal"]);
+    
+    // Paypal API HTTP call [Node - log event]
+    paypalTx.logNode("HTTP POST api.paypal.com/v1/payments", ["network", "paypal"]);
     await delay(30);
-    fallbackNode.markProcessed();
-    fallbackNode.markCompleted({ success: true, gateway: "paypal" });
+
+    paypalTx.logNode("Paypal fallback succeeded", ["paypal", "success"]);
+    paypalTx.complete();
   }
 
-  paymentRootNode.markCompleted({ chargedAmount: 150.00, warning: "Fell back to alternative gateway" });
+  paymentRootContainer.logNode("Payment charge finished", ["payment"]);
+  paymentRootContainer.complete();
 
   console.log("   [Service B] Flushing telemetry and shutting down...\n");
   try { await Tracer.flush(); } catch (e) {}
@@ -192,13 +182,15 @@ async function runSophisticatedSimulation() {
   // SERVICE C: Inventory Worker (Async Event Consumer)
   // =======================================================================
   console.log("🟠 [Service C] Initializing Inventory Worker...");
-  Tracer.init({ baseUrl: "http://localhost:3000" }, { name: "Inventory Kafka Consumer", containerType: ContainerType.BACKGROUND_WORKER, id: inventorySvcId });
+  Tracer.init(
+    { baseUrl: "http://localhost:3000" }, 
+    { name: "Inventory Kafka Consumer", containerType: ContainerType.BACKGROUND_WORKER, id: inventorySvcId }
+  );
 
   const cTraceCtx = kafkaMessagePayload._traceContext;
-  
-  // Simulate Kafka consumer queue/broker wait lag (message scheduled 75ms ago)
   const kafkaScheduled = new Date(Date.now() - 75);
-  const inventoryRootNode = Tracer.continueTrace(
+
+  const inventoryRootContainer = Tracer.continueTrace(
     cTraceCtx.traceId, 
     cTraceCtx.parentNodeId, 
     "1.3.1.1 Consume Kafka: OrderCreated", 
@@ -206,61 +198,60 @@ async function runSophisticatedSimulation() {
     cTraceCtx.depthIndex, 
     undefined, 
     kafkaScheduled,
-    cTraceCtx.targetNodeId  // overrideId — matches the egress edge destination
+    cTraceCtx.targetNodeId
   );
-  // No id mutation needed
 
-  console.log(`   [Service C] Processing Event for Trace: ${inventoryRootNode.traceId}`);
-  
-  inventoryRootNode.suspend(); // Processing delayed, thread busy
+  console.log(`   [Service C] Processing Event for Trace: ${inventoryRootContainer.traceId}`);
   await delay(10);
-  inventoryRootNode.resume();  // Consumer thread free, resume context!
+  inventoryRootContainer.logNode("Kafka event consumed", ["inventory", "pub_sub"]);
 
-  inventoryRootNode.markProcessed();
-
-  // DEEP NESTING: processInventoryUpdate -> validateStock -> DB Check
-  const processInventoryNode = inventoryRootNode.startChild("1.3.1.1.1 processInventoryUpdate()", NodeType.FUNCTION);
-  await delay(2);
-  processInventoryNode.markProcessed();
-
-  const validateStockNode = processInventoryNode.startChild("1.3.1.1.1.1 validateStock()", NodeType.FUNCTION);
-  const dbCheckNode = validateStockNode.startChild("1.3.1.1.1.1.1 DB: Check Current Stock", NodeType.DATABASE);
-  await delay(10);
-  dbCheckNode.markProcessed();
+  // 7. Nested Function Call: processInventoryUpdate() [Sub-Container - depth 1]
+  const processInvTx = inventoryRootContainer.startChildContainer("1.3.1.1.1 processInventoryUpdate()", ["inventory"]);
   
-  // Simulate heavy database hash verification CPU loop
-  let stockVerifyHash = 0;
-  for (let i = 0; i < 5000000; i++) {
-    stockVerifyHash += (i * 11) % 7;
-  }
+  // 8. Deeply Nested Function Call: validateStock() [Sub-Container - depth 2 -> auto tag internal_function_depth_2]
+  const validateStockTx = processInvTx.startChildContainer("1.3.1.1.1.1 validateStock()", ["inventory"]);
 
-  dbCheckNode.markCompleted({ stock: 15, verifyCode: stockVerifyHash });
-  validateStockNode.markProcessed();
-  validateStockNode.markCompleted({ valid: true });
+  // 9. Extra Deeply Nested Function Call: dbCheckStock() [Sub-Container - depth 3 -> auto tag internal_function_depth_3]
+  const dbCheckStockTx = validateStockTx.startChildContainer("1.3.1.1.1.1.1 dbCheckStock()", ["inventory"]);
+  
+  // Database Select Query [Node - log event]
+  dbCheckStockTx.logNode("DB: SELECT stock FROM inventory WHERE item = 999", ["database", "read"]);
+  await delay(10);
+  dbCheckStockTx.complete();
 
-  const decrementNode = processInventoryNode.startChild("1.3.1.1.1.2 DB: Decrement Stock", NodeType.DATABASE);
+  validateStockTx.logNode("Stock validation passed", ["inventory"]);
+  validateStockTx.complete();
+
+  // 10. Nested Function Call: decrementStock() [Sub-Container - depth 2]
+  const decrementStockTx = processInvTx.startChildContainer("1.3.1.1.1.2 decrementStock()", ["inventory"]);
+  
+  // Database Update Query [Node - log event]
+  decrementStockTx.logNode("DB: UPDATE inventory SET stock = stock - 1 WHERE item = 999", ["database", "write"]);
   await delay(15);
-  decrementNode.markProcessed();
-  decrementNode.markCompleted({ item: "widget", newStock: 14 });
+  decrementStockTx.complete();
 
-  // DEEP NESTING: calculateRestock -> Restock Logic & Kafka Produce
-  const restockCheckNode = processInventoryNode.startChild("1.3.1.1.1.3 calculateRestock()", NodeType.FUNCTION);
+  // 11. Nested Function Call: calculateRestock() [Sub-Container - depth 2]
+  const calculateRestockTx = processInvTx.startChildContainer("1.3.1.1.1.3 calculateRestock()", ["inventory"]);
+  
+  // 12. Deeply Nested Function Call: evaluateThreshold() [Sub-Container - depth 3]
+  const evaluateThresholdTx = calculateRestockTx.startChildContainer("1.3.1.1.1.3.1 evaluateThreshold()", ["inventory"]);
+  evaluateThresholdTx.logNode("Compare stock level against warning threshold (20)", ["logic"]);
   await delay(2);
-  restockCheckNode.markProcessed();
-  
-  const restockDecisionNode = restockCheckNode.startChild("1.3.1.1.1.3.1 evaluateThreshold()", NodeType.FUNCTION);
-  restockDecisionNode.markProcessed();
-  restockDecisionNode.markCompleted({ threshold: 20, current: 14, needsRestock: true });
-  
-  const reorderEventNode = restockCheckNode.startChild("1.3.1.1.1.3.2 Kafka Produce: ReorderItem", NodeType.MESSAGE_PRODUCER);
-  await delay(5);
-  reorderEventNode.markProcessed();
-  reorderEventNode.markCompleted({ topic: "inventory.reorder", quantity: 100 });
-  
-  restockCheckNode.markCompleted();
-  processInventoryNode.markCompleted({ status: "success", logs: ["Inventory updated successfully"] });
+  evaluateThresholdTx.complete();
 
-  inventoryRootNode.markCompleted({ status: "consumed" });
+  // 13. Deeply Nested Function Call: reorderItem() [Sub-Container - depth 3]
+  const reorderItemTx = calculateRestockTx.startChildContainer("1.3.1.1.1.3.2 reorderItem()", ["inventory"]);
+  
+  // Kafka Reorder Produce [Node - log event]
+  reorderItemTx.logNode("Kafka Produce: ReorderItem", ["pub_sub", "network"]);
+  await delay(5);
+  reorderItemTx.complete();
+
+  calculateRestockTx.complete();
+  processInvTx.complete();
+  
+  inventoryRootContainer.logNode("Inventory processing finished", ["inventory"]);
+  inventoryRootContainer.complete();
 
   console.log("   [Service C] Flushing telemetry and shutting down...\n");
   try { await Tracer.flush(); } catch (e) {}
@@ -268,14 +259,17 @@ async function runSophisticatedSimulation() {
 
 
   // =======================================================================
-  // SERVICE D: Reporting Batch Processor (Fan-out / Batching)
+  // SERVICE D: Reporting Batch Processor (Cron / Fan-out)
   // =======================================================================
   console.log("🟣 [Service D] Initializing Batch Processor...");
-  Tracer.init({ baseUrl: "http://localhost:3000" }, { name: "Nightly Batch Reporting", containerType: ContainerType.CRON_JOB, id: reportSvcId });
+  Tracer.init(
+    { baseUrl: "http://localhost:3000" }, 
+    { name: "Nightly Batch Reporting", containerType: ContainerType.CRON_JOB, id: reportSvcId }
+  );
 
-  // Add a fake extra payload to simulate a batch of multiple traces
+  // Add dummy queue item for batching
   batchQueuePayloads.push({
-    traceId: uuidv4(), // Different trace
+    traceId: uuidv4(),
     parentNodeId: uuidv4(),
     targetNodeId: uuidv4(),
     depthIndex: 0
@@ -283,56 +277,55 @@ async function runSophisticatedSimulation() {
 
   console.log(`   [Service D] Polled queue, received batch of ${batchQueuePayloads.length} items.`);
 
-  // 6. Fan-out / Batch Processing with extremely deep nesting
-  const batchRootNode = Tracer.startTrace("4. Cron: Process Nightly Reports", NodeType.BATCH_JOB);
-  batchRootNode.markProcessed();
+  const batchRootContainer = Tracer.startContainer("4. Cron: Process Nightly Reports", ["batch", "reporting"]);
+  batchRootContainer.logNode("Batch cron triggered", ["batch"]);
 
   for (const item of batchQueuePayloads) {
-    const itemNode = Tracer.continueTrace(
+    const itemContainer = Tracer.continueTrace(
       item.traceId, item.parentNodeId, 
       "1.3.2 Process Report Item", NodeType.FUNCTION, 
       item.depthIndex, undefined, undefined,
-      item.targetNodeId  // overrideId — matches the egress edge destination
+      item.targetNodeId
     );
-    // No id mutation needed
     
     await delay(5);
-    itemNode.markProcessed();
+    itemContainer.logNode("Batch item processing accepted", ["batch"]);
     
-    // DEEP NESTING: generatePdfReport -> render -> sanitize
-    const generatePdfNode = itemNode.startChild("1.3.2.1 generatePdfReport()", NodeType.FUNCTION);
-    generatePdfNode.markProcessed();
+    // 14. Nested Function Call: generatePdfReport() [Sub-Container - depth 1]
+    const generatePdfTx = itemContainer.startChildContainer("1.3.2.1 generatePdfReport()", ["batch", "pdf"]);
     
-    const fetchTemplateNode = generatePdfNode.startChild("1.3.2.1.1 S3: Fetch Template", NodeType.HTTP_CLIENT);
+    // Fetch Template from S3 [Node - log event]
+    generatePdfTx.logNode("S3: GET template.html FROM reports-templates", ["network", "s3"]);
     await delay(15);
-    fetchTemplateNode.markProcessed();
-    fetchTemplateNode.markCompleted({ bucket: "reports-templates" });
+    
+    // 15. Deeply Nested Function Call: renderTemplate() [Sub-Container - depth 2]
+    const renderTx = generatePdfTx.startChildContainer("1.3.2.1.2 renderTemplate()", ["batch", "pdf"]);
+    
+    // 16. Extra Deeply Nested Function Call: sanitizeData() [Sub-Container - depth 3]
+    const sanitizeTx = renderTx.startChildContainer("1.3.2.1.2.1 sanitizeData()", ["batch", "pdf"]);
+    sanitizeTx.logNode("Sanitize user string fields", ["logic"]);
+    sanitizeTx.complete();
 
-    const renderNode = generatePdfNode.startChild("1.3.2.1.2 renderTemplate()", NodeType.FUNCTION);
-    renderNode.markProcessed();
-    
-    const sanitizeNode = renderNode.startChild("1.3.2.1.2.1 sanitizeData()", NodeType.FUNCTION);
-    sanitizeNode.markProcessed();
-    sanitizeNode.markCompleted({ sanitizedFields: 4 });
-    
-    renderNode.markCompleted({ status: "rendered" });
-    generatePdfNode.markCompleted({ status: "success", fileSize: "45KB" });
+    renderTx.logNode("Compile HTML string buffer", ["pdf"]);
+    renderTx.complete();
 
-    // DEEP NESTING: sendEmail -> SMTP
-    const emailNode = itemNode.startChild("1.3.2.2 sendEmail()", NodeType.FUNCTION);
-    emailNode.markProcessed();
+    generatePdfTx.logNode("Export PDF binary stream", ["pdf"]);
+    generatePdfTx.complete();
+
+    // 17. Nested Function Call: sendEmail() [Sub-Container - depth 1]
+    const sendEmailTx = itemContainer.startChildContainer("1.3.2.2 sendEmail()", ["batch", "email"]);
     
-    const smtpNode = emailNode.startChild("1.3.2.2.1 SMTP: Deliver", NodeType.HTTP_CLIENT);
+    // SMTP Delivery request [Node - log event]
+    sendEmailTx.logNode("SMTP: Deliver PDF report to admin@example.com", ["network", "email"]);
     await delay(10);
-    smtpNode.markProcessed();
-    smtpNode.markCompleted({ delivered: true, recipient: "admin@example.com" });
+    sendEmailTx.complete();
     
-    emailNode.markCompleted({ method: "smtp" });
-    
-    itemNode.markCompleted({ batchJobTraceId: batchRootNode.traceId });
+    itemContainer.logNode("Report item completed", ["batch"]);
+    itemContainer.complete();
   }
 
-  batchRootNode.markCompleted({ processedCount: batchQueuePayloads.length });
+  batchRootContainer.logNode("Cron process complete", ["batch"]);
+  batchRootContainer.complete();
 
   console.log("   [Service D] Flushing telemetry and shutting down...\n");
   try { await Tracer.flush(); } catch (e) {}
@@ -344,4 +337,3 @@ async function runSophisticatedSimulation() {
 }
 
 runSophisticatedSimulation().catch(console.error);
-
