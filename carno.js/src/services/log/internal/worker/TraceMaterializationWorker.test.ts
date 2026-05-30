@@ -263,12 +263,16 @@ describe("V3 Telemetry compilation and read path integration", () => {
       "node_charge"
     ]);
 
-    // Verify Compiled Edges
+    // Verify Compiled Edges in layout (unfiltered has distance = 0)
     expect(layout!.edges.length).toBe(1);
     const edge = layout!.edges[0]!;
     expect(edge.id).toBe("edge_payment_rpc");
     expect(edge.fromNodeId).toBe("node_call_payment");
     expect(edge.toNodeId).toBe("node_charge");
-    expect(edge.distance).toBe(1);
+    expect(edge.distance).toBe(0);
+
+    // Verify Compiled Edges in database repository (raw pre-compiled distance = 1)
+    const storedEdge = repo.readEdges.find(e => e.id === "edge_payment_rpc")!;
+    expect(storedEdge.distance).toBe(1);
   });
 });
