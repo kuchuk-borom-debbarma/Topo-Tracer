@@ -105,40 +105,42 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 width: cl.width,
                 height: cl.height,
                 borderLeftColor: depthColor,
-                opacity: isDimmed ? 0.3 : 1,
-                transition: "opacity 150ms ease, box-shadow 150ms ease",
+                opacity: isDimmed ? 0.28 : 1,
+                transition: "opacity 180ms ease, box-shadow 180ms ease",
                 boxShadow: isHighlighted
-                  ? `0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px ${depthColor}44, inset 0 0 0 1px rgba(255,255,255,0.04)`
-                  : "0 4px 20px rgba(0,0,0,0.35)",
+                  ? `0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px ${depthColor}55, 0 0 24px ${depthColor}18`
+                  : `0 4px 24px rgba(0,0,0,0.45), 0 0 0 1px ${depthColor}18`,
               }}
               onMouseEnter={() => setHoveredContainerId(cl.containerId)}
               onMouseLeave={() => setHoveredContainerId(null)}
             >
-              {/* Header */}
+              {/* 2-row header: title row + meta row */}
               <div
                 className="container-card-header"
                 style={{ background: depthColorDim }}
               >
-                <span
-                  className="container-card-icon"
-                  style={{ color: depthColor }}
-                >
-                  {getContainerIcon(cl.type)}
-                </span>
-                <span className="container-card-name" title={cl.name}>{cl.name}</span>
-
-                <div className="container-card-meta">
-                  <span className="container-type-pill">{cl.type}</span>
+                {/* Row 1: icon + name */}
+                <div className="container-card-title">
+                  <span className="container-card-icon" style={{ color: depthColor }}>
+                    {getContainerIcon(cl.type)}
+                  </span>
+                  <span className="container-card-name" title={cl.name}>
+                    {cl.name}
+                  </span>
+                </div>
+                {/* Row 2: depth chip + type pill */}
+                <div className="container-card-pills">
                   <span
                     className="container-depth-chip"
                     style={{
                       color: depthColor,
-                      background: `color-mix(in srgb, ${depthColor} 12%, transparent)`,
-                      borderColor: `color-mix(in srgb, ${depthColor} 30%, transparent)`,
+                      background: `color-mix(in srgb, ${depthColor} 14%, transparent)`,
+                      borderColor: `color-mix(in srgb, ${depthColor} 32%, transparent)`,
                     }}
                   >
-                    D{cl.depth}
+                    depth {cl.depth}
                   </span>
+                  <span className="container-type-pill">{cl.type}</span>
                 </div>
               </div>
 
