@@ -73,6 +73,7 @@ export type ReadContainer = {
   name: string;
   type: string;
   tags: string[];
+  parentage: string[];
   startTimeUs: number;
   durationUs: number | null;
   metadata?: JsonValue;
