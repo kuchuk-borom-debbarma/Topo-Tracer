@@ -73,6 +73,8 @@ export type ReadBlock = {
   startTimeUs: number;
   /** Total execution duration of the block (in microseconds), null if never ended */
   durationUs: number | null;
+  /** Ordered array of ancestor IDs starting from top container down to itself */
+  ancestryPath: string[];
   /** Custom JSON baggage/metadata properties */
   metadata?: JsonValue;
 };
@@ -100,6 +102,8 @@ export type ReadNode = {
   startTimeUs: number;
   /** Elapsed execution time (in microseconds), null for simple point logs */
   durationUs: number | null;
+  /** Ordered array of ancestor IDs starting from top container down to itself */
+  ancestryPath: string[];
   /** Custom JSON baggage/metadata properties */
   metadata?: JsonValue;
 };

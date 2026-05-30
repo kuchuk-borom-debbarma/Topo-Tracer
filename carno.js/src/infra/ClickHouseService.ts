@@ -103,6 +103,7 @@ export class ClickHouseService {
           absolute_depth UInt16,      -- Horizontal offset X-coordinate: 0 = root block, 1 = nested, etc.
           start_time_us Int64,        -- Earliest start timestamp derived from child nodes (in microseconds)
           duration_us Nullable(Int64),-- Derived block execution duration (in microseconds)
+          ancestry_path Array(String),-- Ordered array of ancestor IDs from top container down to itself
           metadata String             -- Stringified JSON baggage properties
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, absolute_depth, start_time_us);
@@ -121,6 +122,7 @@ export class ClickHouseService {
           local_sequence UInt32,      -- Vertical flow index Y-coordinate inside this block
           start_time_us Int64,        -- Timing for started event (in microseconds)
           duration_us Nullable(Int64),-- Node execution duration (in microseconds)
+          ancestry_path Array(String),-- Ordered array of ancestor IDs from top container down to itself
           metadata String             -- Stringified JSON baggage properties
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, block_id, local_sequence);
