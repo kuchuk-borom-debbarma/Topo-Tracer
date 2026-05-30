@@ -4,14 +4,16 @@ import type { ReadContainer, ReadNode, ReadEdge } from "../api/client";
 // Layout Constants
 // ============================================================
 export const LAYOUT = {
-  COL_W: 320,           // container card width
-  COL_GAP: 52,          // horizontal gap between columns (for arrows)
-  NODE_H: 58,           // fixed node card height
-  NODE_GAP: 5,          // gap between node cards
-  CONTAINER_PAD_TOP: 10,// padding above first node inside container
-  CONTAINER_PAD_BOT: 12,// padding below last node inside container
-  HEADER_H: 68,         // container header height (2-row: title + meta)
-  CANVAS_PAD: 48,       // outer canvas padding
+  COL_W: 300,            // container card width
+  COL_GAP: 72,           // horizontal gap between depth columns (for arrows)
+  NODE_H: 58,            // fixed node card height
+  NODE_GAP: 5,           // gap between node cards inside a container
+  CONTAINER_PAD_TOP: 10, // padding above first node inside container
+  CONTAINER_PAD_BOT: 12, // padding below last node inside container
+  HEADER_H: 68,          // container header height (2-row)
+  SIBLING_GAP: 10,       // vertical gap between sibling containers (same parent)
+  BAND_GAP: 48,          // vertical gap between independent root-service bands
+  CANVAS_PAD: 48,        // outer canvas padding
 } as const;
 
 // ============================================================
@@ -221,22 +223,62 @@ export function computeLayout(
     return HEADER_H + nodesH;
   };
 
-  // ── 5. Chronological column placement ─────────────────────
-  // Sort ALL visible containers by startTimeUs → determines left-to-right order.
-  // Children naturally follow parents because they start after being called.
-  const sorted = [...visibleContainers].sort((a, b) => a.startTimeUs - b.startTimeUs);
+  // ── 5. Recursive tree layout ──────────────────────────────
+  //
+  //  Layout philosophy:
+  //    X axis = depth  (children appear to the RIGHT of their parent)
+  //    Y axis = siblings (same-parent containers stacked top-to-bottom)
+  //
+  //  Each ROOT container starts its own independent horizontal BAND.
+  //  Bands are stacked vertically with BAND_GAP between them.
+  //  Within each band, siblings are stacked with SIBLING_GAP.
+  //
+  //        [Root A]  ──►  [Child A1]  ──►  [Grandchild]
+  //                  ──►  [Child A2]
+  //        [Root B]  ──►  [Child B1]
+  //
+  const { SIBLING_GAP, BAND_GAP } = LAYOUT;
 
   const containerPosMap = new Map<
     string,
     { top: number; left: number; width: number; height: number; depth: number }
   >();
 
-  let currentX = 0;
-  for (const c of sorted) {
-    const height = getCardHeight(c.id);
-    const depth = depthMap.get(c.id) ?? 0;
-    containerPosMap.set(c.id, { top: 0, left: currentX, width: COL_W, height, depth });
-    currentX += COL_W + COL_GAP;
+  // Returns the bottom-Y of the entire subtree rooted at `cid`
+  const layoutSubtree = (cid: string, x: number, y: number): number => {
+    const height = getCardHeight(cid);
+    const depth = depthMap.get(cid) ?? 0;
+    containerPosMap.set(cid, { top: y, left: x, width: COL_W, height, depth });
+
+    const children = (childrenMap.get(cid) ?? []).slice().sort((a, b) => {
+      const ca = visibleContainers.find((c) => c.id === a)!;
+      const cb = visibleContainers.find((c) => c.id === b)!;
+      return ca.startTimeUs - cb.startTimeUs;
+    });
+
+    let childY = y;          // first child aligns with parent's top
+    let maxBottom = y + height;
+
+    for (const childId of children) {
+      const childBottom = layoutSubtree(childId, x + COL_W + COL_GAP, childY);
+      childY = childBottom + SIBLING_GAP;
+      maxBottom = Math.max(maxBottom, childBottom);
+    }
+
+    return maxBottom;
+  };
+
+  // Sort root containers by start time so the first service to act is on top
+  const rootIdsSorted = rootIds.slice().sort((a, b) => {
+    const ca = visibleContainers.find((c) => c.id === a)!;
+    const cb = visibleContainers.find((c) => c.id === b)!;
+    return ca.startTimeUs - cb.startTimeUs;
+  });
+
+  let bandY = 0;
+  for (const rootId of rootIdsSorted) {
+    const subtreeBottom = layoutSubtree(rootId, 0, bandY);
+    bandY = subtreeBottom + BAND_GAP;
   }
 
   // ── 6. Build containerLayouts ─────────────────────────────

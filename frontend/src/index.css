@@ -604,6 +604,34 @@ body {
   z-index: 1;
 }
 
+/* Band separator — horizontal rule between independent root-service bands */
+.band-separator {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.band-separator-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+.band-separator-line {
+  flex: 1;
+  border-top: 1px dashed;
+  opacity: 0.6;
+}
+
 /* ── Block Card ─────────────────────────────────────────────── */
 .block-card {
   position: absolute;
