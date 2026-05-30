@@ -6,6 +6,8 @@ import { NodeCard, NodeInspector } from "./NodeRow";
 type Props = {
   data: TraceLayoutResponse;
   activeTags: Set<string>;
+  playbackStep: number | null;
+  chronoItems: Array<{ id: string; name: string; type: "node" | "container"; startTimeUs: number }>;
 };
 
 const CONTAINER_ICONS: Record<string, string> = {
@@ -26,7 +28,7 @@ function getContainerIcon(type: string): string {
 const ARROW_SIZE = 8;
 
 export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
-  ({ data, activeTags }, forwardedRef) => {
+  ({ data, activeTags, playbackStep, chronoItems }, forwardedRef) => {
     const { containers, nodes, edges } = data;
 
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -57,6 +59,86 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
 
     const PAD = LAYOUT.CANVAS_PAD;
 
+    // ── Causal execution path tracing (Upstream/Downstream highlighting) ──
+    const causalPath = useMemo(() => {
+      if (!hoveredNodeId) return null;
+
+      const upstream = new Set<string>();
+      const downstream = new Set<string>();
+      const activeEdges = new Set<string>();
+
+      // Build graph adjacency list
+      const adjForward = new Map<string, string[]>();
+      const adjBackward = new Map<string, string[]>();
+
+      for (const edge of edges) {
+        const fList = adjForward.get(edge.fromNodeId) || [];
+        fList.push(edge.toNodeId);
+        adjForward.set(edge.fromNodeId, fList);
+
+        const bList = adjBackward.get(edge.toNodeId) || [];
+        bList.push(edge.fromNodeId);
+        adjBackward.set(edge.toNodeId, bList);
+      }
+
+      // BFS Forward (downstream)
+      const qForward = [hoveredNodeId];
+      const visitedF = new Set<string>([hoveredNodeId]);
+      while (qForward.length > 0) {
+        const curr = qForward.shift()!;
+        downstream.add(curr);
+        for (const next of adjForward.get(curr) || []) {
+          if (!visitedF.has(next)) {
+            visitedF.add(next);
+            qForward.push(next);
+            activeEdges.add(`${curr}->${next}`);
+          }
+        }
+      }
+
+      // BFS Backward (upstream)
+      const qBackward = [hoveredNodeId];
+      const visitedB = new Set<string>([hoveredNodeId]);
+      while (qBackward.length > 0) {
+        const curr = qBackward.shift()!;
+        upstream.add(curr);
+        for (const prev of adjBackward.get(curr) || []) {
+          if (!visitedB.has(prev)) {
+            visitedB.add(prev);
+            qBackward.push(prev);
+            activeEdges.add(`${prev}->${curr}`);
+          }
+        }
+      }
+
+      return { upstream, downstream, activeEdges };
+    }, [edges, hoveredNodeId]);
+
+    // ── Pre-compute playback active and current focus sets ──
+    const activePlaybackIds = useMemo(() => {
+      const activeIds = new Set<string>();
+      if (playbackStep === null) return activeIds;
+
+      for (let i = 0; i <= playbackStep; i++) {
+        const item = chronoItems[i];
+        if (item) {
+          activeIds.add(item.id);
+          if (item.type === "node") {
+            const node = nodePositions.get(item.id)?.node;
+            if (node) {
+              activeIds.add(node.containerId);
+            }
+          }
+        }
+      }
+      return activeIds;
+    }, [chronoItems, playbackStep, nodePositions]);
+
+    const currentPlaybackId = useMemo(() => {
+      if (playbackStep === null) return null;
+      return chronoItems[playbackStep]?.id ?? null;
+    }, [chronoItems, playbackStep]);
+
     if (containerLayouts.length === 0) {
       return (
         <div className="empty-state" style={{ marginTop: 80 }}>
@@ -82,14 +164,21 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
         {containerLayouts.map((cl) => {
           const depthColor = getDepthColor(cl.depth);
           const depthColorDim = getDepthColorDim(cl.depth);
-          const isHighlighted = hoveredContainerId === cl.containerId;
-          const isDimmed =
-            hasActiveHover && !isHighlighted && hoveredContainerId !== null;
+
+          const isCausalHighlighted = causalPath
+            ? causalPath.upstream.has(cl.containerId) || causalPath.downstream.has(cl.containerId)
+            : hoveredContainerId === cl.containerId;
+
+          const isCausalDimmed = causalPath
+            ? !isCausalHighlighted
+            : hasActiveHover && !isCausalHighlighted && hoveredContainerId !== null;
+
+          const isPlaybackPending = playbackStep !== null && !activePlaybackIds.has(cl.containerId);
 
           return (
             <div
               key={cl.containerId}
-              className={`container-card${isHighlighted ? " container-card--highlighted" : ""}`}
+              className={`container-card${isCausalHighlighted ? " container-card--highlighted" : ""}${isPlaybackPending ? " playback-pending" : ""}`}
               style={{
                 position: "absolute",
                 top: cl.top + PAD,
@@ -97,10 +186,10 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 width: cl.width,
                 height: cl.height,
                 borderLeftColor: depthColor,
-                opacity: isDimmed ? 0.28 : 1,
+                opacity: isCausalDimmed ? 0.08 : 1,
                 zIndex: 3 + cl.depth,
-                transition: "opacity 180ms ease, box-shadow 180ms ease",
-                boxShadow: isHighlighted
+                transition: "opacity 180ms ease, box-shadow 180ms ease, filter 180ms ease",
+                boxShadow: isCausalHighlighted
                   ? `0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px ${depthColor}55, 0 0 24px ${depthColor}18`
                   : `0 4px 24px rgba(0,0,0,0.45), 0 0 0 1px ${depthColor}18`,
               }}
@@ -144,18 +233,22 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
         {Array.from(nodePositions.values()).map(({ node, top, left, width, height }) => {
           const container = containerLayouts.find((cl) => cl.containerId === node.containerId);
           const depth = container ? container.depth : 0;
-          const isHighlighted =
-            hoveredNodeId === node.id || hoveredContainerId === node.containerId;
-          const isDimmed = hasActiveHover && !isHighlighted;
+
+          const isCausalHighlighted = causalPath
+            ? causalPath.upstream.has(node.id) || causalPath.downstream.has(node.id)
+            : hoveredNodeId === node.id || hoveredContainerId === node.containerId;
+
+          const isCausalDimmed = causalPath
+            ? !isCausalHighlighted
+            : hasActiveHover && !isCausalHighlighted;
+
+          const isPlaybackPending = playbackStep !== null && !activePlaybackIds.has(node.id);
+          const isActivePlaybackNode = playbackStep !== null && node.id === currentPlaybackId;
 
           return (
-            <NodeCard
+            <div
               key={node.id}
-              node={node}
-              isHovered={hoveredNodeId === node.id}
-              isSelected={selectedNode?.id === node.id}
-              onHover={setHoveredNodeId}
-              onSelect={setSelectedNode}
+              className={isPlaybackPending ? "playback-pending" : ""}
               style={{
                 position: "absolute",
                 top: top + PAD,
@@ -163,10 +256,25 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 width: width,
                 height: height,
                 zIndex: 10 + depth,
-                opacity: isDimmed ? 0.28 : 1,
-                transition: "opacity 180ms ease, box-shadow 180ms ease",
+                opacity: isCausalDimmed ? 0.08 : 1,
+                transition: "opacity 180ms ease, box-shadow 180ms ease, filter 180ms ease",
               }}
-            />
+            >
+              <NodeCard
+                node={node}
+                isHovered={hoveredNodeId === node.id}
+                isSelected={selectedNode?.id === node.id}
+                onHover={setHoveredNodeId}
+                onSelect={setSelectedNode}
+                style={isActivePlaybackNode ? {
+                  boxShadow: "0 0 14px var(--accent-primary-glow), 0 0 0 1px var(--accent-primary)",
+                  borderColor: "var(--accent-primary)",
+                  background: "var(--accent-primary-bg)",
+                  animation: "node-pulse-glow 1.5s ease-in-out infinite",
+                  filter: "drop-shadow(0 0 8px var(--accent-primary-glow))",
+                } : undefined}
+              />
+            </div>
           );
         })}
 
@@ -322,21 +430,34 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             }
 
             const isCross = wire.isCrossContainer;
-            const isHighlighted = hoveredNodeId
+
+            const isCausalHighlighted = causalPath
+              ? causalPath.activeEdges.has(`${wire.fromNodeId}->${wire.toNodeId}`)
+              : hoveredNodeId
               ? wire.fromNodeId === hoveredNodeId || wire.toNodeId === hoveredNodeId
               : false;
-            const isDimmedWire = hasActiveHover && !isHighlighted;
+
+            const isCausalDimmedWire = causalPath
+              ? !isCausalHighlighted
+              : hasActiveHover && !isCausalHighlighted;
+
+            const isPlaybackPending = playbackStep !== null && 
+              (!activePlaybackIds.has(wire.fromNodeId) || !activePlaybackIds.has(wire.toNodeId));
+
+            const isWireActiveFlow = isCausalHighlighted || 
+              (playbackStep !== null && (wire.fromNodeId === currentPlaybackId || wire.toNodeId === currentPlaybackId));
+
             const isDirect = wire.edge.distance === 0;
 
             let strokeColor = isCross
               ? "hsl(280, 80%, 72%)"
               : "var(--accent-primary)";
-            if (isHighlighted) strokeColor = "var(--accent-secondary)";
+            if (isCausalHighlighted) strokeColor = "var(--accent-secondary)";
 
-            const strokeWidth = isHighlighted ? 2.5 : isCross ? 2 : 1.5;
-            const opacity = isHighlighted ? 1 : isDimmedWire ? 0.1 : isCross ? 0.75 : 0.6;
+            const strokeWidth = isCausalHighlighted ? 2.5 : isCross ? 2 : 1.5;
+            const opacity = isPlaybackPending ? 0.02 : isCausalHighlighted ? 1 : isCausalDimmedWire ? 0.04 : isCross ? 0.75 : 0.6;
 
-            const markerEnd = isHighlighted
+            const markerEnd = isCausalHighlighted
               ? "url(#arrow-wire-highlight)"
               : isCross
               ? "url(#arrow-wire-cross)"
@@ -344,12 +465,12 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
 
             const showBadge = wire.edge.distance > 0;
             const badgeBg = "rgba(10,12,22,0.88)";
-            const badgeBorder = isHighlighted
+            const badgeBorder = isCausalHighlighted
               ? "var(--accent-secondary)"
               : isCross
               ? "hsl(280, 80%, 72%)"
               : "hsla(217, 91%, 60%, 0.5)";
-            const badgeText = isHighlighted
+            const badgeText = isCausalHighlighted
               ? "var(--accent-secondary)"
               : isCross
               ? "hsl(280, 95%, 85%)"
@@ -360,24 +481,28 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 key={`w-${i}`}
                 style={{
                   opacity,
-                  transition: "opacity 150ms ease",
+                  transition: "opacity 200ms ease",
                 }}
               >
                 <path
                   d={d}
                   fill="none"
+                  className={isWireActiveFlow ? "wire-active-flow" : ""}
                   stroke={strokeColor}
                   strokeWidth={strokeWidth}
-                  strokeDasharray={isDirect ? undefined : "6 4"}
+                  strokeDasharray={isWireActiveFlow ? undefined : isDirect ? undefined : "6 4"}
                   markerEnd={markerEnd}
                   style={{
-                    filter: isHighlighted
+                    filter: isWireActiveFlow
+                      ? "drop-shadow(0 0 5px var(--accent-primary))"
+                      : isCausalHighlighted
                       ? "drop-shadow(0 0 4px var(--accent-secondary))"
                       : undefined,
+                    transition: "stroke-dashoffset 100ms linear",
                   }}
                 />
                 {showBadge && (
-                  <g>
+                  <g style={{ opacity: isPlaybackPending ? 0 : 1, transition: "opacity 180ms ease" }}>
                     <rect
                       x={midX - 24}
                       y={midY - 8}
