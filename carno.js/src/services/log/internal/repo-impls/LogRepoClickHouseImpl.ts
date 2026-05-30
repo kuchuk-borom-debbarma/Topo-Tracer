@@ -165,6 +165,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
         from_node_id: e.fromNodeId,
         to_node_id: e.toNodeId,
         type: e.type,
+        distance: e.distance,
         metadata: stringifyJson(e.metadata),
       })),
       format: "JSONEachRow",
@@ -241,13 +242,14 @@ export class LogRepoClickHouseImpl extends LogRepo {
 
   override async fetchReadEdges(traceId: string): Promise<ReadEdge[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, from_node_id as fromNodeId, to_node_id as toNodeId, type, metadata FROM toco_tracer.read_edges WHERE trace_id = {traceId: String}`,
+      query: `SELECT id, trace_id as traceId, from_node_id as fromNodeId, to_node_id as toNodeId, type, distance, metadata FROM toco_tracer.read_edges WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
     const rows = await result.json<any>();
     return rows.map((r: any) => ({
       ...r,
+      distance: Number(r.distance),
       metadata: r.metadata ? parseJson(r.metadata) : null,
     }));
   }

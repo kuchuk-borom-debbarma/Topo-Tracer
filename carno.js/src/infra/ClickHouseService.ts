@@ -132,6 +132,7 @@ export class ClickHouseService {
           from_node_id String,
           to_node_id String,
           type String,
+          distance Int32,
           metadata String
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, id);

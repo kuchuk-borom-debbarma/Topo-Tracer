@@ -160,9 +160,13 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             const dy = ty - fy;
             const isStraight = Math.abs(dy) < 2;
             let d: string;
+            let midX: number;
+            let midY: number;
 
             if (isStraight) {
               d = `M ${fx} ${fy} L ${tx} ${ty}`;
+              midX = (fx + tx) / 2;
+              midY = (fy + ty) / 2;
             } else {
               // Calculate a beautiful S-curve with flat horizontal shoulders.
               const shoulderScale = 0.35 + Math.min(0.2, Math.abs(dy) / 400) + ((i % 3) * 0.03);
@@ -170,6 +174,10 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               const cx1 = fx + offset;
               const cx2 = tx - offset;
               d = `M ${fx} ${fy} C ${cx1} ${fy}, ${cx2} ${ty}, ${tx} ${ty}`;
+              
+              // Midpoint calculation for cubic bezier at t=0.5
+              midX = 0.125 * fx + 0.375 * cx1 + 0.375 * cx2 + 0.125 * tx;
+              midY = (fy + ty) / 2;
             }
 
             const isCross = wire.isCrossContainer;
@@ -187,26 +195,56 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               strokeColor = "var(--accent-secondary)";
             }
 
+            const showDistanceBadge = wire.edge.distance > 0;
+
             return (
-              <path
-                key={i}
-                d={d}
-                className={isCross ? "edge-line edge-line-cross" : "edge-line"}
-                style={{
-                  stroke: strokeColor,
-                  strokeWidth: isHighlighted ? 2.5 : isCross ? 2 : 1.5,
-                  opacity: isHighlighted ? 1 : isDimmed ? 0.12 : isCross ? 0.8 : 0.65,
-                  filter: isHighlighted ? "drop-shadow(0 0 5px var(--accent-secondary))" : "none",
-                  transition: "stroke var(--transition-fast), stroke-width var(--transition-fast), opacity var(--transition-fast), filter var(--transition-fast)",
-                }}
-                markerEnd={
-                  isHighlighted
-                    ? "url(#arrowhead-highlight)"
-                    : isCross
-                    ? "url(#arrowhead-cross)"
-                    : "url(#arrowhead)"
-                }
-              />
+              <g key={i}>
+                <path
+                  d={d}
+                  className={isCross ? "edge-line edge-line-cross" : "edge-line"}
+                  style={{
+                    stroke: strokeColor,
+                    strokeWidth: isHighlighted ? 2.5 : isCross ? 2 : 1.5,
+                    strokeDasharray: wire.edge.distance > 0 ? "5 4" : undefined,
+                    opacity: isHighlighted ? 1 : isDimmed ? 0.12 : isCross ? 0.8 : 0.65,
+                    filter: isHighlighted ? "drop-shadow(0 0 5px var(--accent-secondary))" : "none",
+                    transition: "stroke var(--transition-fast), stroke-width var(--transition-fast), opacity var(--transition-fast), filter var(--transition-fast)",
+                  }}
+                  markerEnd={
+                    isHighlighted
+                      ? "url(#arrowhead-highlight)"
+                      : isCross
+                      ? "url(#arrowhead-cross)"
+                      : "url(#arrowhead)"
+                  }
+                />
+                {showDistanceBadge && (
+                  <g style={{ opacity: isDimmed ? 0.25 : 1, transition: "opacity var(--transition-fast)" }}>
+                    <rect
+                      x={midX - 25}
+                      y={midY - 9}
+                      width={50}
+                      height={18}
+                      rx={9}
+                      fill="rgba(13, 14, 23, 0.85)"
+                      stroke={isHighlighted ? "var(--accent-secondary)" : isCross ? "hsla(280, 80%, 70%, 0.6)" : "rgba(138, 43, 226, 0.4)"}
+                      strokeWidth={1}
+                      style={{ backdropFilter: "blur(4px)" }}
+                    />
+                    <text
+                      x={midX}
+                      y={midY + 4}
+                      textAnchor="middle"
+                      fill={isHighlighted ? "var(--accent-secondary)" : isCross ? "hsla(280, 95%, 85%, 1)" : "var(--accent-secondary)"}
+                      fontSize={9}
+                      fontWeight="700"
+                      fontFamily="Inter, Roboto, sans-serif"
+                    >
+                      +{wire.edge.distance} step{wire.edge.distance > 1 ? "s" : ""}
+                    </text>
+                  </g>
+                )}
+              </g>
             );
           })}
         </svg>

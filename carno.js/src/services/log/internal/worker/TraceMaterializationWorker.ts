@@ -288,16 +288,38 @@ export class TraceMaterializationWorker {
     // 7. Compile read edges
     const readEdgesToInsert: ReadEdge[] = [];
     const uniqueEdgeIds = Array.from(new Set(rawEdges.map(e => e.id)));
+
+    // Create a chronological list of all elements in the trace to calculate distance
+    type ChronoItem = { id: string; startTimeUs: number };
+    const chronoItems: ChronoItem[] = [
+      ...readContainersToInsert.map(c => ({ id: c.id, startTimeUs: c.startTimeUs })),
+      ...readNodesToInsert.map(n => ({ id: n.id, startTimeUs: n.startTimeUs }))
+    ];
+    chronoItems.sort((a, b) => a.startTimeUs - b.startTimeUs);
+
+    const getChronoIndex = (id: string): number => {
+      return chronoItems.findIndex(item => item.id === id);
+    };
+
     for (const eid of uniqueEdgeIds) {
       const edgeEvents = rawEdges.filter(e => e.id === eid);
       if (!edgeEvents.length) continue;
       const primary = edgeEvents[0];
+
+      const fromIdx = getChronoIndex(primary.fromNodeId);
+      const toIdx = getChronoIndex(primary.toNodeId);
+      let distance = 0;
+      if (fromIdx !== -1 && toIdx !== -1) {
+        distance = Math.max(0, Math.abs(toIdx - fromIdx) - 1);
+      }
+
       readEdgesToInsert.push({
         id: eid,
         traceId,
         fromNodeId: primary.fromNodeId,
         toNodeId: primary.toNodeId,
         type: primary.type,
+        distance,
         metadata: null,
       });
     }

@@ -259,5 +259,6 @@ describe("V3 Telemetry compilation and read path integration", () => {
     expect(layout!.edges[0].id).toBe("edge_payment_rpc");
     expect(layout!.edges[0].fromNodeId).toBe("node_call_payment");
     expect(layout!.edges[0].toNodeId).toBe("node_charge");
+    expect(layout!.edges[0].distance).toBe(1);
   });
 });
