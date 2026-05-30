@@ -77,6 +77,33 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
         className="flow-canvas"
         style={{ width: canvasWidth + PAD, height: canvasHeight + PAD }}
       >
+        {/* ── Band separators between independent root services ── */}
+        {(() => {
+          const roots = containerLayouts
+            .filter((cl) => cl.parentContainerId === null)
+            .sort((a, b) => a.top - b.top);
+
+          return roots.slice(1).map((rootCl) => {
+            const depthColor = getDepthColor(rootCl.depth);
+            const sepY = rootCl.top + PAD - LAYOUT.BAND_GAP / 2;
+            return (
+              <div
+                key={`sep-${rootCl.containerId}`}
+                className="band-separator"
+                style={{ top: sepY, left: PAD, right: 0 }}
+              >
+                <span className="band-separator-label">
+                  {rootCl.name}
+                </span>
+                <div
+                  className="band-separator-line"
+                  style={{ borderColor: `${depthColor}30` }}
+                />
+              </div>
+            );
+          });
+        })()}
+
         {/* ── Container Cards ── */}
         {containerLayouts.map((cl) => {
           const depthColor = getDepthColor(cl.depth);
