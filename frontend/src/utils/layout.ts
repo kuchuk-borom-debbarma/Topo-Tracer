@@ -194,15 +194,8 @@ export function computeLayout(
     // Service hosts are containers with NO parent container, OR containers with an explicit service type.
     const serviceContainers = visibleContainers.filter((c) => {
       const isRoot = !effectiveParentMap.get(c.id);
-      const norm = c.type.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const isServiceType =
-        norm === "expressapi" ||
-        norm === "grpcservice" ||
-        norm === "grpchttpservice" ||
-        norm === "backgroundworker" ||
-        norm === "cronjob" ||
-        norm.includes("service");
-      return isRoot || isServiceType;
+      const isLogical = c.type.toLowerCase() === "logical module";
+      return isRoot || !isLogical;
     });
 
 
