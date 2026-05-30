@@ -10,9 +10,10 @@ type Props = {
   onSelect?: (node: ReadNode | null) => void;
   isSelected?: boolean;
   style?: CSSProperties;
+  contextLabel?: string;
 };
 
-export function NodeCard({ node, isHovered, onHover, onSelect, isSelected, style }: Props) {
+export function NodeCard({ node, isHovered, onHover, onSelect, isSelected, style, contextLabel }: Props) {
   const color = getNodeColor(node.type);
   const typeLabel = getNodeTypeLabel(node.type);
   const duration = formatDuration(node.durationUs);
@@ -42,6 +43,23 @@ export function NodeCard({ node, isHovered, onHover, onSelect, isSelected, style
 
         {/* Name + duration */}
         <div className="node-card-content">
+          {contextLabel && (
+            <div
+              className="node-card-context-label"
+              style={{
+                fontSize: "9px",
+                fontWeight: "600",
+                color: "var(--text-muted)",
+                marginBottom: "2px",
+                fontFamily: "'JetBrains Mono', monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                opacity: 0.75,
+              }}
+            >
+              ◈ {contextLabel}
+            </div>
+          )}
           <div className="node-card-name">{node.name}</div>
           {duration && (
             <div className="node-card-footer">

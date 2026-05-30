@@ -162,8 +162,8 @@ export function computeLayout(
 
   // ── 1A. Clustered 2D Graph layout algorithm ──
   if (layoutMode === "graph") {
-    const ROW_GAP = 36;
-    const COLUMN_GAP = 130;
+    const ROW_GAP = 40;
+    const COLUMN_GAP = 140;
     const CONTAINER_W = COL_W + CONTAINER_PAD_X * 2;
     const PAD_X = 48;
     const PAD_Y = 48;
@@ -173,15 +173,7 @@ export function computeLayout(
     const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
     const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
 
-    // Sort containers by their earliest node's start time for vertical tie-breaking
-    const containerEarliestTime = new Map<string, number>();
-    for (const c of visibleContainers) {
-      const cNodes = visibleNodes.filter((n) => n.containerId === c.id);
-      const minTime = cNodes.length > 0 ? Math.min(...cNodes.map((n) => n.startTimeUs)) : c.startTimeUs;
-      containerEarliestTime.set(c.id, minTime);
-    }
-
-    // ── 2. Effective parent map (skip invisible containers + resolve Node IDs) ──
+    // Resolve parent container hierarchy skips (Skip invisible containers + resolve Node IDs in parentContainerId)
     const effectiveParentMap = new Map<string, string | null>();
     for (const c of visibleContainers) {
       let pid = c.parentContainerId;
@@ -198,58 +190,99 @@ export function computeLayout(
       effectiveParentMap.set(c.id, pid ?? null);
     }
 
-    // ── 3. Group child containers ──
-    const childrenMap = new Map<string, ReadContainer[]>();
-    for (const c of visibleContainers) {
-      const pid = effectiveParentMap.get(c.id);
-      if (pid) {
-        const list = childrenMap.get(pid) ?? [];
-        list.push(c);
-        childrenMap.set(pid, list);
+    // Identify Service Host Containers (e.g. Order API Gateway, Payment Processing Service, etc.)
+    // Service hosts are containers with NO parent container, OR containers with an explicit service type.
+    const serviceContainers = visibleContainers.filter((c) => {
+      const isRoot = !effectiveParentMap.get(c.id);
+      const typeLower = c.type.toLowerCase();
+      const isServiceType =
+        typeLower === "express_api" ||
+        typeLower === "grpc_service" ||
+        typeLower === "background_worker" ||
+        typeLower === "cron_job" ||
+        typeLower === "service";
+      return isRoot || isServiceType;
+    });
+
+
+
+    // Fallback: If no service containers were identified (e.g. all are logical modules),
+    // treat all visible containers as separate service hosts (reverts to normal graph mode).
+    const hosts = serviceContainers.length > 0 ? serviceContainers : visibleContainers;
+    const hostIds = new Set(hosts.map((c) => c.id));
+
+    // Map every visible node to its top-level Service Host Container
+    const nodeServiceMap = new Map<string, string>(); // nodeId -> serviceContainerId
+    for (const n of visibleNodes) {
+      let cid = n.containerId;
+      while (cid && !hostIds.has(cid)) {
+        const parentCid = effectiveParentMap.get(cid);
+        cid = parentCid ?? "";
+      }
+      if (cid) {
+        nodeServiceMap.set(n.id, cid);
+      } else {
+        // Fallback to the first service host or its direct container
+        const fallbackId = hosts[0]?.id || n.containerId;
+        nodeServiceMap.set(n.id, fallbackId);
       }
     }
 
-    // Find root containers (no visible parent)
-    const rootContainers = visibleContainers.filter((c) => !effectiveParentMap.get(c.id));
-    rootContainers.sort((a, b) => a.startTimeUs - b.startTimeUs);
-
-    // Compute structural depth index via BFS
-    const depthMap = new Map<string, number>();
-    const bfsQueue: Array<{ id: string; depth: number }> = rootContainers.map((c) => ({ id: c.id, depth: 0 }));
-    while (bfsQueue.length) {
-      const { id, depth } = bfsQueue.shift()!;
-      if (depthMap.has(id)) continue;
-      depthMap.set(id, depth);
-      for (const child of (childrenMap.get(id) ?? [])) {
-        bfsQueue.push({ id: child.id, depth: depth + 1 });
-      }
+    // Group nodes by their Service Host, sorted chronologically
+    const serviceNodes = new Map<string, ReadNode[]>();
+    for (const n of visibleNodes) {
+      const scid = nodeServiceMap.get(n.id)!;
+      const list = serviceNodes.get(scid) || [];
+      list.push(n);
+      serviceNodes.set(scid, list);
     }
 
-    // Initialize ranks with their structural parentage depth
+    // Sort container nodes chronologically for vertical tie-breaking
+    const containerEarliestTime = new Map<string, number>();
+    for (const c of hosts) {
+      const sNodes = serviceNodes.get(c.id) || [];
+      const minTime = sNodes.length > 0 ? Math.min(...sNodes.map((n) => n.startTimeUs)) : c.startTimeUs;
+      containerEarliestTime.set(c.id, minTime);
+    }
+
+    // Calculate height of each Service Container in Graph mode
+    const containerHeights = new Map<string, number>();
+    for (const c of hosts) {
+      const sNodes = serviceNodes.get(c.id) || [];
+      sNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+      const numNodes = sNodes.length;
+      const height =
+        HEADER_H +
+        CONTAINER_PAD_Y * 2 +
+        (numNodes > 0 ? numNodes * NODE_H + (numNodes - 1) * NODE_GAP : 0);
+      containerHeights.set(c.id, height);
+    }
+
+    // Group containers by rank
     const containerRanks = new Map<string, number>();
-    for (const c of visibleContainers) {
-      containerRanks.set(c.id, depthMap.get(c.id) ?? 0);
+    for (const c of hosts) {
+      containerRanks.set(c.id, 0); // Initially rank 0
     }
 
-    // Extract unique container-to-container edges
+    // Extract unique service-to-service dependency edges based on node call edges
     const containerEdges: Array<{ from: string; to: string }> = [];
     const containerEdgeSet = new Set<string>();
     for (const edge of edges) {
       if (visibleNodeIds.has(edge.fromNodeId) && visibleNodeIds.has(edge.toNodeId)) {
-        const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
-        const toNode = nodes.find((n) => n.id === edge.toNodeId);
-        if (fromNode && toNode && fromNode.containerId !== toNode.containerId) {
-          const key = `${fromNode.containerId}->${toNode.containerId}`;
+        const fromServiceId = nodeServiceMap.get(edge.fromNodeId);
+        const toServiceId = nodeServiceMap.get(edge.toNodeId);
+        if (fromServiceId && toServiceId && fromServiceId !== toServiceId) {
+          const key = `${fromServiceId}->${toServiceId}`;
           if (!containerEdgeSet.has(key)) {
             containerEdgeSet.add(key);
-            containerEdges.push({ from: fromNode.containerId, to: toNode.containerId });
+            containerEdges.push({ from: fromServiceId, to: toServiceId });
           }
         }
       }
     }
 
-    // Relaxation loop for topological ranking
-    for (let iter = 0; iter < visibleContainers.length; iter++) {
+    // Relaxation loop for topological ranking of service containers
+    for (let iter = 0; iter < hosts.length; iter++) {
       let changed = false;
       for (const edge of containerEdges) {
         const fromRank = containerRanks.get(edge.from) ?? 0;
@@ -262,28 +295,15 @@ export function computeLayout(
       if (!changed) break;
     }
 
-    // Group containers by rank
+    // Group service containers by rank
     const containersByRank = new Map<number, ReadContainer[]>();
     let maxRank = 0;
-    for (const c of visibleContainers) {
+    for (const c of hosts) {
       const rank = containerRanks.get(c.id) ?? 0;
       maxRank = Math.max(maxRank, rank);
       const list = containersByRank.get(rank) || [];
       list.push(c);
       containersByRank.set(rank, list);
-    }
-
-    // Calculate height of each container in Graph mode
-    const containerHeights = new Map<string, number>();
-    for (const c of visibleContainers) {
-      const cNodes = visibleNodes.filter((n) => n.containerId === c.id);
-      cNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
-      const numNodes = cNodes.length;
-      const height =
-        HEADER_H +
-        CONTAINER_PAD_Y * 2 +
-        (numNodes > 0 ? numNodes * NODE_H + (numNodes - 1) * NODE_GAP : 0);
-      containerHeights.set(c.id, height);
     }
 
     // Calculate column heights to vertically center them
@@ -326,15 +346,15 @@ export function computeLayout(
           left: x,
           width: CONTAINER_W,
           height,
-          parentContainerId: null,
+          parentContainerId: null, // Flat service layout
         };
         containerLayouts.push(layout);
         containerLayoutsMap.set(c.id, layout);
 
         // Position nodes inside this container
-        const cNodes = visibleNodes.filter((n) => n.containerId === c.id);
-        cNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
-        cNodes.forEach((node, nodeIdx) => {
+        const sNodes = serviceNodes.get(c.id) || [];
+        sNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+        sNodes.forEach((node, nodeIdx) => {
           const nx = x + CONTAINER_PAD_X;
           const ny = currentY + HEADER_H + CONTAINER_PAD_Y + nodeIdx * (NODE_H + NODE_GAP);
           nodePositions.set(node.id, {
@@ -365,11 +385,19 @@ export function computeLayout(
         return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
       }
       if (visibleContainerIds.has(nodeId)) {
-        const cl = containerLayoutsMap.get(nodeId)!;
-        return {
-          x: isSource ? cl.left + cl.width : cl.left,
-          y: cl.top + HEADER_H / 2,
-        };
+        // Resolve to the parent service container layout
+        let scid = nodeId;
+        while (scid && !hostIds.has(scid)) {
+          const parentCid = effectiveParentMap.get(scid);
+          scid = parentCid ?? "";
+        }
+        const cl = containerLayoutsMap.get(scid || hosts[0]?.id);
+        if (cl) {
+          return {
+            x: isSource ? cl.left + cl.width : cl.left,
+            y: cl.top + HEADER_H / 2,
+          };
+        }
       }
       return null;
     };
@@ -395,6 +423,7 @@ export function computeLayout(
         isCrossContainer,
       });
     }
+
     const parentArrows: ParentArrow[] = [];
     for (const cl of containerLayouts) {
       const parentId = effectiveParentMap.get(cl.containerId);
