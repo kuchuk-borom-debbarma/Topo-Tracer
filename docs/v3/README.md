@@ -173,19 +173,31 @@ The Node.js SDK exports a clean, simplified nesting builder:
 ```typescript
 import { Tracer } from "@topo-tracer/sdk";
 
-// Start root container
+// Start root container (Depth = 0)
 const tx = Tracer.startContainer("orderItem", ["tag_checkout", "tag_gateway"]);
 
 // Log a simple chronological row node inside the container
 tx.logNode("aNode", ["tag_log"]);
 
-// Promise.all or sub-scope invokes nested sub-containers
+// Starts a nested child container (Depth = 1).
+// The SDK automatically appends the tag "#internal_function_depth_1" to this container.
 const subTx = tx.startChildContainer("checkItem", ["tag_internal"]);
 subTx.logNode("checking item", ["tag_debug"]);
-subTx.complete(); // Sends container "ended" event
 
+// Nesting deeper (Depth = 2) automatically appends "#internal_function_depth_2"
+const nestedSubTx = subTx.startChildContainer("fetchFromDB", ["database"]);
+nestedSubTx.logNode("reading cache", ["db_query"]);
+nestedSubTx.complete();
+
+subTx.complete(); // Sends container "ended" event
 tx.complete();
 ```
+
+### 3.1 Automatic Depth-Tag Ingestion
+To maintain standard tag-filtering options in the UI (e.g. searching/filtering by execution depth) without requiring manual developer annotation, the SDK automatically tracks call hierarchy depths:
+* **Root Scope (Depth = 0):** No automatic depth tag is appended.
+* **Nested Sub-Containers (Depth $d > 0$):** Starting a child container dynamically increments the depth count and appends `internal_function_depth_${d}` directly to the container's tags.
+* This allows users to filter by specific execution scopes, e.g. selecting `internal_function_depth_1` in the UI to isolate first-level nested processes.
 
 ---
 
@@ -201,9 +213,20 @@ For each container, the layout engine computes the relative horizontal nesting d
 
 ### 4.2 Dynamic AND-Filter Selection
 Let $T_{UI} = \{t_1, t_2, \dots\}$ be the set of active tags entered by the user in the UI filter bar.
-1.  A Node or Container $E$ is **visible** if and only if:
-    $$T_{UI} = \emptyset \quad \text{OR} \quad T_{UI} \subseteq \text{tags}(E)$$
-2.  If a sub-container has no visible nodes or visible nested sub-containers inside it, it is hidden.
+
+1.  **Node Visibility:**
+    A Node $N$ is visible if and only if:
+    $$T_{UI} = \emptyset \quad \text{OR} \quad T_{UI} \subseteq \text{tags}(N)$$
+    This enforces a strict intersection (AND logic) for filtered nodes.
+
+2.  **Container Visibility (Nesting Scopes):**
+    A Container $C$ is visible if and only if:
+    *   It matches the tags directly:
+        $$T_{UI} = \emptyset \quad \text{OR} \quad T_{UI} \subseteq \text{tags}(C)$$
+    *   **OR** it contains at least one visible child Node $N$ (where $N.\text{containerId} = C$ and $N$ is visible).
+    *   **OR** it contains at least one visible nested child Container $C'$ (where $C'.\text{parentContainerId} = C$ and $C'$ is visible).
+
+This recursive propagation ensures that if any child event matches the filters, its surrounding parent containers remain visible to correctly preserve the hierarchical visual context and horizontal Y-flow grid indentation!
 
 ---
 
