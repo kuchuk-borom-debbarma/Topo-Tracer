@@ -194,8 +194,15 @@ export function computeLayout(
     // Service hosts are containers with NO parent container, OR containers with an explicit service type.
     const serviceContainers = visibleContainers.filter((c) => {
       const isRoot = !effectiveParentMap.get(c.id);
-      const isLogical = c.type.toLowerCase() === "logical module";
-      return isRoot || !isLogical;
+      const typeLower = c.type.toLowerCase();
+      const isServiceType =
+        typeLower.includes("service") ||
+        typeLower.includes("worker") ||
+        typeLower.includes("job") ||
+        typeLower.includes("api") ||
+        typeLower.includes("gateway") ||
+        typeLower.includes("daemon");
+      return isRoot || isServiceType;
     });
 
 
@@ -776,17 +783,41 @@ export function computeLayout(
     containerLayoutsMap.set(cl.containerId, cl);
   }
 
-  // ── 5. Edge Wires Snapping ──────────────────────────────────
   const resolveAnchor = (
     nodeId: string,
     isSource: boolean
   ): { x: number; y: number } | null => {
-    if (visibleNodeIds.has(nodeId)) {
-      const np = nodePositions.get(nodeId)!;
+    let resolvedId = nodeId;
+
+    if (visibleContainerIds.has(nodeId)) {
+      // Find all visible containers in this container's subtree
+      const subContainers = new Set<string>([nodeId]);
+      let added = true;
+      while (added) {
+        added = false;
+        for (const c of visibleContainers) {
+          const parent = effectiveParentMap.get(c.id);
+          if (parent && subContainers.has(parent) && !subContainers.has(c.id)) {
+            subContainers.add(c.id);
+            added = true;
+          }
+        }
+      }
+
+      const treeNodes = visibleNodes.filter((n) => subContainers.has(n.containerId));
+      if (treeNodes.length > 0) {
+        treeNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+        const targetNode = isSource ? treeNodes[treeNodes.length - 1] : treeNodes[0];
+        resolvedId = targetNode.id;
+      }
+    }
+
+    if (visibleNodeIds.has(resolvedId)) {
+      const np = nodePositions.get(resolvedId)!;
       return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
     }
-    if (visibleContainerIds.has(nodeId)) {
-      const cl = containerLayoutsMap.get(nodeId)!;
+    if (visibleContainerIds.has(resolvedId)) {
+      const cl = containerLayoutsMap.get(resolvedId)!;
       return {
         x: isSource ? cl.left + cl.width : cl.left,
         y: cl.top + HEADER_H / 2,
