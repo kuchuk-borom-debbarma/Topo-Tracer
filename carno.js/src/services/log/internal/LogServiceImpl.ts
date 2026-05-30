@@ -162,18 +162,38 @@ export class LogServiceImpl extends LogService {
       };
 
       const snappedEdges: typeof edges = [];
+      const seenConnections = new Set<string>();
+
       for (const edge of edges) {
         const fromId = resolveAnchorId(edge.fromNodeId);
         const toId = resolveAnchorId(edge.toNodeId);
         if (fromId && toId && fromId !== toId) {
-          snappedEdges.push({
-            ...edge,
-            fromNodeId: fromId,
-            toNodeId: toId,
-          });
+          const isSnapped = fromId !== edge.fromNodeId || toId !== edge.toNodeId;
+          const connKey = `${fromId}->${toId}`;
+
+          let distance = 0;
+          if (isSnapped) {
+            distance = Math.max(1, edge.distance);
+          }
+
+          if (!seenConnections.has(connKey)) {
+            seenConnections.add(connKey);
+            snappedEdges.push({
+              ...edge,
+              fromNodeId: fromId,
+              toNodeId: toId,
+              distance,
+            });
+          }
         }
       }
       finalEdges = snappedEdges;
+    } else {
+      // Unfiltered view: all raw edges represent direct transitions (distance = 0)
+      finalEdges = edges.map(edge => ({
+        ...edge,
+        distance: 0,
+      }));
     }
 
     return {
