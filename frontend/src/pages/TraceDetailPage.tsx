@@ -4,36 +4,27 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchTraceLayout, queryKeys } from "../api/client";
 import { TraceFlowCanvas } from "../components/TraceFlowCanvas";
 import { downloadFlowAsPDF } from "../utils/pdf";
-import { formatDuration, getZoomLevelDesc } from "../utils/layout";
+import { formatDuration } from "../utils/layout";
 
 export function TraceDetailPage() {
   const { traceId } = useParams({ strict: false }) as { traceId: string };
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [zoomLevel, setZoomLevel] = useState<number | null>(null);
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+  const [tagInput, setTagInput] = useState("");
+  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
 
-  // Initial fetch at max depth to discover maxAvailableDepth
-  const initQuery = useQuery({
-    queryKey: queryKeys.traceLayout(traceId, 9999),
-    queryFn: () => fetchTraceLayout(traceId, 9999),
-    staleTime: 60_000,
-  });
-
-  const maxDepth = initQuery.data?.metadata.maxAvailableDepth ?? 2;
-  const activeZoom = zoomLevel ?? maxDepth;
-
-  // Fetch at the requested zoom level (after we know maxDepth)
+  // Fetch the V3 trace layout containing all containers, nodes, and edges
   const layoutQuery = useQuery({
-    queryKey: queryKeys.traceLayout(traceId, activeZoom),
-    queryFn: () => fetchTraceLayout(traceId, activeZoom),
-    enabled: !initQuery.isLoading,
+    queryKey: queryKeys.traceLayout(traceId),
+    queryFn: () => fetchTraceLayout(traceId),
     staleTime: 30_000,
   });
 
-  const data = layoutQuery.data ?? initQuery.data;
-  const isLoading = initQuery.isLoading;
-  const isError = initQuery.isError || layoutQuery.isError;
-  const error = initQuery.error ?? layoutQuery.error;
+  const data = layoutQuery.data;
+  const isLoading = layoutQuery.isLoading;
+  const isError = layoutQuery.isError;
+  const error = layoutQuery.error;
   const isFetching = layoutQuery.isFetching && !layoutQuery.isLoading;
 
   async function handleDownloadPDF() {
@@ -47,18 +38,42 @@ export function TraceDetailPage() {
   }
 
   const metadata = data?.metadata;
-  const blockCount = data?.blocks.length ?? 0;
+  const containerCount = data?.containers.length ?? 0;
   const nodeCount = data?.nodes.length ?? 0;
   const edgeCount = data?.edges.length ?? 0;
 
   // Compute total trace duration
   const totalDurationUs =
-    data && data.blocks.length > 0
-      ? data.blocks.reduce((max, b) => {
-          const end = b.startTimeUs + (b.durationUs ?? 0);
-          return end > max ? end : max;
-        }, 0) - Math.min(...data.blocks.map((b) => b.startTimeUs))
+    data && data.containers.length > 0
+      ? Math.max(...data.containers.map((c) => c.startTimeUs + (c.durationUs ?? 0))) -
+        Math.min(...data.containers.map((c) => c.startTimeUs))
       : null;
+
+  // Autocomplete tags: filter trace tags based on input and exclude already selected ones
+  const availableTags = metadata?.tags || [];
+  const autocompleteSuggestions = availableTags.filter(
+    (tag) =>
+      tag.toLowerCase().includes(tagInput.toLowerCase()) &&
+      !activeTags.has(tag)
+  );
+
+  const handleAddTag = (tag: string) => {
+    const next = new Set(activeTags);
+    next.add(tag);
+    setActiveTags(next);
+    setTagInput("");
+    setIsAutocompleteOpen(false);
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    const next = new Set(activeTags);
+    next.delete(tag);
+    setActiveTags(next);
+  };
+
+  const handleClearTags = () => {
+    setActiveTags(new Set());
+  };
 
   return (
     <div className="flow-page">
@@ -75,7 +90,7 @@ export function TraceDetailPage() {
             <span
               className={`badge ${metadata.isZoomReady ? "badge-ready" : "badge-pending"}`}
             >
-              {metadata.isZoomReady ? "✓ Ready" : "⏳ Compiling"}
+              {metadata.isZoomReady ? "✓ Materialized" : "⏳ Compiling"}
             </span>
           )}
           {isFetching && (
@@ -98,34 +113,73 @@ export function TraceDetailPage() {
         </div>
 
         <div className="flow-topbar-right">
-          {/* Zoom level controls — per dynamic-zoom-system-spec */}
-          {!initQuery.isLoading && (
-            <div className="zoom-bar">
-              <span className="zoom-label">Zoom</span>
-              <div className="zoom-levels">
-                {Array.from({ length: maxDepth + 1 }, (_, i) => i).map(
-                  (level) => (
+          {/* Dynamic V3 Tag Filtering Bar */}
+          {metadata && (
+            <div className="tag-filter-bar">
+              <span className="tag-filter-label">Filter Tags:</span>
+              <div className="tag-pills-list">
+                {Array.from(activeTags).map((tag) => (
+                  <span key={tag} className="tag-pill-active">
+                    {tag}
                     <button
-                      key={level}
-                      id={`zoom-level-${level}`}
-                      className={`zoom-level-btn${activeZoom === level && zoomLevel !== null ? " active" : ""}`}
-                      onClick={() => setZoomLevel(level)}
-                      title={getZoomLevelDesc(level)}
+                      className="tag-pill-close-btn"
+                      onClick={() => handleRemoveTag(tag)}
                     >
-                      {level}
+                      ×
                     </button>
-                  )
-                )}
-                <button
-                  id="zoom-level-all"
-                  className={`zoom-level-btn${zoomLevel === null ? " active" : ""}`}
-                  onClick={() => setZoomLevel(null)}
-                  title="Show all zoom levels"
-                >
-                  All
-                </button>
+                  </span>
+                ))}
               </div>
-              <span className="zoom-desc">{getZoomLevelDesc(activeZoom)}</span>
+
+              <div className="tag-input-container">
+                <input
+                  type="text"
+                  placeholder="Add tag (AND logic)..."
+                  className="tag-filter-input"
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setIsAutocompleteOpen(true);
+                  }}
+                  onFocus={() => setIsAutocompleteOpen(true)}
+                  onBlur={() => {
+                    // Slight delay to allow clicking suggestions
+                    setTimeout(() => setIsAutocompleteOpen(false), 200);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && tagInput.trim()) {
+                      const matched = availableTags.find(
+                        (t) => t.toLowerCase() === tagInput.trim().toLowerCase()
+                      );
+                      if (matched) {
+                        handleAddTag(matched);
+                      } else {
+                        handleAddTag(tagInput.trim());
+                      }
+                    }
+                  }}
+                />
+
+                {isAutocompleteOpen && autocompleteSuggestions.length > 0 && (
+                  <div className="tag-autocomplete-dropdown">
+                    {autocompleteSuggestions.map((tag) => (
+                      <div
+                        key={tag}
+                        className="tag-autocomplete-item"
+                        onMouseDown={() => handleAddTag(tag)}
+                      >
+                        {tag}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {activeTags.size > 0 && (
+                <button className="tag-clear-btn" onClick={handleClearTags}>
+                  Clear Filters
+                </button>
+              )}
             </div>
           )}
 
@@ -154,13 +208,7 @@ export function TraceDetailPage() {
       {data && (
         <div className="trace-info-bar">
           <div className="trace-stat">
-            Zoom:{" "}
-            <span className="trace-stat-value">
-              {activeZoom} / {maxDepth}
-            </span>
-          </div>
-          <div className="trace-stat">
-            Blocks: <span className="trace-stat-value">{blockCount}</span>
+            Containers: <span className="trace-stat-value">{containerCount}</span>
           </div>
           <div className="trace-stat">
             Nodes: <span className="trace-stat-value">{nodeCount}</span>
@@ -176,11 +224,11 @@ export function TraceDetailPage() {
               </span>
             </div>
           )}
-          {metadata?.currentDepth !== undefined && (
+          {activeTags.size > 0 && (
             <div className="trace-stat">
-              Depth filter:{" "}
-              <span className="trace-stat-value">
-                {getZoomLevelDesc(metadata.currentDepth)}
+              Active Filters:{" "}
+              <span className="trace-stat-value" style={{ color: "var(--accent-secondary)" }}>
+                {activeTags.size} tags (AND logic)
               </span>
             </div>
           )}
@@ -207,12 +255,11 @@ export function TraceDetailPage() {
             <div className="empty-state-desc">
               {error instanceof Error ? error.message : "An error occurred."}
               <br />
-              The trace may not be materialized yet — wait 10 seconds and
-              refresh.
+              The trace may not be materialized yet.
             </div>
           </div>
         ) : data ? (
-          <TraceFlowCanvas ref={canvasRef} data={data} />
+          <TraceFlowCanvas ref={canvasRef} data={data} activeTags={activeTags} />
         ) : null}
       </div>
     </div>

@@ -1,20 +1,17 @@
-import type { ReadBlock, ReadNode, ReadEdge } from "../api/client";
+import type { ReadContainer, ReadNode, ReadEdge } from "../api/client";
 
 // ============================================================
 // Layout Constants
 // ============================================================
 export const LAYOUT = {
-  NODE_H: 48,             // height of each node row (px)
-  NODE_GAP: 4,            // vertical gap between nodes (px)
-  BLOCK_PAD: 8,          // block internal padding top/bottom (px)
-  BLOCK_HEADER_H: 42,     // block header height (px)
-  COL_W: 280,             // block card width (px)
-  COL_GAP: 100,            // gap between depth columns (for arrows)
-  CANVAS_PAD: 48,         // canvas outer padding (px)
-  BLOCK_GAP: 12,          // gap between stacked blocks in same depth column
-  CONTAINER_PAD: 20,      // padding inside container band (left/right/bottom)
-  CONTAINER_HEADER_H: 34, // container band header height
-  CONTAINER_GAP: 48,      // vertical gap between container bands
+  NODE_H: 42,             // height of node row
+  NODE_GAP: 6,            // gap between node rows
+  CONTAINER_PAD_Y: 16,    // vertical padding inside container
+  CONTAINER_PAD_X: 18,    // horizontal padding inside container
+  CONTAINER_HEADER_H: 38, // container header height
+  COL_W: 320,             // width of a node card/row
+  INDENT: 36,             // nesting horizontal indent on X-axis
+  CANVAS_PAD: 48,         // outer canvas padding
 } as const;
 
 // ============================================================
@@ -23,31 +20,29 @@ export const LAYOUT = {
 
 export type ContainerLayout = {
   containerId: string;
-  label: string;
-  top: number;     // px from canvas origin (without CANVAS_PAD)
-  left: number;    // px from canvas origin (without CANVAS_PAD)
+  name: string;
+  type: string;
+  tags: string[];
+  top: number;
+  left: number;
   width: number;
   height: number;
-};
-
-export type BlockPosition = {
-  block: ReadBlock;
-  top: number;   // px from canvas origin (without CANVAS_PAD)
-  left: number;  // px from canvas origin (without CANVAS_PAD)
-  height: number;
+  parentContainerId: string | null;
 };
 
 export type NodePosition = {
   node: ReadNode;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
   centerY: number;
-  blockLeft: number;
-  blockRight: number;
+  leftX: number;
+  rightX: number;
 };
 
 export type EdgeWire = {
   edge: ReadEdge;
-  fromBlockId: string;
-  toBlockId: string;
   fromNodeId: string;
   toNodeId: string;
   fromX: number;
@@ -59,7 +54,6 @@ export type EdgeWire = {
 
 export type LayoutResult = {
   containerLayouts: ContainerLayout[];
-  blockPositions: Map<string, BlockPosition>;
   nodePositions: Map<string, NodePosition>;
   wires: EdgeWire[];
   canvasWidth: number;
@@ -67,285 +61,276 @@ export type LayoutResult = {
 };
 
 // ============================================================
-// Helpers
-// ============================================================
-
-/** "container-order-api" → "Order API" */
-function containerLabel(containerId: string): string {
-  return containerId
-    .replace(/^container-/, "")
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-// ============================================================
 // Layout computation
 // ============================================================
 
 export function computeLayout(
-  blocks: ReadBlock[],
+  containers: ReadContainer[],
   nodes: ReadNode[],
   edges: ReadEdge[],
-  colGap: number = LAYOUT.COL_GAP,
-  activeZoom: number = 9999
+  activeTags: Set<string>
 ): LayoutResult {
   const {
-    NODE_H, NODE_GAP, BLOCK_PAD, BLOCK_HEADER_H,
-    COL_W, BLOCK_GAP,
-    CONTAINER_PAD, CONTAINER_HEADER_H, CONTAINER_GAP,
+    NODE_H, NODE_GAP, CONTAINER_PAD_Y, CONTAINER_PAD_X,
+    CONTAINER_HEADER_H, COL_W, INDENT, CANVAS_PAD
   } = LAYOUT;
 
-  /** Global canvas X for a block at absoluteDepth d (no CANVAS_PAD) */
-  const colX = (depth: number): number => {
-    return depth * (COL_W + colGap);
+  // ── 1. Strict Visibility Filter (AND logic) ────────────────
+  const isNodeVisible = (n: ReadNode): boolean => {
+    if (activeTags.size === 0) return true;
+    return Array.from(activeTags).every(tag => n.tags && n.tags.includes(tag));
   };
 
-  // ── 0. Filter blocks dynamically by absolute depth ────────
-  const visibleBlocks = blocks.filter((b) => b.absoluteDepth <= activeZoom);
-  const visibleBlockIds = new Set(visibleBlocks.map((b) => b.id));
+  const containerVisCache = new Map<string, boolean>();
+  const isContainerVisible = (cid: string): boolean => {
+    if (containerVisCache.has(cid)) return containerVisCache.get(cid)!;
 
-  // ── 1. Map all nodes for O(1) ancestry path snapping lookups ──
-  const allNodesMap = new Map<string, ReadNode>();
-  for (const node of nodes) {
-    allNodesMap.set(node.id, node);
-  }
+    // A container is visible if it matches tags OR has any visible children/nodes inside it
+    const tagMatched = activeTags.size === 0 || (() => {
+      const c = containers.find(x => x.id === cid);
+      return !!(c && Array.from(activeTags).every(tag => c.tags && c.tags.includes(tag)));
+    })();
 
-  // ── 2. Filter visible nodes by importance zoom level & block visibility ──
-  const visibleNodes = nodes.filter(
-    (n) => n.zoomLevel <= activeZoom && visibleBlockIds.has(n.blockId)
-  );
+    if (tagMatched) {
+      containerVisCache.set(cid, true);
+      return true;
+    }
 
-  // Deduplicate visible nodes by ID
-  const dedupedNodeMap = new Map<string, ReadNode>();
-  for (const node of visibleNodes) {
-    const existing = dedupedNodeMap.get(node.id);
-    if (!existing) {
-      dedupedNodeMap.set(node.id, node);
-    } else {
-      const hasDur = node.durationUs !== null && node.durationUs !== undefined;
-      const exHasDur = existing.durationUs !== null && existing.durationUs !== undefined;
-      if (hasDur && !exHasDur) dedupedNodeMap.set(node.id, node);
+    const hasVisibleNode = nodes.some(n => n.containerId === cid && isNodeVisible(n));
+    if (hasVisibleNode) {
+      containerVisCache.set(cid, true);
+      return true;
+    }
+
+    const hasVisibleChild = containers.some(c => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id));
+    if (hasVisibleChild) {
+      containerVisCache.set(cid, true);
+      return true;
+    }
+
+    containerVisCache.set(cid, false);
+    return false;
+  };
+
+  const visibleContainers = containers.filter(c => isContainerVisible(c.id));
+  const visibleNodes = nodes.filter(n => isNodeVisible(n) && isContainerVisible(n.containerId));
+
+  const visibleContainerIds = new Set(visibleContainers.map(c => c.id));
+  const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+
+  // ── 2. Group items by container for chronological sequence ──
+  const containerChildren = new Map<string, ReadContainer[]>();
+  for (const c of visibleContainers) {
+    if (!c.parentContainerId) continue;
+    // Walk parent hierarchy to find closest visible ancestor
+    let parentId: string | null = c.parentContainerId;
+    while (parentId && !visibleContainerIds.has(parentId)) {
+      const p = containers.find(x => x.id === parentId);
+      parentId = p ? p.parentContainerId : null;
+    }
+    if (parentId) {
+      const list = containerChildren.get(parentId) || [];
+      list.push(c);
+      containerChildren.set(parentId, list);
     }
   }
-  const dedupedNodes = Array.from(dedupedNodeMap.values());
 
-  // ── 3. Group nodes by blockId ────────────────────────────
-  const nodesByBlock = new Map<string, ReadNode[]>();
-  for (const node of dedupedNodes) {
-    if (!nodesByBlock.has(node.blockId)) nodesByBlock.set(node.blockId, []);
-    nodesByBlock.get(node.blockId)!.push(node);
-  }
-  for (const arr of nodesByBlock.values()) {
-    arr.sort((a, b) => a.localSequence - b.localSequence);
+  const containerNodes = new Map<string, ReadNode[]>();
+  for (const n of visibleNodes) {
+    const list = containerNodes.get(n.containerId) || [];
+    list.push(n);
+    containerNodes.set(n.containerId, list);
   }
 
-  // ── 4. Block height helper ───────────────────────────────
-  function blockHeight(blockId: string): number {
-    const bNodes = nodesByBlock.get(blockId) ?? [];
-    const nodesH =
-      bNodes.length > 0
-        ? bNodes.length * NODE_H + (bNodes.length - 1) * NODE_GAP
-        : NODE_H;
-    return BLOCK_HEADER_H + BLOCK_PAD * 2 + nodesH;
-  }
-
-  // ── 5. Group visible blocks by containerId ────────────────
-  const blocksByContainer = new Map<string, ReadBlock[]>();
-  for (const block of visibleBlocks) {
-    const cid = block.containerId || "default";
-    if (!blocksByContainer.has(cid)) blocksByContainer.set(cid, []);
-    blocksByContainer.get(cid)!.push(block);
-  }
-
-  // Sort containers: by their minimum absoluteDepth, then earliest start
-  const containerIds = Array.from(blocksByContainer.keys()).sort((a, b) => {
-    const aBlocks = blocksByContainer.get(a)!;
-    const bBlocks = blocksByContainer.get(b)!;
-    const aMin = Math.min(...aBlocks.map((bl) => bl.absoluteDepth));
-    const bMin = Math.min(...bBlocks.map((bl) => bl.absoluteDepth));
-    if (aMin !== bMin) return aMin - bMin;
-    const aStart = Math.min(...aBlocks.map((bl) => bl.startTimeUs));
-    const bStart = Math.min(...bBlocks.map((bl) => bl.startTimeUs));
-    return aStart - bStart;
+  // Find root containers (no visible parent)
+  const rootContainers = visibleContainers.filter(c => {
+    let parentId = c.parentContainerId;
+    while (parentId) {
+      if (visibleContainerIds.has(parentId)) return false;
+      const p = containers.find(x => x.id === parentId);
+      parentId = p ? p.parentContainerId : null;
+    }
+    return true;
   });
 
-  // Block → containerId lookup (for edge cross-container detection)
-  const blockContainerMap = new Map<string, string>();
-  for (const [cid, cBlocks] of blocksByContainer.entries()) {
-    for (const b of cBlocks) blockContainerMap.set(b.id, cid);
-  }
+  // Sort roots by start time
+  rootContainers.sort((a, b) => a.startTimeUs - b.startTimeUs);
 
-  // ── 6. Compute positions ─────────────────────────────────
+  // ── 3. Recursive coordinate calculation ──────────────────
   const containerLayouts: ContainerLayout[] = [];
-  const blockPositions = new Map<string, BlockPosition>();
-  let currentTop = 0; // running Y cursor (without CANVAS_PAD)
+  const nodePositions = new Map<string, NodePosition>();
 
-  for (const cid of containerIds) {
-    const cBlocks = blocksByContainer.get(cid)!;
+  const layoutContainer = (
+    c: ReadContainer, 
+    left: number, 
+    top: number
+  ): { width: number; height: number } => {
+    const cid = c.id;
 
-    // Group by absoluteDepth column
-    const byDepth = new Map<number, ReadBlock[]>();
-    for (const b of cBlocks) {
-      if (!byDepth.has(b.absoluteDepth)) byDepth.set(b.absoluteDepth, []);
-      byDepth.get(b.absoluteDepth)!.push(b);
+    // Gather and sort all direct visible items in this container chronologically
+    const cNodes = containerNodes.get(cid) || [];
+    const cChildren = containerChildren.get(cid) || [];
+
+    type FlowItem = { type: "node"; item: ReadNode; start: number } | { type: "container"; item: ReadContainer; start: number };
+    const flowItems: FlowItem[] = [
+      ...cNodes.map(n => ({ type: "node" as const, item: n, start: n.startTimeUs })),
+      ...cChildren.map(cc => ({ type: "container" as const, item: cc, start: cc.startTimeUs }))
+    ];
+    flowItems.sort((a, b) => a.start - b.start);
+
+    let currentY = top + CONTAINER_HEADER_H + CONTAINER_PAD_Y;
+    let maxChildWidth: number = COL_W;
+
+    for (const item of flowItems) {
+      if (item.type === "node") {
+        const node = item.item;
+        const x = left + CONTAINER_PAD_X;
+        const y = currentY;
+        
+        nodePositions.set(node.id, {
+          node,
+          top: y,
+          left: x,
+          width: COL_W,
+          height: NODE_H,
+          centerY: y + NODE_H / 2,
+          leftX: x,
+          rightX: x + COL_W
+        });
+
+        currentY += NODE_H + NODE_GAP;
+      } else {
+        const childContainer = item.item;
+        const x = left + INDENT;
+        
+        const { width: childW, height: childH } = layoutContainer(childContainer, x, currentY);
+        maxChildWidth = Math.max(maxChildWidth, childW + (INDENT - CONTAINER_PAD_X));
+        
+        currentY += childH + NODE_GAP;
+      }
     }
-    for (const arr of byDepth.values()) {
-      arr.sort((a, b) => a.startTimeUs - b.startTimeUs);
+
+    // Clean trailing gap
+    if (flowItems.length > 0) {
+      currentY -= NODE_GAP;
     }
 
-    const depths = Array.from(byDepth.keys()).sort((a, b) => a - b);
-    const minDepth = depths[0];
-    const maxDepth = depths[depths.length - 1];
-
-    // Column heights (blocks stacked vertically with BLOCK_GAP)
-    let maxColHeight = 0;
-    for (const [, dBlocks] of byDepth.entries()) {
-      const h =
-        dBlocks.reduce((sum, b) => sum + blockHeight(b.id) + BLOCK_GAP, 0) -
-        BLOCK_GAP;
-      maxColHeight = Math.max(maxColHeight, h);
-    }
-
-    // Container box dimensions (no CANVAS_PAD — renderer adds it)
-    const cLeft  = colX(minDepth) - CONTAINER_PAD;
-    const cWidth  = colX(maxDepth) + COL_W - colX(minDepth) + CONTAINER_PAD * 2;
-    const cHeight = CONTAINER_HEADER_H + CONTAINER_PAD + maxColHeight + CONTAINER_PAD;
+    const finalWidth = maxChildWidth + CONTAINER_PAD_X * 2;
+    const finalHeight = currentY - top + CONTAINER_PAD_Y;
 
     containerLayouts.push({
       containerId: cid,
-      label: containerLabel(cid),
-      top: currentTop,
-      left: cLeft,
-      width: cWidth,
-      height: cHeight,
+      name: c.name,
+      type: c.type,
+      tags: c.tags || [],
+      top,
+      left,
+      width: finalWidth,
+      height: finalHeight,
+      parentContainerId: c.parentContainerId
     });
 
-    // Position blocks within the container
-    const innerTop = currentTop + CONTAINER_HEADER_H + CONTAINER_PAD;
-    for (const [depth, dBlocks] of byDepth.entries()) {
-      let blockY = innerTop;
-      for (const block of dBlocks) {
-        const h = blockHeight(block.id);
-        blockPositions.set(block.id, {
-          block,
-          top: blockY,
-          left: colX(depth),
-          height: h,
-        });
-        blockY += h + BLOCK_GAP;
-      }
-    }
+    return { width: finalWidth, height: finalHeight };
+  };
 
-    currentTop += cHeight + CONTAINER_GAP;
+  // Stack root containers vertically
+  let currentY = 0;
+  for (const rc of rootContainers) {
+    const { height } = layoutContainer(rc, 0, currentY);
+    currentY += height + 40; // gap between trace trees
   }
 
-  // ── 7. Node center Y positions ────────────────────────────
-  const nodePositions = new Map<string, NodePosition>();
-  for (const [blockId, bNodes] of nodesByBlock.entries()) {
-    const bp = blockPositions.get(blockId);
-    if (!bp) continue;
-    for (const node of bNodes) {
-      const nodeTopInBlock =
-        BLOCK_HEADER_H + BLOCK_PAD + node.localSequence * (NODE_H + NODE_GAP);
-      const centerY = bp.top + nodeTopInBlock + NODE_H / 2;
-      nodePositions.set(node.id, {
-        node,
-        centerY,
-        blockLeft: bp.left,
-        blockRight: bp.left + COL_W,
-      });
-    }
+  const containerLayoutsMap = new Map<string, ContainerLayout>();
+  for (const cl of containerLayouts) {
+    containerLayoutsMap.set(cl.containerId, cl);
   }
 
-  // ── 8. Edge wires & ancestry snapping ──────────────────────
-  const visibleNodeIds = new Set(dedupedNodes.map((n) => n.id));
+  // ── 4. Dynamic Snap Re-linking & Border Snapping ─────────
+  const resolveNodeAnchor = (nodeId: string, isSource: boolean): { x: number; y: number } | null => {
+    if (visibleNodeIds.has(nodeId)) {
+      const np = nodePositions.get(nodeId)!;
+      return {
+        x: isSource ? np.rightX : np.leftX,
+        y: np.centerY
+      };
+    }
 
-  function resolveNodeId(nodeId: string): string | null {
-    if (visibleNodeIds.has(nodeId)) return nodeId;
-    // Strip _caller suffix and try bare UUID
-    if (nodeId.endsWith("_caller")) {
-      const bare = nodeId.slice(0, -"_caller".length);
-      if (visibleNodeIds.has(bare)) return bare;
-    }
-    // Snap to visible ancestor via ancestryPath (using allNodesMap containing hidden nodes)
-    const node = allNodesMap.get(nodeId);
-    if (node) {
-      const path = [...node.ancestryPath].reverse();
-      for (const aid of path) {
-        if (visibleNodeIds.has(aid)) return aid;
+    // Snapping logic: traverse parentage backward from node to find closest visible ancestor
+    const node = nodes.find(x => x.id === nodeId);
+    if (!node) return null;
+
+    const path = [...node.parentage].reverse();
+    for (const ancestorId of path) {
+      if (visibleNodeIds.has(ancestorId)) {
+        const np = nodePositions.get(ancestorId)!;
+        return {
+          x: isSource ? np.rightX : np.leftX,
+          y: np.centerY
+        };
       }
-      const bNodes = nodesByBlock.get(node.blockId);
-      if (bNodes && bNodes.length > 0) {
-        const first = bNodes.find((n) => visibleNodeIds.has(n.id));
-        if (first) return first.id;
+      if (visibleContainerIds.has(ancestorId)) {
+        // Snap directly to the container boundary card
+        const cl = containerLayoutsMap.get(ancestorId)!;
+        return {
+          // Anchors to Left Edge Center (for targets) or Right Edge Center (for sources) of container card header
+          x: isSource ? cl.left + cl.width : cl.left,
+          y: cl.top + CONTAINER_HEADER_H / 2
+        };
       }
     }
+
     return null;
-  }
+  };
 
   const wires: EdgeWire[] = [];
   for (const edge of edges) {
-    let fromId = resolveNodeId(edge.fromNodeId);
-    let toId   = resolveNodeId(edge.toNodeId);
-    if (!fromId || !toId || fromId === toId) continue;
+    const fromAnchor = resolveNodeAnchor(edge.fromNodeId, true);
+    const toAnchor = resolveNodeAnchor(edge.toNodeId, false);
 
-    const fromNP = nodePositions.get(fromId);
-    const toNP   = nodePositions.get(toId);
-    if (!fromNP || !toNP) continue;
+    if (!fromAnchor || !toAnchor) continue;
 
-    // Skip if both nodes are in the exact same block column (intra-block)
-    if (fromNP.blockLeft === toNP.blockLeft && fromNP.centerY === toNP.centerY) continue;
+    // Eliminate loops or zero-length wires
+    if (Math.abs(fromAnchor.x - toAnchor.x) < 2 && Math.abs(fromAnchor.y - toAnchor.y) < 2) continue;
 
-    // Detect cross-container: does the edge cross a container boundary?
-    const fromBlockId = dedupedNodes.find((n) => n.id === fromId)?.blockId;
-    const toBlockId   = dedupedNodes.find((n) => n.id === toId)?.blockId;
-    if (!fromBlockId || !toBlockId) continue;
-
-    const fromCid = blockContainerMap.get(fromBlockId);
-    const toCid   = blockContainerMap.get(toBlockId);
-    const isCrossContainer = !!(fromCid && toCid && fromCid !== toCid);
+    // Detect cross-container boundary
+    const fromNode = nodes.find(n => n.id === edge.fromNodeId);
+    const toNode = nodes.find(n => n.id === edge.toNodeId);
+    const isCrossContainer = !!(fromNode && toNode && fromNode.containerId !== toNode.containerId);
 
     wires.push({
       edge,
-      fromBlockId,
-      toBlockId,
-      fromNodeId: fromId,
-      toNodeId: toId,
-      fromX: fromNP.blockRight,
-      fromY: fromNP.centerY,
-      toX:   toNP.blockLeft,
-      toY:   toNP.centerY,
-      isCrossContainer,
+      fromNodeId: edge.fromNodeId,
+      toNodeId: edge.toNodeId,
+      fromX: fromAnchor.x,
+      fromY: fromAnchor.y,
+      toX: toAnchor.x,
+      toY: toAnchor.y,
+      isCrossContainer
     });
   }
 
-  // ── 9. Canvas dimensions ──────────────────────────────────
-  let maxRight  = 0;
-  let maxBottom = 0;
-  for (const bp of blockPositions.values()) {
-    maxRight  = Math.max(maxRight,  bp.left + COL_W);
-    maxBottom = Math.max(maxBottom, bp.top  + bp.height);
-  }
-  // Also account for container boxes
+  // ── 5. Canvas Dimensions ──────────────────────────────────
+  let maxRight = 400;
+  let maxBottom = 400;
+
   for (const cl of containerLayouts) {
-    maxRight  = Math.max(maxRight,  cl.left + cl.width);
-    maxBottom = Math.max(maxBottom, cl.top  + cl.height);
+    maxRight = Math.max(maxRight, cl.left + cl.width);
+    maxBottom = Math.max(maxBottom, cl.top + cl.height);
   }
 
   return {
     containerLayouts,
-    blockPositions,
     nodePositions,
     wires,
-    canvasWidth:  maxRight  + LAYOUT.CANVAS_PAD * 2,
-    canvasHeight: maxBottom + LAYOUT.CANVAS_PAD * 2,
+    canvasWidth: maxRight + CANVAS_PAD * 2,
+    canvasHeight: maxBottom + CANVAS_PAD * 2
   };
 }
 
 // ============================================================
-// Node type → color mapping
+// Utility styling & formatting helper exports
 // ============================================================
+
 export function getNodeColor(type: string): string {
   const t = type.toLowerCase();
   if (t === "http_server" || t === "express_api") return "var(--node-http-server)";
@@ -359,14 +344,6 @@ export function getNodeColor(type: string): string {
   return "var(--node-default)";
 }
 
-// Zoom level descriptions
-export function getZoomLevelDesc(level: number): string {
-  if (level === 0) return "Critical only (entry points)";
-  if (level === 1) return "Key operations";
-  return `Detailed (level ${level})`;
-}
-
-// Format microseconds
 export function formatDuration(us: number | null): string {
   if (us === null || us === undefined) return "";
   if (us < 1000) return `${us}µs`;

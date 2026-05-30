@@ -27,118 +27,112 @@ export class ClickHouseService {
 
     await this.resetSchema();
 
+    // 1. Raw Append-Only Ingestion Logs
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.containers (
+        CREATE TABLE IF NOT EXISTS toco_tracer.raw_containers (
           id String,
           trace_id String,
+          parent_container_id String,
           name String,
           type String,
-          metadata String,
-          createdAtLocal Int64,
-          createdAtRemote Int64
+          tags Array(String),
+          event_type Enum8('started' = 1, 'ended' = 2),
+          timestamp Int64
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, id);
+        ORDER BY (trace_id, timestamp);
       `,
     });
 
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.blocks (
+        CREATE TABLE IF NOT EXISTS toco_tracer.raw_nodes (
           id String,
           trace_id String,
-          containerId String,
+          container_id String,
           name String,
           type String,
+          tags Array(String),
+          event_type Enum8('started' = 1, 'ended' = 2),
+          timestamp Int64,
           metadata String
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, containerId, id);
+        ORDER BY (trace_id, timestamp);
       `,
     });
 
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.nodes (
+        CREATE TABLE IF NOT EXISTS toco_tracer.raw_edges (
           id String,
           trace_id String,
-          blockId String,
+          from_node_id String,
+          to_node_id String,
+          type String,
+          timestamp Int64
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id, timestamp);
+      `,
+    });
+
+    // 2. Read-Optimized Materialized Structures
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.read_traces (
+          trace_id String,
+          container_ids Array(String),
+          tags Array(String),
+          created_at Int64
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id);
+      `,
+    });
+
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.read_containers (
+          id String,
+          trace_id String,
+          parent_container_id String,
           name String,
           type String,
-          metadata String,
-          eventType Enum8('started' = 1, 'ended' = 2),
-          eventAtLocal Int64,
-          ingestedAtRemote Int64
+          tags Array(String),
+          start_time_us Int64,
+          duration_us Nullable(Int64),
+          metadata String
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, blockId, id, eventAtLocal);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.edges (
-          id String,
-          trace_id String,
-          fromNodeId String,
-          toNodeId String,
-          type String,
-          metadata String,
-          eventType Enum8('requested' = 1, 'responded' = 2),
-          eventAtLocal Int64,
-          ingestedAtRemote Int64
-        ) ENGINE = MergeTree()
-        ORDER BY (trace_id, id, eventAtLocal);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.read_blocks (
-          id String,                  -- Unique ID of the block (maps to raw TraceBlock.id)
-          trace_id String,            -- The globally unique trace ID
-          container_id String,        -- Container/service where this block ran
-          parent_block_id String,     -- Parent block ID calling this block (empty if root)
-          calling_node_id String,     -- The exact Node ID inside parent_block that triggered this block
-          name String,                -- Human-readable function call scope name (e.g. 'foo()')
-          type String,                -- Scope type (e.g. 'function', 'rpc')
-          absolute_depth UInt16,      -- Horizontal offset X-coordinate: 0 = root block, 1 = nested, etc.
-          start_time_us Int64,        -- Earliest start timestamp derived from child nodes (in microseconds)
-          duration_us Nullable(Int64),-- Derived block execution duration (in microseconds)
-          ancestry_path Array(String),-- Ordered array of ancestor IDs from top container down to itself
-          metadata String             -- Stringified JSON baggage properties
-        ) ENGINE = MergeTree()
-        ORDER BY (trace_id, absolute_depth, start_time_us);
+        ORDER BY (trace_id, start_time_us);
       `,
     });
 
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS toco_tracer.read_nodes (
-          id String,                  -- Unique ID of the node (maps to raw TraceNode.id)
-          trace_id String,            -- The globally unique trace ID
-          block_id String,            -- Containing Block ID
-          name String,                -- Human-readable node/log name
-          type String,                -- Checkpoint type (e.g. 'db', 'log')
-          zoom_level UInt8,           -- Verbosity importance: 0 = critical, 1 = key, 2 = detailed
-          local_sequence UInt32,      -- Vertical flow index Y-coordinate inside this block
-          start_time_us Int64,        -- Timing for started event (in microseconds)
-          duration_us Nullable(Int64),-- Node execution duration (in microseconds)
-          ancestry_path Array(String),-- Ordered array of ancestor IDs from top container down to itself
-          metadata String             -- Stringified JSON baggage properties
+          id String,
+          trace_id String,
+          container_id String,
+          name String,
+          type String,
+          tags Array(String),
+          parentage Array(String),
+          local_sequence UInt32,
+          start_time_us Int64,
+          duration_us Nullable(Int64),
+          metadata String
         ) ENGINE = MergeTree()
-        ORDER BY (trace_id, block_id, local_sequence);
+        ORDER BY (trace_id, container_id, local_sequence);
       `,
     });
 
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
-          id String,                  -- Unique row ID (edge_id + zoom_level)
-          edge_id String,             -- Unique ID of the edge (maps to raw TraceEdge.id)
-          trace_id String,            -- The globally unique trace ID
-          from_block_id String,       -- Source block ID containing the calling node
-          from_node_id String,        -- Source calling Node ID that dispatched the call
-          to_block_id String,         -- Destination block ID receiving the call
-          to_node_id String           -- Destination entry Node ID that accepted the call
+          id String,
+          trace_id String,
+          from_node_id String,
+          to_node_id String,
+          type String,
+          metadata String
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, id);
       `,
@@ -147,10 +141,10 @@ export class ClickHouseService {
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS toco_tracer.trace_metadata (
-          trace_id String,            -- The globally unique trace ID
-          is_zoom_ready UInt8,        -- Completion status of layout: 1 = ready, 0 = materializing
-          max_available_depth UInt16,  -- Max structural call-depth resolved (used to size UI slider range)
-          materialized_offset UInt32  -- Completed offset index in materialization queue
+          trace_id String,
+          is_zoom_ready UInt8,
+          max_available_depth UInt16,
+          materialized_offset UInt32
         ) ENGINE = ReplacingMergeTree()
         ORDER BY trace_id;
       `,
@@ -159,9 +153,14 @@ export class ClickHouseService {
 
   private async resetSchema(): Promise<void> {
     const tables = [
-      "trace_metadata",
       "read_edges",
       "read_nodes",
+      "read_containers",
+      "read_traces",
+      "raw_edges",
+      "raw_nodes",
+      "raw_containers",
+      "trace_metadata",
       "read_blocks",
       "edge_egress_ancestry",
       "node_ancestry",

@@ -5,9 +5,9 @@
 export type TraceListItem = {
   traceId: string;
   isZoomReady: boolean;
-  maxAvailableDepth: number;
   createdAt: number;
   containerNames: string[];
+  tags: string[];
 };
 
 export type TraceListResponse = {
@@ -18,53 +18,48 @@ export type TraceListResponse = {
   totalPages: number;
 };
 
-export type ReadBlock = {
+export type ReadContainer = {
   id: string;
   traceId: string;
-  containerId: string;
-  parentBlockId: string;
-  callingNodeId: string;
+  parentContainerId: string | null;
   name: string;
   type: string;
-  absoluteDepth: number;
+  tags: string[];
   startTimeUs: number;
   durationUs: number | null;
-  ancestryPath: string[];
-  metadata?: unknown;
+  metadata?: any;
 };
 
 export type ReadNode = {
   id: string;
   traceId: string;
-  blockId: string;
+  containerId: string;
   name: string;
   type: string;
-  zoomLevel: number;
+  tags: string[];
+  parentage: string[]; // Hierarchical lineage: [parent_container_ids..., parent_node_id]
   localSequence: number;
   startTimeUs: number;
   durationUs: number | null;
-  ancestryPath: string[];
-  metadata?: unknown;
+  metadata?: any;
 };
 
 export type ReadEdge = {
   id: string;
-  edgeId: string;
   traceId: string;
-  fromBlockId: string;
   fromNodeId: string;
-  toBlockId: string;
   toNodeId: string;
+  type: string;
+  metadata?: any;
 };
 
 export type TraceLayoutResponse = {
   metadata: {
     traceId: string;
     isZoomReady: boolean;
-    maxAvailableDepth: number;
-    currentDepth: number;
+    tags: string[];
   };
-  blocks: ReadBlock[];
+  containers: ReadContainer[];
   nodes: ReadNode[];
   edges: ReadEdge[];
 };
@@ -85,7 +80,6 @@ export function setApiBaseUrl(url: string): void {
 
 async function apiFetch<T>(path: string): Promise<T> {
   const base = getApiBaseUrl();
-  // If same origin (proxy), use relative; else use absolute
   const url = base === "http://localhost:3000"
     ? path  // use Vite dev proxy
     : `${base}${path}`;
@@ -101,7 +95,7 @@ async function apiFetch<T>(path: string): Promise<T> {
 // ── Query key factories ─────────────────────────────────────
 export const queryKeys = {
   tracesList: (page: number, limit: number) => ["traces", "list", page, limit] as const,
-  traceLayout: (traceId: string, zoomLevel: number) => ["trace", "layout", traceId, zoomLevel] as const,
+  traceLayout: (traceId: string) => ["trace", "layout", traceId] as const,
 };
 
 // ── Fetch functions ─────────────────────────────────────────
@@ -110,8 +104,7 @@ export async function fetchTracesList(page: number, limit: number): Promise<Trac
 }
 
 export async function fetchTraceLayout(
-  traceId: string,
-  zoomLevel: number
+  traceId: string
 ): Promise<TraceLayoutResponse> {
-  return apiFetch(`/telemetry/trace/${encodeURIComponent(traceId)}?zoom_level=${zoomLevel}`);
+  return apiFetch(`/telemetry/trace/${encodeURIComponent(traceId)}`);
 }

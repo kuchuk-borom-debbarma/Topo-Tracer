@@ -1,14 +1,13 @@
 import { Service } from "@carno.js/core";
 import { LogService, type TraceListResponse } from "../LogService";
 import type {
-  TraceBlock,
-  TraceBlockInput,
   TraceContainer,
   TraceContainerInput,
   TraceEdge,
   TraceEdgeInput,
   TraceNode,
   TraceNodeInput,
+  TraceLayoutResponse,
 } from "../types";
 import { LogRepo } from "./LogRepo";
 import { TraceMaterializationWorker } from "./worker/TraceMaterializationWorker";
@@ -23,35 +22,22 @@ export class LogServiceImpl extends LogService {
   }
 
   override async logContainers(containers: TraceContainerInput[]): Promise<void> {
-    const createdAtRemote = new Date();
     const enriched: TraceContainer[] = containers.map(container => ({
       ...container,
-      createdAtLocal: typeof container.createdAtLocal === "string" ? new Date(container.createdAtLocal) : container.createdAtLocal,
-      metadata: container.metadata ?? null,
-      createdAtRemote,
+      timestamp: new Date(container.timestamp),
+      createdAtRemote: new Date(),
     }));
 
     await this.logRepo.saveContainers(enriched);
     this.triggerTraces(containers);
   }
 
-  override async logBlocks(blocks: TraceBlockInput[]): Promise<void> {
-    const enriched: TraceBlock[] = blocks.map(block => ({
-      ...block,
-      metadata: block.metadata ?? null,
-    }));
-
-    await this.logRepo.saveBlocks(enriched);
-    this.triggerTraces(blocks);
-  }
-
   override async logNodes(nodes: TraceNodeInput[]): Promise<void> {
-    const ingestedAtRemote = new Date();
     const enriched: TraceNode[] = nodes.map(node => ({
       ...node,
-      eventAtLocal: typeof node.eventAtLocal === "string" ? new Date(node.eventAtLocal) : node.eventAtLocal,
+      timestamp: new Date(node.timestamp),
       metadata: node.metadata ?? null,
-      ingestedAtRemote,
+      ingestedAtRemote: new Date(),
     }));
 
     await this.logRepo.saveNodes(enriched);
@@ -59,40 +45,42 @@ export class LogServiceImpl extends LogService {
   }
 
   override async logEdges(edges: TraceEdgeInput[]): Promise<void> {
-    const ingestedAtRemote = new Date();
     const enriched: TraceEdge[] = edges.map(edge => ({
       ...edge,
-      eventAtLocal: typeof edge.eventAtLocal === "string" ? new Date(edge.eventAtLocal) : edge.eventAtLocal,
-      metadata: edge.metadata ?? null,
-      ingestedAtRemote,
+      timestamp: new Date(edge.timestamp),
     }));
 
     await this.logRepo.saveEdges(enriched);
     this.triggerTraces(edges);
   }
 
-  override async getTraceLayout(traceId: string, zoomLevel?: number): Promise<any> {
+  override async getTraceLayout(traceId: string): Promise<TraceLayoutResponse | null> {
     // 1. Fetch trace metadata
     const metadata = await this.logRepo.fetchTraceMetadata(traceId);
 
-    // Default to max structural call depth if no query parameter is provided
-    const activeLevel = zoomLevel !== undefined ? zoomLevel : (metadata?.maxAvailableDepth ?? 2);
-
-    // 2. Fetch blocks, visible nodes, and horizontal wires dynamically
-    const [blocks, nodes, edges] = await Promise.all([
-      this.logRepo.fetchReadBlocks(traceId),
-      this.logRepo.fetchReadNodes(traceId, activeLevel),
+    // 2. Fetch read-optimized containers, nodes, and edges
+    const [containers, nodes, edges] = await Promise.all([
+      this.logRepo.fetchReadContainers(traceId),
+      this.logRepo.fetchReadNodes(traceId),
       this.logRepo.fetchReadEdges(traceId),
     ]);
+
+    // 3. Extract unique tags present in this trace for UI autocomplete
+    const tagsSet = new Set<string>();
+    for (const c of containers) {
+      if (c.tags) c.tags.forEach(t => tagsSet.add(t));
+    }
+    for (const n of nodes) {
+      if (n.tags) n.tags.forEach(t => tagsSet.add(t));
+    }
 
     return {
       metadata: {
         traceId,
         isZoomReady: metadata ? !!metadata.isZoomReady : false,
-        maxAvailableDepth: metadata ? metadata.maxAvailableDepth : 2,
-        currentDepth: activeLevel,
+        tags: Array.from(tagsSet),
       },
-      blocks,
+      containers,
       nodes,
       edges,
     };
@@ -112,10 +100,7 @@ export class LogServiceImpl extends LogService {
       this.logRepo.fetchTracesCount(),
     ]);
     return {
-      traces: traces.map(t => ({
-        ...t,
-        isZoomReady: Boolean(t.isZoomReady),
-      })),
+      traces,
       total,
       page,
       limit,
