@@ -8,6 +8,7 @@ type Props = {
   activeTags: Set<string>;
   playbackStep: number | null;
   chronoItems: Array<{ id: string; name: string; type: "node" | "container"; startTimeUs: number }>;
+  layoutMode: "nested" | "dag";
 };
 
 const CONTAINER_ICONS: Record<string, string> = {
@@ -28,7 +29,7 @@ function getContainerIcon(type: string): string {
 const ARROW_SIZE = 8;
 
 export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
-  ({ data, activeTags, playbackStep, chronoItems }, forwardedRef) => {
+  ({ data, activeTags, playbackStep, chronoItems, layoutMode }, forwardedRef) => {
     const { containers, nodes, edges } = data;
 
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -50,8 +51,8 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
     );
 
     const layout = useMemo(
-      () => computeLayout(containers, nodes, edges, activeTags),
-      [containers, nodes, edges, activeTags]
+      () => computeLayout(containers, nodes, edges, activeTags, layoutMode),
+      [containers, nodes, edges, activeTags, layoutMode]
     );
 
     const { containerLayouts, nodePositions, parentArrows, wires, canvasWidth, canvasHeight } =

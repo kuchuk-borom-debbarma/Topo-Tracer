@@ -16,6 +16,7 @@ export function TraceDetailPage() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackStep, setPlaybackStep] = useState<number | null>(null);
+  const [layoutMode, setLayoutMode] = useState<"nested" | "dag">("dag");
 
   const activeTagsArray = Array.from(activeTags);
 
@@ -263,6 +264,24 @@ export function TraceDetailPage() {
             </div>
           )}
 
+          {/* Layout Mode Selector Toggle Pill */}
+          <div className="zoom-levels" style={{ marginRight: 8 }}>
+            <button
+              className={`zoom-level-btn ${layoutMode === "dag" ? "active" : ""}`}
+              onClick={() => setLayoutMode("dag")}
+              title="Switch to Flowchart DAG view"
+            >
+              📊 Flowchart View
+            </button>
+            <button
+              className={`zoom-level-btn ${layoutMode === "nested" ? "active" : ""}`}
+              onClick={() => setLayoutMode("nested")}
+              title="Switch to Nesting Swimlanes view"
+            >
+              🔲 Swimlane View
+            </button>
+          </div>
+
           <button
             id="download-pdf-btn"
             className="btn btn-primary"
@@ -378,6 +397,7 @@ export function TraceDetailPage() {
             activeTags={activeTags}
             playbackStep={playbackStep}
             chronoItems={chronoItems}
+            layoutMode={layoutMode}
           />
         ) : null}
       </div>

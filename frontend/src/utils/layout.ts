@@ -111,7 +111,8 @@ export function computeLayout(
   containers: ReadContainer[],
   nodes: ReadNode[],
   edges: ReadEdge[],
-  activeTags: Set<string>
+  activeTags: Set<string>,
+  layoutMode: "nested" | "dag" = "dag"
 ): LayoutResult {
   const {
     NODE_H, NODE_GAP, CONTAINER_PAD_Y, CONTAINER_PAD_X,
@@ -158,6 +159,166 @@ export function computeLayout(
     containerVisCache.set(cid, false);
     return false;
   };
+
+  // ── 1B. Flowchart DAG layout algorithm ──
+  if (layoutMode === "dag") {
+    const LANE_H = 110;
+    const LANE_GAP = 28;
+    const DAG_COL_W = 340;
+    const DAG_NODE_W = 280;
+    const DAG_NODE_H = 58;
+    const PAD_X = 36;
+    const PAD_Y = 24;
+
+    const visibleContainers = containers.filter((c) => isContainerVisible(c.id));
+    const visibleNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
+    const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
+    const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+
+    // Sort containers by their earliest node's start time to assign horizontal lanes
+    const containerEarliestTime = new Map<string, number>();
+    for (const c of visibleContainers) {
+      const cNodes = visibleNodes.filter((n) => n.containerId === c.id);
+      const minTime = cNodes.length > 0 ? Math.min(...cNodes.map((n) => n.startTimeUs)) : c.startTimeUs;
+      containerEarliestTime.set(c.id, minTime);
+    }
+    
+    const sortedContainers = [...visibleContainers].sort((a, b) => {
+      return (containerEarliestTime.get(a.id) ?? 0) - (containerEarliestTime.get(b.id) ?? 0);
+    });
+
+    const laneMap = new Map<string, number>();
+    sortedContainers.forEach((c, idx) => {
+      laneMap.set(c.id, idx);
+    });
+
+    // Dependency-ranked columns (DAG Ranks using longest path)
+    const nodeRanks = new Map<string, number>();
+    for (const n of visibleNodes) {
+      nodeRanks.set(n.id, 0);
+    }
+
+    const visibleEdges = edges.filter((e) => visibleNodeIds.has(e.fromNodeId) && visibleNodeIds.has(e.toNodeId));
+    
+    // Relaxation loop to compute longest-path columns for parallel flows
+    for (let iter = 0; iter < visibleNodes.length; iter++) {
+      let changed = false;
+      for (const edge of visibleEdges) {
+        const fromRank = nodeRanks.get(edge.fromNodeId) ?? 0;
+        const toRank = nodeRanks.get(edge.toNodeId) ?? 0;
+        if (toRank < fromRank + 1) {
+          nodeRanks.set(edge.toNodeId, fromRank + 1);
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+
+    let maxRank = 0;
+    for (const r of nodeRanks.values()) {
+      maxRank = Math.max(maxRank, r);
+    }
+
+    const canvasWidth = maxRank * DAG_COL_W + DAG_NODE_W + PAD_X * 2;
+    const canvasHeight = sortedContainers.length * (LANE_H + LANE_GAP) - LANE_GAP + PAD_Y * 2;
+
+    // Position containers as horizontal service lanes
+    const containerLayouts: ContainerLayout[] = sortedContainers.map((c, idx) => {
+      const top = PAD_Y + idx * (LANE_H + LANE_GAP);
+      return {
+        containerId: c.id,
+        name: c.name,
+        type: c.type,
+        tags: c.tags || [],
+        depth: idx,
+        top,
+        left: PAD_X,
+        width: maxRank * DAG_COL_W + DAG_NODE_W,
+        height: LANE_H,
+        parentContainerId: null,
+      };
+    });
+
+    const containerLayoutsMap = new Map<string, ContainerLayout>();
+    for (const cl of containerLayouts) {
+      containerLayoutsMap.set(cl.containerId, cl);
+    }
+
+    // Position nodes inside service lanes chronologically
+    const nodePositions = new Map<string, NodePosition>();
+    for (const n of visibleNodes) {
+      const lane = laneMap.get(n.containerId) ?? 0;
+      const rank = nodeRanks.get(n.id) ?? 0;
+
+      const x = PAD_X + rank * DAG_COL_W;
+      const y = PAD_Y + lane * (LANE_H + LANE_GAP) + (LANE_H - DAG_NODE_H) / 2 + 10;
+
+      nodePositions.set(n.id, {
+        node: n,
+        top: y,
+        left: x,
+        width: DAG_NODE_W,
+        height: DAG_NODE_H,
+        centerY: y + DAG_NODE_H / 2,
+        leftX: x,
+        rightX: x + DAG_NODE_W,
+        centerX: x + DAG_NODE_W / 2,
+        bottomY: y + DAG_NODE_H,
+      });
+    }
+
+    // Connect edges
+    const resolveAnchor = (
+      nodeId: string,
+      isSource: boolean
+    ): { x: number; y: number } | null => {
+      if (visibleNodeIds.has(nodeId)) {
+        const np = nodePositions.get(nodeId)!;
+        return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
+      }
+      if (visibleContainerIds.has(nodeId)) {
+        const cl = containerLayoutsMap.get(nodeId)!;
+        return {
+          x: isSource ? cl.left + cl.width : cl.left,
+          y: cl.top + 34 / 2,
+        };
+      }
+      return null;
+    };
+
+    const wires: EdgeWire[] = [];
+    for (const edge of edges) {
+      const fromAnchor = resolveAnchor(edge.fromNodeId, true);
+      const toAnchor = resolveAnchor(edge.toNodeId, false);
+      if (!fromAnchor || !toAnchor) continue;
+
+      const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
+      const toNode = nodes.find((n) => n.id === edge.toNodeId);
+      const isCrossContainer = !!(fromNode && toNode && fromNode.containerId !== toNode.containerId);
+
+      wires.push({
+        edge,
+        fromNodeId: edge.fromNodeId,
+        toNodeId: edge.toNodeId,
+        fromX: fromAnchor.x,
+        fromY: fromAnchor.y,
+        toX: toAnchor.x,
+        toY: toAnchor.y,
+        isCrossContainer,
+      });
+    }
+
+    return {
+      containerLayouts,
+      nodePositions,
+      parentArrows: [],
+      wires,
+      canvasWidth,
+      canvasHeight,
+    };
+  }
+
+  // ── 1C. Nesting Swimlane layout code (Default fallback) ──
 
   const visibleContainers = containers.filter((c) => isContainerVisible(c.id));
   const visibleNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
