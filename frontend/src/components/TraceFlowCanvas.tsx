@@ -8,7 +8,7 @@ type Props = {
   activeTags: Set<string>;
   playbackStep: number | null;
   chronoItems: Array<{ id: string; name: string; type: "node" | "container"; startTimeUs: number }>;
-  layoutMode: "nested" | "dag";
+  layoutMode: "nested" | "dag" | "graph";
 };
 
 const CONTAINER_ICONS: Record<string, string> = {
