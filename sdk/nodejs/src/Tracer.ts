@@ -133,23 +133,44 @@ export class Tracer {
    * Continues an existing trace (e.g. from an incoming HTTP request containing trace headers).
    */
   public static continueTrace(
-    traceId: string, 
-    parentNodeId: string, 
-    name: string, 
-    nodeType: NodeType | string, 
+    traceIdOrHeaders: string | Record<string, string | undefined>,
+    parentNodeIdOrName: string,
+    nameOrType?: string | NodeType,
+    nodeType?: NodeType | string,
     _parentDepthIndex: number = 0,
     _group?: string,
     _scheduledAtLocal?: Date,
     overrideId?: string,
     parentContainerId?: string
   ): TraceContainer {
-    this.exportContainerForTrace(traceId, this.getContainerId(), parentContainerId || null);
+    let traceId: string;
+    let name: string;
+    let type: string;
+    let targetId = overrideId;
+    let parentCid = parentContainerId;
+
+    if (typeof traceIdOrHeaders === "object" && traceIdOrHeaders !== null) {
+      // Extract properties implicitly from headers/carrier context
+      traceId = traceIdOrHeaders["x-trace-id"] || uuidv4();
+      parentCid = traceIdOrHeaders["x-parent-container-id"] || undefined;
+      targetId = traceIdOrHeaders["x-target-node-id"] || undefined;
+      
+      name = parentNodeIdOrName;
+      type = (nameOrType as string) || "Logical Module";
+    } else {
+      // Backward compatibility signature
+      traceId = traceIdOrHeaders;
+      name = nameOrType as string;
+      type = (nodeType as string) || "Logical Module";
+    }
+
+    this.exportContainerForTrace(traceId, this.getContainerId(), parentCid || null);
     return new TraceContainer({
-      id: overrideId || this.getContainerId(),
+      id: targetId || this.getContainerId(),
       traceId,
       parentContainerId: this.getContainerId(),
       name,
-      type: typeof nodeType === "string" ? nodeType : "Logical Module",
+      type,
       tags: []
     });
   }

@@ -152,6 +152,19 @@ export class TraceContainer {
   }
 
   /**
+   * Helper to create standard network carrier headers to propagate trace context across service boundaries.
+   */
+  public createCarrierHeaders(callerNodeId: string, targetContainerId: string): Record<string, string> {
+    return {
+      "x-trace-id": this.traceId,
+      "x-parent-node-id": callerNodeId,
+      "x-parent-container-id": this.id,
+      "x-target-node-id": targetContainerId,
+      "x-depth-index": this.depthIndex.toString(),
+    };
+  }
+
+  /**
    * Completes the container execution scope.
    */
   public complete() {
