@@ -77,32 +77,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
         className="flow-canvas"
         style={{ width: canvasWidth + PAD, height: canvasHeight + PAD }}
       >
-        {/* ── Band separators between independent root services ── */}
-        {(() => {
-          const roots = containerLayouts
-            .filter((cl) => cl.parentContainerId === null)
-            .sort((a, b) => a.top - b.top);
-
-          return roots.slice(1).map((rootCl) => {
-            const depthColor = getDepthColor(rootCl.depth);
-            const sepY = rootCl.top + PAD - LAYOUT.BAND_GAP / 2;
-            return (
-              <div
-                key={`sep-${rootCl.containerId}`}
-                className="band-separator"
-                style={{ top: sepY, left: PAD, right: 0 }}
-              >
-                <span className="band-separator-label">
-                  {rootCl.name}
-                </span>
-                <div
-                  className="band-separator-line"
-                  style={{ borderColor: `${depthColor}30` }}
-                />
-              </div>
-            );
-          });
-        })()}
 
         {/* ── Container Cards ── */}
         {containerLayouts.map((cl) => {
@@ -264,18 +238,18 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             </marker>
           </defs>
 
-          {/* ── Parent relationship arrows (very subtle hierarchy guides) ── */}
+          {/* ── Parent arrows: vertical S-curves, center-bottom → center-top ── */}
           {parentArrows.map((pa, i) => {
             const fx = pa.fromX + PAD;
             const fy = pa.fromY + PAD;
             const tx = pa.toX + PAD;
             const ty = pa.toY + PAD;
-            const dx = tx - fx;
-            // Smooth bezier with control points pulling horizontally
-            const offset = Math.max(24, Math.abs(dx) * 0.4);
-            const d = `M ${fx} ${fy} C ${fx + offset} ${fy}, ${tx - offset} ${ty}, ${tx} ${ty}`;
+            const dy = ty - fy;
+            // S-curve: pull control points vertically to create smooth arc
+            const curve = Math.max(24, Math.abs(dy) * 0.5);
+            const d = `M ${fx} ${fy} C ${fx} ${fy + curve}, ${tx} ${ty - curve}, ${tx} ${ty}`;
 
-            const isHoveredArrow =
+            const isHovered =
               hoveredContainerId === pa.fromContainerId ||
               hoveredContainerId === pa.toContainerId;
 
@@ -285,13 +259,33 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 d={d}
                 fill="none"
                 stroke={pa.color}
-                strokeWidth={isHoveredArrow ? 1.5 : 1}
-                strokeDasharray="4 4"
-                opacity={isHoveredArrow ? 0.55 : 0.12}
-                style={{ transition: "opacity 200ms ease, stroke-width 200ms ease" }}
+                strokeWidth={isHovered ? 2 : 1.5}
+                opacity={isHovered ? 0.85 : 0.45}
+                markerEnd={`url(#arrow-parent-${i})`}
+                style={{ transition: "opacity 180ms ease" }}
               />
             );
           })}
+
+          {/* Arrowheads for parent arrows (one per, so color matches) */}
+          {parentArrows.map((pa, i) => (
+            <defs key={`pad-${i}`}>
+              <marker
+                id={`arrow-parent-${i}`}
+                markerWidth={7}
+                markerHeight={7}
+                refX={6}
+                refY={3.5}
+                orient="auto"
+              >
+                <polygon
+                  points="0 0, 7 3.5, 0 7"
+                  fill={pa.color}
+                  opacity="0.75"
+                />
+              </marker>
+            </defs>
+          ))}
 
           {/* ── Node edge wires ── */}
           {wires.map((wire, i) => {

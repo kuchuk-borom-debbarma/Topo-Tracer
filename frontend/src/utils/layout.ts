@@ -4,20 +4,20 @@ import type { ReadContainer, ReadNode, ReadEdge } from "../api/client";
 // Layout Constants
 // ============================================================
 export const LAYOUT = {
-  COL_W: 300,            // container card width
-  COL_GAP: 72,           // horizontal gap between depth columns (for arrows)
+  COL_W: 270,            // container card width
+  H_GAP: 28,             // horizontal gap between sibling cards (same depth row)
+  ROOT_GAP: 64,          // extra horizontal gap between separate root-service trees
+  V_GAP: 80,             // vertical gap between depth rows (space for arrows)
   NODE_H: 58,            // fixed node card height
   NODE_GAP: 5,           // gap between node cards inside a container
-  CONTAINER_PAD_TOP: 10, // padding above first node inside container
-  CONTAINER_PAD_BOT: 12, // padding below last node inside container
+  CONTAINER_PAD_TOP: 10, // padding above first node
+  CONTAINER_PAD_BOT: 12, // padding below last node
   HEADER_H: 68,          // container header height (2-row)
-  SIBLING_GAP: 10,       // vertical gap between sibling containers (same parent)
-  BAND_GAP: 48,          // vertical gap between independent root-service bands
   CANVAS_PAD: 48,        // outer canvas padding
 } as const;
 
 // ============================================================
-// Depth color palette (decorative only — shown as left border)
+// Depth color palette
 // ============================================================
 const DEPTH_COLORS = [
   "hsl(217, 91%, 62%)",   // Depth 0: Electric Blue
@@ -69,16 +69,18 @@ export type NodePosition = {
   width: number;
   height: number;
   centerY: number;
-  leftX: number;   // container left edge (wire entry)
-  rightX: number;  // container right edge (wire exit)
+  leftX: number;
+  rightX: number;
+  centerX: number;
+  bottomY: number;
 };
 
 export type ParentArrow = {
   fromContainerId: string;
   toContainerId: string;
-  fromX: number;
+  fromX: number;  // center-bottom of parent
   fromY: number;
-  toX: number;
+  toX: number;    // center-top of child
   toY: number;
   color: string;
 };
@@ -104,17 +106,23 @@ export type LayoutResult = {
 };
 
 // ============================================================
-// Layout computation — CHRONOLOGICAL column layout
+// Layout computation — TOP-DOWN TREE
 //
-// Key insight: sort all containers by startTimeUs (left = oldest).
-// Children naturally appear after parents in time, so the flow
-// reads left → right organically.  Depth is decorative (border color)
-// rather than positional — no false "same depth = same column" grouping.
+//  Mental model:
+//    Y axis = depth   (root at top, children below → natural call-stack direction)
+//    X axis = siblings (same-parent containers side by side → easy to compare)
 //
-//  [container A] ──► [container B] ──► [container C] ...
-//    [node 1]           [node 1]          [node 1]
-//    [node 2]           [node 2]
-//    [node 3]
+//  Each root service becomes its own sub-tree.
+//  Multiple root trees are placed side-by-side with ROOT_GAP between them.
+//  All containers at the same depth share the same row Y.
+//  Parent cards are centered over their children.
+//
+//          [Root A]         [Root B]
+//         ↙        ↘
+//    [A.child1]  [A.child2]
+//        ↓
+//   [A.child1.1]
+//
 // ============================================================
 
 export function computeLayout(
@@ -124,14 +132,14 @@ export function computeLayout(
   activeTags: Set<string>
 ): LayoutResult {
   const {
-    COL_W, COL_GAP,
+    COL_W, H_GAP, ROOT_GAP, V_GAP,
     NODE_H, NODE_GAP,
     CONTAINER_PAD_TOP, CONTAINER_PAD_BOT,
     HEADER_H,
     CANVAS_PAD,
   } = LAYOUT;
 
-  // ── 1. AND-logic visibility filter ────────────────────────
+  // ── 1. Visibility filter (AND logic on tags) ───────────────
   const isNodeVisible = (n: ReadNode): boolean => {
     if (activeTags.size === 0) return true;
     return Array.from(activeTags).every((tag) => n.tags && n.tags.includes(tag));
@@ -150,26 +158,24 @@ export function computeLayout(
 
     if (tagMatched) { containerVisCache.set(cid, true); return true; }
 
-    const hasVisibleNode = nodes.some((n) => n.containerId === cid && isNodeVisible(n));
-    if (hasVisibleNode) { containerVisCache.set(cid, true); return true; }
+    if (nodes.some((n) => n.containerId === cid && isNodeVisible(n))) {
+      containerVisCache.set(cid, true); return true;
+    }
 
-    const hasVisibleChild = containers.some(
-      (c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id)
-    );
-    if (hasVisibleChild) { containerVisCache.set(cid, true); return true; }
+    if (containers.some((c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id))) {
+      containerVisCache.set(cid, true); return true;
+    }
 
     containerVisCache.set(cid, false);
     return false;
   };
 
   const visibleContainers = containers.filter((c) => isContainerVisible(c.id));
-  const visibleNodes = nodes.filter(
-    (n) => isNodeVisible(n) && isContainerVisible(n.containerId)
-  );
+  const visibleNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
   const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
   const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
 
-  // ── 2. Effective parent map ───────────────────────────────
+  // ── 2. Effective parent map (skip invisible containers) ────
   const effectiveParentMap = new Map<string, string | null>();
   for (const c of visibleContainers) {
     let pid = c.parentContainerId;
@@ -180,7 +186,7 @@ export function computeLayout(
     effectiveParentMap.set(c.id, pid ?? null);
   }
 
-  // ── 3. Assign depths (BFS from roots) ─────────────────────
+  // ── 3. Children map & depth via BFS ───────────────────────
   const depthMap = new Map<string, number>();
   const childrenMap = new Map<string, string[]>();
 
@@ -207,7 +213,7 @@ export function computeLayout(
     }
   }
 
-  // ── 4. Group nodes by container ───────────────────────────
+  // ── 4. Card heights ────────────────────────────────────────
   const containerNodesMap = new Map<string, ReadNode[]>();
   for (const n of visibleNodes) {
     const list = containerNodesMap.get(n.containerId) ?? [];
@@ -215,70 +221,106 @@ export function computeLayout(
     containerNodesMap.set(n.containerId, list);
   }
 
+  const cardHeights = new Map<string, number>();
   const getCardHeight = (cid: string): number => {
+    if (cardHeights.has(cid)) return cardHeights.get(cid)!;
     const n = (containerNodesMap.get(cid) ?? []).length;
     const nodesH = n > 0
       ? CONTAINER_PAD_TOP + n * NODE_H + (n - 1) * NODE_GAP + CONTAINER_PAD_BOT
       : CONTAINER_PAD_TOP + CONTAINER_PAD_BOT;
-    return HEADER_H + nodesH;
+    const h = HEADER_H + nodesH;
+    cardHeights.set(cid, h);
+    return h;
   };
 
-  // ── 5. Recursive tree layout ──────────────────────────────
-  //
-  //  Layout philosophy:
-  //    X axis = depth  (children appear to the RIGHT of their parent)
-  //    Y axis = siblings (same-parent containers stacked top-to-bottom)
-  //
-  //  Each ROOT container starts its own independent horizontal BAND.
-  //  Bands are stacked vertically with BAND_GAP between them.
-  //  Within each band, siblings are stacked with SIBLING_GAP.
-  //
-  //        [Root A]  ──►  [Child A1]  ──►  [Grandchild]
-  //                  ──►  [Child A2]
-  //        [Root B]  ──►  [Child B1]
-  //
-  const { SIBLING_GAP, BAND_GAP } = LAYOUT;
+  for (const c of visibleContainers) getCardHeight(c.id);
 
+  // ── 5. TOP-DOWN TREE LAYOUT ───────────────────────────────
+  //
+  //  Step A: Compute max card height per depth level
+  //          → determines the Y position of each row
+  //  Step B: Compute subtree width for each node
+  //          → used to center parents over children
+  //  Step C: Recursively place each subtree
+  //  Step D: Place root trees side by side with ROOT_GAP
+
+  // Step A: Row Y positions (all cards at same depth share the same top-Y)
+  const maxHeightPerDepth = new Map<number, number>();
+  for (const c of visibleContainers) {
+    const d = depthMap.get(c.id) ?? 0;
+    const h = cardHeights.get(c.id)!;
+    maxHeightPerDepth.set(d, Math.max(maxHeightPerDepth.get(d) ?? 0, h));
+  }
+
+  const maxDepth = visibleContainers.length > 0
+    ? Math.max(...Array.from(depthMap.values()))
+    : 0;
+
+  const rowY = new Map<number, number>();
+  let currentRowTop = 0;
+  for (let d = 0; d <= maxDepth; d++) {
+    rowY.set(d, currentRowTop);
+    currentRowTop += (maxHeightPerDepth.get(d) ?? HEADER_H) + V_GAP;
+  }
+
+  // Step B: Subtree width (memoized)
+  const subtreeWidthCache = new Map<string, number>();
+  const getSubtreeWidth = (cid: string): number => {
+    if (subtreeWidthCache.has(cid)) return subtreeWidthCache.get(cid)!;
+    const children = childrenMap.get(cid) ?? [];
+    const w = children.length === 0
+      ? COL_W
+      : Math.max(
+          COL_W,
+          children.reduce((sum, id) => sum + getSubtreeWidth(id), 0) +
+            H_GAP * (children.length - 1)
+        );
+    subtreeWidthCache.set(cid, w);
+    return w;
+  };
+
+  // Step C: Recursive placement — centers the card over its children
   const containerPosMap = new Map<
     string,
     { top: number; left: number; width: number; height: number; depth: number }
   >();
 
-  // Returns the bottom-Y of the entire subtree rooted at `cid`
-  const layoutSubtree = (cid: string, x: number, y: number): number => {
-    const height = getCardHeight(cid);
-    const depth = depthMap.get(cid) ?? 0;
-    containerPosMap.set(cid, { top: y, left: x, width: COL_W, height, depth });
-
-    const children = (childrenMap.get(cid) ?? []).slice().sort((a, b) => {
-      const ca = visibleContainers.find((c) => c.id === a)!;
-      const cb = visibleContainers.find((c) => c.id === b)!;
-      return ca.startTimeUs - cb.startTimeUs;
+  const sortChildren = (ids: string[]) =>
+    ids.slice().sort((a, b) => {
+      const ta = visibleContainers.find((c) => c.id === a)?.startTimeUs ?? 0;
+      const tb = visibleContainers.find((c) => c.id === b)?.startTimeUs ?? 0;
+      return ta - tb;
     });
 
-    let childY = y;          // first child aligns with parent's top
-    let maxBottom = y + height;
+  const placeSubtree = (cid: string, subtreeLeft: number): void => {
+    const depth = depthMap.get(cid) ?? 0;
+    const y = rowY.get(depth) ?? 0;
+    const sw = getSubtreeWidth(cid);
+    // Center card within the subtree band
+    const cardLeft = subtreeLeft + (sw - COL_W) / 2;
 
+    containerPosMap.set(cid, {
+      top: y,
+      left: cardLeft,
+      width: COL_W,
+      height: cardHeights.get(cid)!,
+      depth,
+    });
+
+    const children = sortChildren(childrenMap.get(cid) ?? []);
+    let cx = subtreeLeft;
     for (const childId of children) {
-      const childBottom = layoutSubtree(childId, x + COL_W + COL_GAP, childY);
-      childY = childBottom + SIBLING_GAP;
-      maxBottom = Math.max(maxBottom, childBottom);
+      placeSubtree(childId, cx);
+      cx += getSubtreeWidth(childId) + H_GAP;
     }
-
-    return maxBottom;
   };
 
-  // Sort root containers by start time so the first service to act is on top
-  const rootIdsSorted = rootIds.slice().sort((a, b) => {
-    const ca = visibleContainers.find((c) => c.id === a)!;
-    const cb = visibleContainers.find((c) => c.id === b)!;
-    return ca.startTimeUs - cb.startTimeUs;
-  });
-
-  let bandY = 0;
+  // Step D: Root trees side by side
+  const rootIdsSorted = sortChildren(rootIds);
+  let rx = 0;
   for (const rootId of rootIdsSorted) {
-    const subtreeBottom = layoutSubtree(rootId, 0, bandY);
-    bandY = subtreeBottom + BAND_GAP;
+    placeSubtree(rootId, rx);
+    rx += getSubtreeWidth(rootId) + ROOT_GAP;
   }
 
   // ── 6. Build containerLayouts ─────────────────────────────
@@ -312,24 +354,26 @@ export function computeLayout(
       (a, b) => a.localSequence - b.localSequence || a.startTimeUs - b.startTimeUs
     );
     const INSET = 8;
-    let nodeY = cl.top + HEADER_H + CONTAINER_PAD_TOP;
+    let nodeTop = cl.top + HEADER_H + CONTAINER_PAD_TOP;
 
     for (const node of ownNodes) {
       nodePositions.set(node.id, {
         node,
-        top: nodeY,
+        top: nodeTop,
         left: cl.left + INSET,
         width: cl.width - INSET * 2,
         height: NODE_H,
-        centerY: nodeY + NODE_H / 2,
+        centerY: nodeTop + NODE_H / 2,
         leftX: cl.left,
         rightX: cl.left + cl.width,
+        centerX: cl.left + cl.width / 2,
+        bottomY: nodeTop + NODE_H,
       });
-      nodeY += NODE_H + NODE_GAP;
+      nodeTop += NODE_H + NODE_GAP;
     }
   }
 
-  // ── 8. Parent arrows (hierarchy) ─────────────────────────
+  // ── 8. Parent arrows (center-bottom → center-top, vertical) ─
   const parentArrows: ParentArrow[] = [];
   for (const cl of containerLayouts) {
     if (!cl.parentContainerId) continue;
@@ -338,15 +382,15 @@ export function computeLayout(
     parentArrows.push({
       fromContainerId: cl.parentContainerId,
       toContainerId: cl.containerId,
-      fromX: parentCl.left + parentCl.width,
-      fromY: parentCl.top + HEADER_H / 2,
-      toX: cl.left,
-      toY: cl.top + HEADER_H / 2,
+      fromX: parentCl.left + parentCl.width / 2,  // center-bottom of parent
+      fromY: parentCl.top + parentCl.height,
+      toX: cl.left + cl.width / 2,                 // center-top of child
+      toY: cl.top,
       color: getDepthColor(cl.depth),
     });
   }
 
-  // ── 9. Node edge wires ────────────────────────────────────
+  // ── 9. Edge wires (node-to-node connections) ──────────────
   const resolveAnchor = (
     nodeId: string,
     isSource: boolean
@@ -377,7 +421,7 @@ export function computeLayout(
     }
     const asNode = nodes.find((x) => x.id === nodeId);
     if (!asNode) return null;
-    for (const ancestorId of [...asNode.parentage].reverse()) {
+    for (const ancestorId of [...(asNode.parentage ?? [])].reverse()) {
       if (visibleNodeIds.has(ancestorId)) {
         const np = nodePositions.get(ancestorId)!;
         return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
@@ -395,7 +439,10 @@ export function computeLayout(
     const fromAnchor = resolveAnchor(edge.fromNodeId, true);
     const toAnchor = resolveAnchor(edge.toNodeId, false);
     if (!fromAnchor || !toAnchor) continue;
-    if (Math.abs(fromAnchor.x - toAnchor.x) < 2 && Math.abs(fromAnchor.y - toAnchor.y) < 2) continue;
+    if (
+      Math.abs(fromAnchor.x - toAnchor.x) < 2 &&
+      Math.abs(fromAnchor.y - toAnchor.y) < 2
+    ) continue;
 
     const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
     const toNode = nodes.find((n) => n.id === edge.toNodeId);
