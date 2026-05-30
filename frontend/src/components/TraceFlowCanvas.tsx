@@ -267,6 +267,10 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 isSelected={selectedNode?.id === node.id}
                 onHover={setHoveredNodeId}
                 onSelect={setSelectedNode}
+                contextLabel={(() => {
+                  const subContainer = containers.find((c) => c.id === node.containerId);
+                  return subContainer && subContainer.id !== container?.containerId ? subContainer.name : undefined;
+                })()}
                 style={isActivePlaybackNode ? {
                   boxShadow: "0 0 14px var(--accent-primary-glow), 0 0 0 1px var(--accent-primary)",
                   borderColor: "var(--accent-primary)",
