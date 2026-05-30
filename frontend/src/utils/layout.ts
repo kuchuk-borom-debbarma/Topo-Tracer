@@ -264,19 +264,31 @@ export function computeLayout(
       containerRanks.set(c.id, 0); // Initially rank 0
     }
 
+    // Helper to resolve any Node ID or Container ID to its top-level Service Host Container ID
+    const resolveServiceId = (id: string): string | null => {
+      let cid = id;
+      if (visibleNodeIds.has(id)) {
+        const node = nodes.find(n => n.id === id);
+        cid = node ? node.containerId : "";
+      }
+      while (cid && !hostIds.has(cid)) {
+        const parentCid = effectiveParentMap.get(cid);
+        cid = parentCid ?? "";
+      }
+      return cid && hostIds.has(cid) ? cid : null;
+    };
+
     // Extract unique service-to-service dependency edges based on node call edges
     const containerEdges: Array<{ from: string; to: string }> = [];
     const containerEdgeSet = new Set<string>();
     for (const edge of edges) {
-      if (visibleNodeIds.has(edge.fromNodeId) && visibleNodeIds.has(edge.toNodeId)) {
-        const fromServiceId = nodeServiceMap.get(edge.fromNodeId);
-        const toServiceId = nodeServiceMap.get(edge.toNodeId);
-        if (fromServiceId && toServiceId && fromServiceId !== toServiceId) {
-          const key = `${fromServiceId}->${toServiceId}`;
-          if (!containerEdgeSet.has(key)) {
-            containerEdgeSet.add(key);
-            containerEdges.push({ from: fromServiceId, to: toServiceId });
-          }
+      const fromServiceId = resolveServiceId(edge.fromNodeId);
+      const toServiceId = resolveServiceId(edge.toNodeId);
+      if (fromServiceId && toServiceId && fromServiceId !== toServiceId) {
+        const key = `${fromServiceId}->${toServiceId}`;
+        if (!containerEdgeSet.has(key)) {
+          containerEdgeSet.add(key);
+          containerEdges.push({ from: fromServiceId, to: toServiceId });
         }
       }
     }
