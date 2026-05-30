@@ -5,6 +5,7 @@ import { LogService } from "./services/log/LogService";
 import { LogServiceImpl } from "./services/log/internal/LogServiceImpl";
 import { ClickHouseService } from "./infra/ClickHouseService";
 import { LogController } from "./routes/LogController";
+import { TraceMaterializationWorker } from "./services/log/internal/worker/TraceMaterializationWorker";
 
 const app = new Carno({
   validation: true,
@@ -15,9 +16,11 @@ const app = new Carno({
 
 app.services([
   ClickHouseService,
+  TraceMaterializationWorker,
   { token: LogRepo, useClass: LogRepoClickHouseImpl },
   { token: LogService, useClass: LogServiceImpl },
 ]);
 
 app.controllers([LogController]);
 app.listen(3000);
+

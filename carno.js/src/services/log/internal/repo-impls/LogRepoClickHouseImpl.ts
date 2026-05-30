@@ -83,7 +83,97 @@ export class LogRepoClickHouseImpl extends LogRepo {
       format: "JSONEachRow",
     });
   }
+
+  override async fetchContainers(traceId: string): Promise<TraceContainer[]> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT id, trace_id as traceId, name, type, metadata, toDateTime(createdAtLocal/1000) as createdAtLocal FROM toco_tracer.containers WHERE trace_id = {traceId: String}`,
+      query_params: { traceId },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
+
+  override async fetchBlocks(traceId: string): Promise<TraceBlock[]> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT id, trace_id as traceId, containerId, name, type, metadata FROM toco_tracer.blocks WHERE trace_id = {traceId: String}`,
+      query_params: { traceId },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
+
+  override async fetchCollapsedNodes(traceId: string): Promise<any[]> {
+    const result = await this.clickHouse.client.query({
+      query: `
+        SELECT
+          id,
+          blockId,
+          name,
+          type,
+          metadata,
+          minIf(eventAtLocal, eventType = 'started') AS startTimeUs,
+          maxIf(eventAtLocal, eventType = 'ended') AS endTimeUs,
+          if(endTimeUs > 0, endTimeUs - startTimeUs, null) AS durationUs
+        FROM toco_tracer.nodes
+        WHERE trace_id = {traceId: String}
+        GROUP BY id, blockId, name, type, metadata
+      `,
+      query_params: { traceId },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
+
+  override async fetchRawEdges(traceId: string): Promise<TraceEdge[]> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT id, trace_id as traceId, fromNodeId, toNodeId, type, metadata, eventType, toDateTime(eventAtLocal/1000) as eventAtLocal FROM toco_tracer.edges WHERE trace_id = {traceId: String} AND eventType = 'requested'`,
+      query_params: { traceId },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
+
+  override async saveReadBlocks(blocks: any[]): Promise<void> {
+    if (!blocks.length) return;
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.read_blocks",
+      values: blocks,
+      format: "JSONEachRow",
+    });
+  }
+
+  override async saveReadNodes(nodes: any[]): Promise<void> {
+    if (!nodes.length) return;
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.read_nodes",
+      values: nodes,
+      format: "JSONEachRow",
+    });
+  }
+
+  override async saveReadEdges(edges: any[]): Promise<void> {
+    if (!edges.length) return;
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.read_edges",
+      values: edges,
+      format: "JSONEachRow",
+    });
+  }
+
+  override async saveTraceMetadata(metadata: any): Promise<void> {
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.trace_metadata",
+      values: [{
+        trace_id: metadata.traceId,
+        is_zoom_ready: metadata.isZoomReady ? 1 : 0,
+        max_available_depth: metadata.maxAvailableDepth,
+        materialized_offset: metadata.materializedOffset,
+      }],
+      format: "JSONEachRow",
+    });
+  }
 }
+
 
 function stringifyJson(value: unknown): string {
   if (value === undefined || value === null) return "";

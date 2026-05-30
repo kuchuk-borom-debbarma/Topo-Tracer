@@ -11,10 +11,14 @@ import type {
   TraceNodeInput,
 } from "../types";
 import { LogRepo } from "./LogRepo";
+import { TraceMaterializationWorker } from "./worker/TraceMaterializationWorker";
 
 @Service()
 export class LogServiceImpl extends LogService {
-  constructor(private logRepo: LogRepo) {
+  constructor(
+    private logRepo: LogRepo,
+    private worker: TraceMaterializationWorker
+  ) {
     super();
   }
 
@@ -27,6 +31,7 @@ export class LogServiceImpl extends LogService {
     }));
 
     await this.logRepo.saveContainers(enriched);
+    this.triggerTraces(containers);
   }
 
   override async logBlocks(blocks: TraceBlockInput[]): Promise<void> {
@@ -36,6 +41,7 @@ export class LogServiceImpl extends LogService {
     }));
 
     await this.logRepo.saveBlocks(enriched);
+    this.triggerTraces(blocks);
   }
 
   override async logNodes(nodes: TraceNodeInput[]): Promise<void> {
@@ -47,6 +53,7 @@ export class LogServiceImpl extends LogService {
     }));
 
     await this.logRepo.saveNodes(enriched);
+    this.triggerTraces(nodes);
   }
 
   override async logEdges(edges: TraceEdgeInput[]): Promise<void> {
@@ -58,5 +65,16 @@ export class LogServiceImpl extends LogService {
     }));
 
     await this.logRepo.saveEdges(enriched);
+    this.triggerTraces(edges);
+  }
+
+  private triggerTraces(items: { traceId: string }[]): void {
+    if (!this.worker) return;
+    const uniqueIds = Array.from(new Set(items.map(item => item.traceId)));
+    for (const traceId of uniqueIds) {
+      this.worker.triggerMaterialization(traceId);
+    }
   }
 }
+
+

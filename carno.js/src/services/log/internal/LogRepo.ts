@@ -5,4 +5,15 @@ export class LogRepo {
   async saveBlocks(blocks: TraceBlock[]): Promise<void> {}
   async saveNodes(nodes: TraceNode[]): Promise<void> {}
   async saveEdges(edges: TraceEdge[]): Promise<void> {}
+
+  async fetchContainers(traceId: string): Promise<TraceContainer[]> { return []; }
+  async fetchBlocks(traceId: string): Promise<TraceBlock[]> { return []; }
+  async fetchCollapsedNodes(traceId: string): Promise<any[]> { return []; }
+  async fetchRawEdges(traceId: string): Promise<TraceEdge[]> { return []; }
+
+  async saveReadBlocks(blocks: any[]): Promise<void> {}
+  async saveReadNodes(nodes: any[]): Promise<void> {}
+  async saveReadEdges(edges: any[]): Promise<void> {}
+  async saveTraceMetadata(metadata: any): Promise<void> {}
 }
+
