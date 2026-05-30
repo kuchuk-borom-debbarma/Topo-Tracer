@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTraceLayout, queryKeys } from "../api/client";
@@ -14,6 +14,9 @@ export function TraceDetailPage() {
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
 
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackStep, setPlaybackStep] = useState<number | null>(null);
+
   const activeTagsArray = Array.from(activeTags);
 
   // Fetch the V3 trace layout containing all containers, nodes, and edges
@@ -28,6 +31,81 @@ export function TraceDetailPage() {
   const isError = layoutQuery.isError;
   const error = layoutQuery.error;
   const isFetching = layoutQuery.isFetching && !layoutQuery.isLoading;
+
+  // Derive sorted chronological items of the trace for the playback timeline
+  const chronoItems = useMemo(() => {
+    if (!data) return [];
+    const items: Array<{ id: string; name: string; type: "node" | "container"; startTimeUs: number }> = [
+      ...data.containers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: "container" as const,
+        startTimeUs: c.startTimeUs,
+      })),
+      ...data.nodes.map((n) => ({
+        id: n.id,
+        name: n.name,
+        type: "node" as const,
+        startTimeUs: n.startTimeUs,
+      })),
+    ];
+    items.sort((a, b) => a.startTimeUs - b.startTimeUs);
+    return items;
+  }, [data]);
+
+  // Interval-driven timeline auto-playback runner
+  useEffect(() => {
+    let interval: any = null;
+    if (isPlaying && chronoItems.length > 0) {
+      interval = setInterval(() => {
+        setPlaybackStep((prev) => {
+          if (prev === null) return 0;
+          if (prev >= chronoItems.length - 1) {
+            setIsPlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 850);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlaying, chronoItems]);
+
+  const handleTogglePlay = () => {
+    if (playbackStep === chronoItems.length - 1) {
+      setPlaybackStep(0);
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(!isPlaying);
+      if (playbackStep === null) {
+        setPlaybackStep(0);
+      }
+    }
+  };
+
+  const handleResetPlayback = () => {
+    setIsPlaying(false);
+    setPlaybackStep(null);
+  };
+
+  const handleStepForward = () => {
+    setIsPlaying(false);
+    setPlaybackStep((prev) => {
+      if (prev === null) return 0;
+      return Math.min(chronoItems.length - 1, prev + 1);
+    });
+  };
+
+  const handleStepBackward = () => {
+    setIsPlaying(false);
+    setPlaybackStep((prev) => {
+      if (prev === null) return null;
+      if (prev === 0) return null;
+      return prev - 1;
+    });
+  };
 
   async function handleDownloadPDF() {
     if (!canvasRef.current) return;
@@ -294,9 +372,94 @@ export function TraceDetailPage() {
             </div>
           </div>
         ) : data ? (
-          <TraceFlowCanvas ref={canvasRef} data={data} activeTags={activeTags} />
+          <TraceFlowCanvas
+            ref={canvasRef}
+            data={data}
+            activeTags={activeTags}
+            playbackStep={playbackStep}
+            chronoItems={chronoItems}
+          />
         ) : null}
       </div>
+
+      {/* Floating Glassmorphic Playback timeline deck */}
+      {data && chronoItems.length > 0 && (
+        <div className="playback-deck">
+          <div className="playback-controls">
+            <button
+              className="playback-btn"
+              onClick={handleResetPlayback}
+              title="Reset Flow"
+              disabled={playbackStep === null}
+            >
+              ⏮
+            </button>
+            <button
+              className="playback-btn"
+              onClick={handleStepBackward}
+              title="Step Backward"
+              disabled={playbackStep === null}
+            >
+              ◀
+            </button>
+            <button
+              className="playback-btn playback-btn-primary"
+              onClick={handleTogglePlay}
+              title={isPlaying ? "Pause Flow" : "Play Flow"}
+            >
+              {isPlaying ? "⏸" : "▶"}
+            </button>
+            <button
+              className="playback-btn"
+              onClick={handleStepForward}
+              title="Step Forward"
+              disabled={playbackStep === chronoItems.length - 1}
+            >
+              ▶
+            </button>
+          </div>
+
+          <div className="playback-slider-container">
+            <div className="playback-meta">
+              <span>
+                {playbackStep === null
+                  ? "SYSTEM STATE: FULL OVERVIEW"
+                  : `TIMELINE STEP: ${playbackStep + 1} / ${chronoItems.length}`}
+              </span>
+              <span>
+                {playbackStep === null
+                  ? ""
+                  : `${((chronoItems[playbackStep]?.startTimeUs ?? 0) / 1000).toFixed(1)}ms`}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="-1"
+              max={chronoItems.length - 1}
+              value={playbackStep === null ? -1 : playbackStep}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                setIsPlaying(false);
+                setPlaybackStep(val === -1 ? null : val);
+              }}
+              className="playback-slider"
+            />
+          </div>
+
+          <div className="playback-status" title={playbackStep === null ? "Displaying full static trace topology" : `Executing: ${chronoItems[playbackStep]?.name}`}>
+            {playbackStep === null ? (
+              "Full static topology"
+            ) : (
+              <>
+                {chronoItems[playbackStep]?.name}
+                <span className="playback-step-tag">
+                  {chronoItems[playbackStep]?.type}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
