@@ -146,8 +146,13 @@ async function runSophisticatedSimulation() {
   const bParentId = httpRequestHeaders["x-parent-node-id"];
   const bDepth = parseInt(httpRequestHeaders["x-depth-index"], 10);
   
-  const paymentRootNode = Tracer.continueTrace(bTraceId, bParentId, "1.2.1.1 POST /payments/charge", NodeType.HTTP_SERVER, bDepth);
-  paymentRootNode.id = httpRequestHeaders["x-target-node-id"];
+  const paymentRootNode = Tracer.continueTrace(
+    bTraceId, bParentId, 
+    "1.2.1.1 POST /payments/charge", NodeType.HTTP_SERVER, 
+    bDepth, undefined, undefined,
+    httpRequestHeaders["x-target-node-id"]  // overrideId — matches the egress edge destination
+  );
+  // No id mutation needed — _blockId is locked to x-target-node-id from construction
 
   console.log(`   [Service B] Continuing Trace: ${paymentRootNode.traceId}`);
   await delay(10);
@@ -200,9 +205,10 @@ async function runSophisticatedSimulation() {
     NodeType.MESSAGE_CONSUMER, 
     cTraceCtx.depthIndex, 
     undefined, 
-    kafkaScheduled
+    kafkaScheduled,
+    cTraceCtx.targetNodeId  // overrideId — matches the egress edge destination
   );
-  inventoryRootNode.id = cTraceCtx.targetNodeId;
+  // No id mutation needed
 
   console.log(`   [Service C] Processing Event for Trace: ${inventoryRootNode.traceId}`);
   
@@ -282,8 +288,13 @@ async function runSophisticatedSimulation() {
   batchRootNode.markProcessed();
 
   for (const item of batchQueuePayloads) {
-    const itemNode = Tracer.continueTrace(item.traceId, item.parentNodeId, "1.3.2 Process Report Item", NodeType.FUNCTION, item.depthIndex);
-    itemNode.id = item.targetNodeId; 
+    const itemNode = Tracer.continueTrace(
+      item.traceId, item.parentNodeId, 
+      "1.3.2 Process Report Item", NodeType.FUNCTION, 
+      item.depthIndex, undefined, undefined,
+      item.targetNodeId  // overrideId — matches the egress edge destination
+    );
+    // No id mutation needed
     
     await delay(5);
     itemNode.markProcessed();

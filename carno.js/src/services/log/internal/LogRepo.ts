@@ -37,6 +37,10 @@ export class LogRepo {
   async fetchReadBlocks(traceId: string): Promise<ReadBlock[]> { return []; }
   async fetchReadNodes(traceId: string, zoomLevel: number): Promise<ReadNode[]> { return []; }
   async fetchReadEdges(traceId: string): Promise<ReadEdge[]> { return []; }
+
+  // Traces listing
+  async fetchTracesList(page: number, limit: number): Promise<{ traceId: string; isZoomReady: boolean; maxAvailableDepth: number; createdAt: number; containerNames: string[] }[]> { return []; }
+  async fetchTracesCount(): Promise<number> { return 0; }
 }
 
 

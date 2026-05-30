@@ -38,5 +38,15 @@ export class LogController {
     const level = zoomLevel !== undefined ? parseInt(zoomLevel, 10) : undefined;
     return await this.logService.getTraceLayout(traceId, level);
   }
+
+  @Get("/traces")
+  async listTraces(
+    @Query("page") page?: string,
+    @Query("limit") limit?: string
+  ) {
+    const p = page ? Math.max(1, parseInt(page, 10)) : 1;
+    const l = limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20;
+    return await this.logService.listTraces(p, l);
+  }
 }
 

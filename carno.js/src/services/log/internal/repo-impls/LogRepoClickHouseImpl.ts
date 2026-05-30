@@ -117,16 +117,16 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query: `
         SELECT
           id,
-          blockId,
-          name,
-          type,
-          metadata,
+          argMax(blockId, eventAtLocal) AS blockId,
+          anyLast(name)                 AS name,
+          any(type)                     AS type,
+          anyLast(metadata)             AS metadata,
           minIf(eventAtLocal, eventType = 'started') AS startTimeUs,
-          maxIf(eventAtLocal, eventType = 'ended') AS endTimeUs,
+          maxIf(eventAtLocal, eventType = 'ended')   AS endTimeUs,
           if(endTimeUs > 0, endTimeUs - startTimeUs, null) AS durationUs
         FROM toco_tracer.nodes
         WHERE trace_id = {traceId: String}
-        GROUP BY id, blockId, name, type, metadata
+        GROUP BY id
       `,
       query_params: { traceId },
       format: "JSONEachRow",
@@ -218,6 +218,43 @@ export class LogRepoClickHouseImpl extends LogRepo {
       format: "JSONEachRow",
     });
     return result.json<ReadEdge[]>();
+  }
+
+  override async fetchTracesList(page: number, limit: number): Promise<{ traceId: string; isZoomReady: boolean; maxAvailableDepth: number; createdAt: number; containerNames: string[] }[]> {
+    const offset = (page - 1) * limit;
+    const result = await this.clickHouse.client.query({
+      query: `
+        SELECT
+          tm.trace_id AS traceId,
+          anyLast(tm.is_zoom_ready) AS isZoomReady,
+          anyLast(tm.max_available_depth) AS maxAvailableDepth,
+          min(c.createdAtLocal) AS createdAt,
+          groupArray(c.name) AS containerNames
+        FROM (
+          SELECT trace_id, is_zoom_ready, max_available_depth
+          FROM toco_tracer.trace_metadata FINAL
+        ) tm
+        LEFT JOIN (
+          SELECT DISTINCT trace_id, name, createdAtLocal
+          FROM toco_tracer.containers
+        ) c ON c.trace_id = tm.trace_id
+        GROUP BY tm.trace_id
+        ORDER BY createdAt DESC
+        LIMIT {limit: UInt32} OFFSET {offset: UInt32}
+      `,
+      query_params: { limit, offset },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
+
+  override async fetchTracesCount(): Promise<number> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT count(DISTINCT trace_id) AS total FROM toco_tracer.trace_metadata FINAL`,
+      format: "JSONEachRow",
+    });
+    const rows = await result.json<{ total: number }[]>();
+    return rows[0]?.total ?? 0;
   }
 }
 

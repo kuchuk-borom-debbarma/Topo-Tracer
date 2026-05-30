@@ -1,5 +1,5 @@
 import { Service } from "@carno.js/core";
-import { LogService } from "../LogService";
+import { LogService, type TraceListResponse } from "../LogService";
 import type {
   TraceBlock,
   TraceBlockInput,
@@ -104,5 +104,22 @@ export class LogServiceImpl extends LogService {
     for (const traceId of uniqueIds) {
       this.worker.triggerMaterialization(traceId);
     }
+  }
+
+  override async listTraces(page: number, limit: number): Promise<TraceListResponse> {
+    const [traces, total] = await Promise.all([
+      this.logRepo.fetchTracesList(page, limit),
+      this.logRepo.fetchTracesCount(),
+    ]);
+    return {
+      traces: traces.map(t => ({
+        ...t,
+        isZoomReady: Boolean(t.isZoomReady),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 }

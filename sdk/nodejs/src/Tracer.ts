@@ -114,6 +114,8 @@ export class Tracer {
 
   /**
    * Continues an existing trace (e.g. from an incoming HTTP request containing trace headers).
+   * Pass `overrideId` (= the targetNodeId put in the egress edge by the caller) to ensure the
+   * node/block ID matches what the upstream service recorded as the edge destination.
    */
   public static continueTrace(
     traceId: string, 
@@ -122,7 +124,8 @@ export class Tracer {
     nodeType: NodeType | string, 
     parentDepthIndex: number = 0,
     group?: string,
-    scheduledAtLocal?: Date
+    scheduledAtLocal?: Date,
+    overrideId?: string
   ): TraceNode {
     this.exportContainerForTrace(traceId, this.getContainerId());
     return new TraceNode({
@@ -134,7 +137,8 @@ export class Tracer {
       depthIndex: parentDepthIndex + 1,
       localDepthIndex: 0,
       group,
-      scheduledAtLocal
+      scheduledAtLocal,
+      overrideId,        // locks _blockId = overrideId so egress edges resolve correctly
     });
   }
 
