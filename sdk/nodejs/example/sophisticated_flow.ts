@@ -63,13 +63,7 @@ async function runSophisticatedSimulation() {
   // Register network egress crossing from caller node to payment incoming node
   processPaymentTx.logEdge(paymentClientNodeId, paymentIncomingNodeId, EdgeType.HTTP_REQUEST);
 
-  httpRequestHeaders = {
-    "x-trace-id": gatewayContainer.traceId,
-    "x-parent-node-id": paymentClientNodeId,
-    "x-parent-container-id": gatewayContainer.id,
-    "x-target-node-id": paymentIncomingNodeId,
-    "x-depth-index": processPaymentTx.depthIndex.toString(),
-  };
+  httpRequestHeaders = processPaymentTx.createCarrierHeaders(paymentClientNodeId, paymentIncomingNodeId);
 
   await delay(45); // Downstream processing time
   processPaymentTx.logNode("Payment failed fallback triggered", ["checkout", "payment_failure"]);
@@ -89,11 +83,11 @@ async function runSophisticatedSimulation() {
   kafkaMessagePayload = {
     orderId: 999,
     _traceContext: {
-      traceId: gatewayContainer.traceId,
-      parentNodeId: kafkaProduceNodeId,
-      parentContainerId: gatewayContainer.id,
-      targetNodeId: inventoryConsumerNodeId,
-      depthIndex: dispatchOrderTx.depthIndex
+      "x-trace-id": gatewayContainer.traceId,
+      "x-parent-node-id": kafkaProduceNodeId,
+      "x-parent-container-id": gatewayContainer.id,
+      "x-target-node-id": inventoryConsumerNodeId,
+      "x-depth-index": dispatchOrderTx.depthIndex.toString(),
     }
   };
 
@@ -105,11 +99,11 @@ async function runSophisticatedSimulation() {
   dispatchOrderTx.logEdge(sqsProduceNodeId, reportingTargetNodeId, EdgeType.SQS_MESSAGE);
 
   batchQueuePayloads.push({
-    traceId: gatewayContainer.traceId,
-    parentNodeId: sqsProduceNodeId,
-    parentContainerId: gatewayContainer.id,
-    targetNodeId: reportingTargetNodeId,
-    depthIndex: dispatchOrderTx.depthIndex
+    "x-trace-id": gatewayContainer.traceId,
+    "x-parent-node-id": sqsProduceNodeId,
+    "x-parent-container-id": gatewayContainer.id,
+    "x-target-node-id": reportingTargetNodeId,
+    "x-depth-index": dispatchOrderTx.depthIndex.toString(),
   });
 
   await delay(8);
@@ -132,17 +126,11 @@ async function runSophisticatedSimulation() {
     { name: "Payment Processing Service", containerType: ContainerType.GRPC_SERVICE, id: paymentSvcId }
   );
 
-  const bTraceId = httpRequestHeaders["x-trace-id"];
-  const bParentId = httpRequestHeaders["x-parent-node-id"];
-  const bDepth = parseInt(httpRequestHeaders["x-depth-index"], 10);
-  
   // Continue trace as payment root container
   const paymentRootContainer = Tracer.continueTrace(
-    bTraceId, bParentId, 
-    "1.2.1.1 POST /payments/charge", NodeType.HTTP_SERVER, 
-    bDepth, undefined, undefined,
-    httpRequestHeaders["x-target-node-id"],
-    httpRequestHeaders["x-parent-container-id"]
+    httpRequestHeaders,
+    "1.2.1.1 POST /payments/charge",
+    NodeType.HTTP_SERVER
   );
 
   console.log(`   [Service B] Continuing Trace: ${paymentRootContainer.traceId}`);
@@ -195,15 +183,9 @@ async function runSophisticatedSimulation() {
   const kafkaScheduled = new Date(Date.now() - 75);
 
   const inventoryRootContainer = Tracer.continueTrace(
-    cTraceCtx.traceId, 
-    cTraceCtx.parentNodeId, 
-    "1.3.1.1 Consume Kafka: OrderCreated", 
-    NodeType.MESSAGE_CONSUMER, 
-    cTraceCtx.depthIndex, 
-    undefined, 
-    kafkaScheduled,
-    cTraceCtx.targetNodeId,
-    cTraceCtx.parentContainerId
+    cTraceCtx,
+    "1.3.1.1 Consume Kafka: OrderCreated",
+    NodeType.MESSAGE_CONSUMER
   );
 
   console.log(`   [Service C] Processing Event for Trace: ${inventoryRootContainer.traceId}`);
@@ -287,11 +269,9 @@ async function runSophisticatedSimulation() {
 
   for (const item of batchQueuePayloads) {
     const itemContainer = Tracer.continueTrace(
-      item.traceId, item.parentNodeId, 
-      "1.3.2 Process Report Item", NodeType.FUNCTION, 
-      item.depthIndex, undefined, undefined,
-      item.targetNodeId,
-      item.parentContainerId
+      item,
+      "1.3.2 Process Report Item",
+      NodeType.FUNCTION
     );
     
     await delay(5);
