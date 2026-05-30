@@ -172,7 +172,45 @@ export class LogRepoClickHouseImpl extends LogRepo {
       format: "JSONEachRow",
     });
   }
+
+  override async fetchTraceMetadata(traceId: string): Promise<any> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT trace_id as traceId, is_zoom_ready as isZoomReady, max_available_depth as maxAvailableDepth, materialized_offset as materializedOffset FROM toco_tracer.trace_metadata WHERE trace_id = {traceId: String}`,
+      query_params: { traceId },
+      format: "JSONEachRow",
+    });
+    const rows = await result.json<any[]>();
+    return rows[0] || null;
+  }
+
+  override async fetchReadBlocks(traceId: string): Promise<any[]> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT id, trace_id as traceId, container_id as containerId, parent_block_id as parentBlockId, calling_node_id as callingNodeId, name, type, absolute_depth as absoluteDepth, start_time_us as startTimeUs, duration_us as durationUs, ancestry_path as ancestryPath, metadata FROM toco_tracer.read_blocks WHERE trace_id = {traceId: String} ORDER BY absolute_depth ASC, start_time_us ASC`,
+      query_params: { traceId },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
+
+  override async fetchReadNodes(traceId: string, zoomLevel: number): Promise<any[]> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT id, trace_id as traceId, block_id as blockId, name, type, zoom_level as zoomLevel, local_sequence as localSequence, start_time_us as startTimeUs, duration_us as durationUs, ancestry_path as ancestryPath, metadata FROM toco_tracer.read_nodes WHERE trace_id = {traceId: String} AND zoom_level <= {zoomLevel: UInt8} ORDER BY block_id, local_sequence ASC`,
+      query_params: { traceId, zoomLevel },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
+
+  override async fetchReadEdges(traceId: string): Promise<any[]> {
+    const result = await this.clickHouse.client.query({
+      query: `SELECT id, edge_id as edgeId, trace_id as traceId, from_block_id as fromBlockId, from_node_id as fromNodeId, to_block_id as toBlockId, to_node_id as toNodeId FROM toco_tracer.read_edges WHERE trace_id = {traceId: String}`,
+      query_params: { traceId },
+      format: "JSONEachRow",
+    });
+    return result.json();
+  }
 }
+
 
 
 function stringifyJson(value: unknown): string {

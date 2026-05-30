@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from "@carno.js/core";
+import { Body, Controller, Get, Param, Post, Query } from "@carno.js/core";
 import { LogService } from "../services/log/LogService";
 import type { TraceBlockInput, TraceContainerInput, TraceEdgeInput, TraceNodeInput } from "../services/log/types";
 
@@ -29,4 +29,14 @@ export class LogController {
     await this.logService.logEdges(edges);
     return { ok: true, count: edges.length };
   }
+
+  @Get("/trace/:traceId")
+  async getTraceLayout(
+    @Param("traceId") traceId: string,
+    @Query("zoom_level") zoomLevel?: string
+  ) {
+    const level = zoomLevel !== undefined ? parseInt(zoomLevel, 10) : undefined;
+    return await this.logService.getTraceLayout(traceId, level);
+  }
 }
+

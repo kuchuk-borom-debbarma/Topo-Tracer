@@ -68,6 +68,33 @@ export class LogServiceImpl extends LogService {
     this.triggerTraces(edges);
   }
 
+  override async getTraceLayout(traceId: string, zoomLevel?: number): Promise<any> {
+    // 1. Fetch trace metadata
+    const metadata = await this.logRepo.fetchTraceMetadata(traceId);
+
+    // Default to max structural call depth if no query parameter is provided
+    const activeLevel = zoomLevel !== undefined ? zoomLevel : (metadata?.maxAvailableDepth ?? 2);
+
+    // 2. Fetch blocks, visible nodes, and horizontal wires dynamically
+    const [blocks, nodes, edges] = await Promise.all([
+      this.logRepo.fetchReadBlocks(traceId),
+      this.logRepo.fetchReadNodes(traceId, activeLevel),
+      this.logRepo.fetchReadEdges(traceId),
+    ]);
+
+    return {
+      metadata: {
+        traceId,
+        isZoomReady: metadata ? !!metadata.isZoomReady : false,
+        maxAvailableDepth: metadata ? metadata.maxAvailableDepth : 2,
+        currentDepth: activeLevel,
+      },
+      blocks,
+      nodes,
+      edges,
+    };
+  }
+
   private triggerTraces(items: { traceId: string }[]): void {
     if (!this.worker) return;
     const uniqueIds = Array.from(new Set(items.map(item => item.traceId)));
@@ -76,5 +103,3 @@ export class LogServiceImpl extends LogService {
     }
   }
 }
-
-

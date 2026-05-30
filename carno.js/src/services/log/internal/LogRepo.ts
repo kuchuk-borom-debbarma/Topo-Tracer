@@ -15,5 +15,11 @@ export class LogRepo {
   async saveReadNodes(nodes: any[]): Promise<void> {}
   async saveReadEdges(edges: any[]): Promise<void> {}
   async saveTraceMetadata(metadata: any): Promise<void> {}
+
+  async fetchTraceMetadata(traceId: string): Promise<any> { return null; }
+  async fetchReadBlocks(traceId: string): Promise<any[]> { return []; }
+  async fetchReadNodes(traceId: string, zoomLevel: number): Promise<any[]> { return []; }
+  async fetchReadEdges(traceId: string): Promise<any[]> { return []; }
 }
+
 
