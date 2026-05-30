@@ -1,7 +1,17 @@
 import { Service } from "@carno.js/core";
 import { ClickHouseService } from "../../../../infra/ClickHouseService";
 import { LogRepo } from "../LogRepo";
-import type { TraceBlock, TraceContainer, TraceEdge, TraceNode } from "../../types";
+import type { 
+  TraceBlock, 
+  TraceContainer, 
+  TraceEdge, 
+  TraceNode, 
+  ReadBlock, 
+  ReadNode, 
+  ReadEdge, 
+  TraceMetadata, 
+  TraceNodeCollapsed 
+} from "../../types";
 
 @Service()
 export class LogRepoClickHouseImpl extends LogRepo {
@@ -102,7 +112,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
     return result.json();
   }
 
-  override async fetchCollapsedNodes(traceId: string): Promise<any[]> {
+  override async fetchCollapsedNodes(traceId: string): Promise<TraceNodeCollapsed[]> {
     const result = await this.clickHouse.client.query({
       query: `
         SELECT
@@ -121,7 +131,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json();
+    return result.json<TraceNodeCollapsed[]>();
   }
 
   override async fetchRawEdges(traceId: string): Promise<TraceEdge[]> {
@@ -130,10 +140,10 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json();
+    return result.json<TraceEdge[]>();
   }
 
-  override async saveReadBlocks(blocks: any[]): Promise<void> {
+  override async saveReadBlocks(blocks: ReadBlock[]): Promise<void> {
     if (!blocks.length) return;
     await this.clickHouse.client.insert({
       table: "toco_tracer.read_blocks",
@@ -142,7 +152,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
     });
   }
 
-  override async saveReadNodes(nodes: any[]): Promise<void> {
+  override async saveReadNodes(nodes: ReadNode[]): Promise<void> {
     if (!nodes.length) return;
     await this.clickHouse.client.insert({
       table: "toco_tracer.read_nodes",
@@ -151,7 +161,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
     });
   }
 
-  override async saveReadEdges(edges: any[]): Promise<void> {
+  override async saveReadEdges(edges: ReadEdge[]): Promise<void> {
     if (!edges.length) return;
     await this.clickHouse.client.insert({
       table: "toco_tracer.read_edges",
@@ -160,7 +170,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
     });
   }
 
-  override async saveTraceMetadata(metadata: any): Promise<void> {
+  override async saveTraceMetadata(metadata: TraceMetadata): Promise<void> {
     await this.clickHouse.client.insert({
       table: "toco_tracer.trace_metadata",
       values: [{
@@ -173,43 +183,44 @@ export class LogRepoClickHouseImpl extends LogRepo {
     });
   }
 
-  override async fetchTraceMetadata(traceId: string): Promise<any> {
+  override async fetchTraceMetadata(traceId: string): Promise<TraceMetadata | null> {
     const result = await this.clickHouse.client.query({
       query: `SELECT trace_id as traceId, is_zoom_ready as isZoomReady, max_available_depth as maxAvailableDepth, materialized_offset as materializedOffset FROM toco_tracer.trace_metadata WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    const rows = await result.json<any[]>();
+    const rows = await result.json<TraceMetadata[]>();
     return rows[0] || null;
   }
 
-  override async fetchReadBlocks(traceId: string): Promise<any[]> {
+  override async fetchReadBlocks(traceId: string): Promise<ReadBlock[]> {
     const result = await this.clickHouse.client.query({
       query: `SELECT id, trace_id as traceId, container_id as containerId, parent_block_id as parentBlockId, calling_node_id as callingNodeId, name, type, absolute_depth as absoluteDepth, start_time_us as startTimeUs, duration_us as durationUs, ancestry_path as ancestryPath, metadata FROM toco_tracer.read_blocks WHERE trace_id = {traceId: String} ORDER BY absolute_depth ASC, start_time_us ASC`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json();
+    return result.json<ReadBlock[]>();
   }
 
-  override async fetchReadNodes(traceId: string, zoomLevel: number): Promise<any[]> {
+  override async fetchReadNodes(traceId: string, zoomLevel: number): Promise<ReadNode[]> {
     const result = await this.clickHouse.client.query({
       query: `SELECT id, trace_id as traceId, block_id as blockId, name, type, zoom_level as zoomLevel, local_sequence as localSequence, start_time_us as startTimeUs, duration_us as durationUs, ancestry_path as ancestryPath, metadata FROM toco_tracer.read_nodes WHERE trace_id = {traceId: String} AND zoom_level <= {zoomLevel: UInt8} ORDER BY block_id, local_sequence ASC`,
       query_params: { traceId, zoomLevel },
       format: "JSONEachRow",
     });
-    return result.json();
+    return result.json<ReadNode[]>();
   }
 
-  override async fetchReadEdges(traceId: string): Promise<any[]> {
+  override async fetchReadEdges(traceId: string): Promise<ReadEdge[]> {
     const result = await this.clickHouse.client.query({
       query: `SELECT id, edge_id as edgeId, trace_id as traceId, from_block_id as fromBlockId, from_node_id as fromNodeId, to_block_id as toBlockId, to_node_id as toNodeId FROM toco_tracer.read_edges WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json();
+    return result.json<ReadEdge[]>();
   }
 }
+
 
 
 

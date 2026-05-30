@@ -142,4 +142,35 @@ export type TraceMetadata = {
   materializedOffset: number;
 };
 
+/**
+ * Represents the complete read-optimized dynamic layout response structure.
+ */
+export type TraceLayoutResponse = {
+  metadata: {
+    traceId: string;
+    isZoomReady: boolean;
+    maxAvailableDepth: number;
+    currentDepth: number;
+  };
+  blocks: ReadBlock[];
+  nodes: ReadNode[];
+  edges: ReadEdge[];
+};
+
+/**
+ * Represents a node event collapsed by starting/ending lifecycle timestamps.
+ */
+export type TraceNodeCollapsed = {
+  id: string;
+  blockId: string;
+  name: string;
+  type: string;
+  metadata?: JsonValue;
+  startTimeUs: number;
+  endTimeUs: number;
+  durationUs: number | null;
+};
+
+
+
 
