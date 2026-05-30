@@ -395,6 +395,22 @@ export function computeLayout(
         isCrossContainer,
       });
     }
+    const parentArrows: ParentArrow[] = [];
+    for (const cl of containerLayouts) {
+      const parentId = effectiveParentMap.get(cl.containerId);
+      if (parentId && containerLayoutsMap.has(parentId)) {
+        const parentLayout = containerLayoutsMap.get(parentId)!;
+        parentArrows.push({
+          fromContainerId: parentId,
+          toContainerId: cl.containerId,
+          fromX: parentLayout.left + parentLayout.width,
+          fromY: parentLayout.top + HEADER_H / 2,
+          toX: cl.left,
+          toY: cl.top + HEADER_H / 2,
+          color: getDepthColor(parentLayout.depth),
+        });
+      }
+    }
 
     const canvasWidth = maxRank * (CONTAINER_W + COLUMN_GAP) + CONTAINER_W + PAD_X * 2;
     const canvasHeight = maxColHeight + PAD_Y * 2;
@@ -402,7 +418,7 @@ export function computeLayout(
     return {
       containerLayouts,
       nodePositions,
-      parentArrows: [],
+      parentArrows,
       wires,
       canvasWidth,
       canvasHeight,
