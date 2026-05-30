@@ -25,7 +25,6 @@ export type ReadContainer = {
   name: string;
   type: string;
   tags: string[];
-  parentage: string[];
   startTimeUs: number;
   durationUs: number | null;
   metadata?: any;
@@ -38,7 +37,6 @@ export type ReadNode = {
   name: string;
   type: string;
   tags: string[];
-  parentage: string[]; // Hierarchical lineage: [parent_container_ids..., parent_node_id]
   localSequence: number;
   startTimeUs: number;
   durationUs: number | null;
@@ -97,7 +95,7 @@ async function apiFetch<T>(path: string): Promise<T> {
 // ── Query key factories ─────────────────────────────────────
 export const queryKeys = {
   tracesList: (page: number, limit: number) => ["traces", "list", page, limit] as const,
-  traceLayout: (traceId: string) => ["trace", "layout", traceId] as const,
+  traceLayout: (traceId: string, tags?: string[]) => ["trace", "layout", traceId, tags ? tags.join(",") : ""] as const,
 };
 
 // ── Fetch functions ─────────────────────────────────────────
@@ -106,7 +104,9 @@ export async function fetchTracesList(page: number, limit: number): Promise<Trac
 }
 
 export async function fetchTraceLayout(
-  traceId: string
+  traceId: string,
+  tags?: string[]
 ): Promise<TraceLayoutResponse> {
-  return apiFetch(`/telemetry/trace/${encodeURIComponent(traceId)}`);
+  const query = tags && tags.length > 0 ? `?tags=${encodeURIComponent(tags.join(","))}` : "";
+  return apiFetch(`/telemetry/trace/${encodeURIComponent(traceId)}${query}`);
 }

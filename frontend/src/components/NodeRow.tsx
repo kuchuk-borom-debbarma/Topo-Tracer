@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { ReadNode } from "../api/client";
 import { getNodeColor, getNodeTypeLabel, formatDuration } from "../utils/layout";
@@ -8,9 +9,10 @@ type Props = {
   onHover?: (nodeId: string | null) => void;
   onSelect?: (node: ReadNode | null) => void;
   isSelected?: boolean;
+  style?: CSSProperties;
 };
 
-export function NodeCard({ node, isHovered, onHover, onSelect, isSelected }: Props) {
+export function NodeCard({ node, isHovered, onHover, onSelect, isSelected, style }: Props) {
   const color = getNodeColor(node.type);
   const typeLabel = getNodeTypeLabel(node.type);
   const duration = formatDuration(node.durationUs);
@@ -23,7 +25,7 @@ export function NodeCard({ node, isHovered, onHover, onSelect, isSelected }: Pro
       onMouseLeave={() => onHover?.(null)}
       onClick={() => onSelect?.(isSelected ? null : node)}
       title={node.name}
-      style={{ borderLeftColor: color }}
+      style={{ ...style, borderLeftColor: color }}
     >
       <div className="node-card-main">
         {/* Type badge */}

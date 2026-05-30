@@ -86,15 +86,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
           const isDimmed =
             hasActiveHover && !isHighlighted && hoveredContainerId !== null;
 
-          // Nodes for this container
-          const containerNodesList = Array.from(nodePositions.values())
-            .filter((np) => np.node.containerId === cl.containerId)
-            .sort(
-              (a, b) =>
-                a.node.localSequence - b.node.localSequence ||
-                a.node.startTimeUs - b.node.startTimeUs
-            );
-
           return (
             <div
               key={cl.containerId}
@@ -145,24 +136,37 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                   <span className="container-type-pill">{cl.type}</span>
                 </div>
               </div>
-
-              {/* Node cards */}
-              <div className="container-card-body">
-                {containerNodesList.map(({ node }) => (
-                  <NodeCard
-                    key={node.id}
-                    node={node}
-                    isHovered={hoveredNodeId === node.id}
-                    isSelected={selectedNode?.id === node.id}
-                    onHover={setHoveredNodeId}
-                    onSelect={setSelectedNode}
-                  />
-                ))}
-                {containerNodesList.length === 0 && (
-                  <div className="container-card-empty">No visible nodes</div>
-                )}
-              </div>
             </div>
+          );
+        })}
+
+        {/* ── Node Cards ── */}
+        {Array.from(nodePositions.values()).map(({ node, top, left, width, height }) => {
+          const container = containerLayouts.find((cl) => cl.containerId === node.containerId);
+          const depth = container ? container.depth : 0;
+          const isHighlighted =
+            hoveredNodeId === node.id || hoveredContainerId === node.containerId;
+          const isDimmed = hasActiveHover && !isHighlighted;
+
+          return (
+            <NodeCard
+              key={node.id}
+              node={node}
+              isHovered={hoveredNodeId === node.id}
+              isSelected={selectedNode?.id === node.id}
+              onHover={setHoveredNodeId}
+              onSelect={setSelectedNode}
+              style={{
+                position: "absolute",
+                top: top + PAD,
+                left: left + PAD,
+                width: width,
+                height: height,
+                zIndex: 10 + depth,
+                opacity: isDimmed ? 0.28 : 1,
+                transition: "opacity 180ms ease, box-shadow 180ms ease",
+              }}
+            />
           );
         })}
 

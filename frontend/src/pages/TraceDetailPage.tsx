@@ -14,10 +14,12 @@ export function TraceDetailPage() {
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
 
+  const activeTagsArray = Array.from(activeTags);
+
   // Fetch the V3 trace layout containing all containers, nodes, and edges
   const layoutQuery = useQuery({
-    queryKey: queryKeys.traceLayout(traceId),
-    queryFn: () => fetchTraceLayout(traceId),
+    queryKey: queryKeys.traceLayout(traceId, activeTagsArray),
+    queryFn: () => fetchTraceLayout(traceId, activeTagsArray),
     staleTime: 30_000,
   });
 

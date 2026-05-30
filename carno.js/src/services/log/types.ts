@@ -132,7 +132,7 @@ export type TraceLayoutResponse = {
     isZoomReady: boolean;
     tags: string[];
   };
-  containers: ReadContainer[];
-  nodes: ReadNode[];
+  containers: Omit<ReadContainer, "parentage">[];
+  nodes: Omit<ReadNode, "parentage">[];
   edges: ReadEdge[];
 };

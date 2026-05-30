@@ -223,13 +223,18 @@ describe("V3 Telemetry compilation and read path integration", () => {
     expect(rootC.parentContainerId).toBeNull();
     expect(rootC.startTimeUs).toBe(1000 * 1000);
     expect(rootC.durationUs).toBe(8000 * 1000); // 9000 - 1000
-    expect(rootC.parentage).toEqual(["container_root"]);
+    
+    // Verify parentage in repository storage
+    const storedRootC = repo.readContainers.find(c => c.id === "container_root")!;
+    expect(storedRootC.parentage).toEqual(["container_root"]);
 
     expect(childC.name).toBe("Payment API");
     expect(childC.parentContainerId).toBe("container_root");
     expect(childC.startTimeUs).toBe(3000 * 1000);
     expect(childC.durationUs).toBe(5000 * 1000); // 8000 - 3000
-    expect(childC.parentage).toEqual(["container_root", "node_call_payment", "container_child"]);
+    
+    const storedChildC = repo.readContainers.find(c => c.id === "container_child")!;
+    expect(storedChildC.parentage).toEqual(["container_root", "node_call_payment", "container_child"]);
 
     // Verify Compiled Nodes
     expect(layout!.nodes.length).toBe(3);
@@ -246,10 +251,12 @@ describe("V3 Telemetry compilation and read path integration", () => {
     expect(nodeChg.containerId).toBe("container_child");
     expect(nodeChg.localSequence).toBe(0);
 
-    // Verify Lineage Ancestry Snapping parentage paths
-    expect(nodeVal.parentage).toEqual(["container_root", "node_validate"]);
+    // Verify Lineage Ancestry Snapping parentage paths inside repository storage
+    const storedNodeVal = repo.readNodes.find(n => n.id === "node_validate")!;
+    const storedNodeChg = repo.readNodes.find(n => n.id === "node_charge")!;
+    expect(storedNodeVal.parentage).toEqual(["container_root", "node_validate"]);
     // parentage path includes trigger node "node_call_payment" that connected to child container!
-    expect(nodeChg.parentage).toEqual([
+    expect(storedNodeChg.parentage).toEqual([
       "container_root",
       "node_call_payment",
       "container_child",

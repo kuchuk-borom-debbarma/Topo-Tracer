@@ -26,9 +26,11 @@ export class LogController {
 
   @Get("/trace/:traceId")
   async getTraceLayout(
-    @Param("traceId") traceId: string
+    @Param("traceId") traceId: string,
+    @Query("tags") tags?: string
   ) {
-    return await this.logService.getTraceLayout(traceId);
+    const tagsList = tags ? tags.split(",") : undefined;
+    return await this.logService.getTraceLayout(traceId, tagsList);
   }
 
   @Get("/traces")
