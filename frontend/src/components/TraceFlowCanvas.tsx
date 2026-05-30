@@ -74,12 +74,23 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
 
       for (const edge of edges) {
         const fList = adjForward.get(edge.fromNodeId) || [];
-        fList.push(edge.toNodeId);
+        fList.push(edge.toContainerId);
         adjForward.set(edge.fromNodeId, fList);
 
-        const bList = adjBackward.get(edge.toNodeId) || [];
+        const bList = adjBackward.get(edge.toContainerId) || [];
         bList.push(edge.fromNodeId);
-        adjBackward.set(edge.toNodeId, bList);
+        adjBackward.set(edge.toContainerId, bList);
+      }
+
+      // Within-container flows: Containers map forward to their nodes, and nodes map backward to their parent container
+      for (const node of nodes) {
+        const fList = adjForward.get(node.containerId) || [];
+        fList.push(node.id);
+        adjForward.set(node.containerId, fList);
+
+        const bList = adjBackward.get(node.id) || [];
+        bList.push(node.containerId);
+        adjBackward.set(node.id, bList);
       }
 
       // BFS Forward (downstream)
@@ -437,9 +448,9 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             const isCross = wire.isCrossContainer;
 
             const isCausalHighlighted = causalPath
-              ? causalPath.activeEdges.has(`${wire.fromNodeId}->${wire.toNodeId}`)
+              ? causalPath.activeEdges.has(`${wire.fromNodeId}->${wire.toContainerId}`)
               : hoveredNodeId
-              ? wire.fromNodeId === hoveredNodeId || wire.toNodeId === hoveredNodeId
+              ? wire.fromNodeId === hoveredNodeId || wire.toContainerId === hoveredNodeId
               : false;
 
             const isCausalDimmedWire = causalPath
@@ -447,10 +458,10 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               : hasActiveHover && !isCausalHighlighted;
 
             const isPlaybackPending = playbackStep !== null && 
-              (!activePlaybackIds.has(wire.fromNodeId) || !activePlaybackIds.has(wire.toNodeId));
+              (!activePlaybackIds.has(wire.fromNodeId) || !activePlaybackIds.has(wire.toContainerId));
 
             const isWireActiveFlow = isCausalHighlighted || 
-              (playbackStep !== null && (wire.fromNodeId === currentPlaybackId || wire.toNodeId === currentPlaybackId));
+              (playbackStep !== null && (wire.fromNodeId === currentPlaybackId || wire.toContainerId === currentPlaybackId));
 
             const isDirect = wire.edge.distance === 0;
 

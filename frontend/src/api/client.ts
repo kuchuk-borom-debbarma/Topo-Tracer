@@ -47,7 +47,7 @@ export type ReadEdge = {
   id: string;
   traceId: string;
   fromNodeId: string;
-  toNodeId: string;
+  toContainerId: string;
   type: string;
   distance: number;
   metadata?: any;
