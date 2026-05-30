@@ -55,7 +55,7 @@ export class LogServiceImpl extends LogService {
     this.triggerTraces(edges);
   }
 
-  override async getTraceLayout(traceId: string): Promise<TraceLayoutResponse | null> {
+  override async getTraceLayout(traceId: string, tags?: string[]): Promise<TraceLayoutResponse | null> {
     // 1. Fetch trace metadata
     const metadata = await this.logRepo.fetchTraceMetadata(traceId);
 
@@ -66,7 +66,7 @@ export class LogServiceImpl extends LogService {
       this.logRepo.fetchReadEdges(traceId),
     ]);
 
-    // 3. Extract unique tags present in this trace for UI autocomplete
+    // 3. Extract unique tags present in this trace for UI autocomplete (from unfiltered list!)
     const tagsSet = new Set<string>();
     for (const c of containers) {
       if (c.tags) c.tags.forEach(t => tagsSet.add(t));
@@ -75,15 +75,116 @@ export class LogServiceImpl extends LogService {
       if (n.tags) n.tags.forEach(t => tagsSet.add(t));
     }
 
+    // 4. Perform dynamic AND-logic filtering and ancestry snapping on the backend
+    let finalContainers = containers;
+    let finalNodes = nodes;
+    let finalEdges = edges;
+
+    if (tags && tags.length > 0) {
+      const activeTags = new Set(tags);
+
+      const isNodeVisible = (n: typeof nodes[0]): boolean => {
+        return tags.every((tag) => n.tags && n.tags.includes(tag));
+      };
+
+      const containerVisCache = new Map<string, boolean>();
+      const isContainerVisible = (cid: string): boolean => {
+        if (containerVisCache.has(cid)) return containerVisCache.get(cid)!;
+
+        const hasContent =
+          nodes.some((n) => n.containerId === cid) ||
+          containers.some((c) => c.parentContainerId === cid && c.id !== cid);
+
+        if (!hasContent) {
+          containerVisCache.set(cid, false);
+          return false;
+        }
+
+        const tagMatched = tags.every((tag) => {
+          const c = containers.find((x) => x.id === cid);
+          return !!(c && c.tags && c.tags.includes(tag));
+        });
+
+        if (tagMatched) {
+          containerVisCache.set(cid, true);
+          return true;
+        }
+
+        if (nodes.some((n) => n.containerId === cid && isNodeVisible(n))) {
+          containerVisCache.set(cid, true);
+          return true;
+        }
+
+        if (
+          containers.some(
+            (c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id)
+          )
+        ) {
+          containerVisCache.set(cid, true);
+          return true;
+        }
+
+        containerVisCache.set(cid, false);
+        return false;
+      };
+
+      finalContainers = containers.filter((c) => isContainerVisible(c.id));
+      finalNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
+
+      const visibleContainerIds = new Set(finalContainers.map((c) => c.id));
+      const visibleNodeIds = new Set(finalNodes.map((n) => n.id));
+
+      const resolveAnchorId = (nodeId: string): string | null => {
+        if (visibleNodeIds.has(nodeId) || visibleContainerIds.has(nodeId)) {
+          return nodeId;
+        }
+        const asNode = nodes.find((n) => n.id === nodeId);
+        if (asNode) {
+          const parentage = asNode.parentage || [];
+          for (const ancestorId of [...parentage].reverse()) {
+            if (visibleNodeIds.has(ancestorId) || visibleContainerIds.has(ancestorId)) {
+              return ancestorId;
+            }
+          }
+        }
+        const asContainer = containers.find((c) => c.id === nodeId);
+        if (asContainer) {
+          let pid = asContainer.parentContainerId;
+          while (pid) {
+            if (visibleContainerIds.has(pid)) {
+              return pid;
+            }
+            const p = containers.find((c) => c.id === pid);
+            pid = p ? p.parentContainerId : null;
+          }
+        }
+        return null;
+      };
+
+      const snappedEdges: typeof edges = [];
+      for (const edge of edges) {
+        const fromId = resolveAnchorId(edge.fromNodeId);
+        const toId = resolveAnchorId(edge.toNodeId);
+        if (fromId && toId && fromId !== toId) {
+          snappedEdges.push({
+            ...edge,
+            fromNodeId: fromId,
+            toNodeId: toId,
+          });
+        }
+      }
+      finalEdges = snappedEdges;
+    }
+
     return {
       metadata: {
         traceId,
         isZoomReady: metadata ? !!metadata.isZoomReady : false,
         tags: Array.from(tagsSet),
       },
-      containers,
-      nodes,
-      edges,
+      containers: finalContainers.map(({ parentage, ...c }) => c),
+      nodes: finalNodes.map(({ parentage, ...n }) => n),
+      edges: finalEdges,
     };
   }
 

@@ -331,31 +331,6 @@ export function computeLayout(
         y: cl.top + HEADER_H / 2,
       };
     }
-    const asContainer = containers.find((x) => x.id === nodeId);
-    if (asContainer) {
-      let pid = asContainer.parentContainerId;
-      while (pid) {
-        if (visibleContainerIds.has(pid)) {
-          const cl = containerLayoutsMap.get(pid)!;
-          return { x: isSource ? cl.left + cl.width : cl.left, y: cl.top + HEADER_H / 2 };
-        }
-        const p = containers.find((x) => x.id === pid);
-        pid = p ? p.parentContainerId : null;
-      }
-      return null;
-    }
-    const asNode = nodes.find((x) => x.id === nodeId);
-    if (!asNode) return null;
-    for (const ancestorId of [...(asNode.parentage ?? [])].reverse()) {
-      if (visibleNodeIds.has(ancestorId)) {
-        const np = nodePositions.get(ancestorId)!;
-        return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
-      }
-      if (visibleContainerIds.has(ancestorId)) {
-        const cl = containerLayoutsMap.get(ancestorId)!;
-        return { x: isSource ? cl.left + cl.width : cl.left, y: cl.top + HEADER_H / 2 };
-      }
-    }
     return null;
   };
 
