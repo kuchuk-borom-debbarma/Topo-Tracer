@@ -238,16 +238,16 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             </marker>
           </defs>
 
-          {/* ── Parent arrows: vertical S-curves, center-bottom → center-top ── */}
+          {/* ── Parent arrows: horizontal S-curves, right-center → left-center ── */}
           {parentArrows.map((pa, i) => {
             const fx = pa.fromX + PAD;
             const fy = pa.fromY + PAD;
             const tx = pa.toX + PAD;
             const ty = pa.toY + PAD;
-            const dy = ty - fy;
-            // S-curve: pull control points vertically to create smooth arc
-            const curve = Math.max(24, Math.abs(dy) * 0.5);
-            const d = `M ${fx} ${fy} C ${fx} ${fy + curve}, ${tx} ${ty - curve}, ${tx} ${ty}`;
+            const dx = tx - fx;
+            // S-curve: pull control points horizontally to create smooth horizontal arc
+            const curve = Math.max(24, Math.abs(dx) * 0.5);
+            const d = `M ${fx} ${fy} C ${fx + curve} ${fy}, ${tx - curve} ${ty}, ${tx} ${ty}`;
 
             const isHovered =
               hoveredContainerId === pa.fromContainerId ||

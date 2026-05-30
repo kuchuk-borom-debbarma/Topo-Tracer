@@ -237,49 +237,24 @@ export function computeLayout(
 
   // ── 5. TOP-DOWN TREE LAYOUT ───────────────────────────────
   //
-  //  Step A: Compute max card height per depth level
-  //          → determines the Y position of each row
-  //  Step B: Compute subtree width for each node
-  //          → used to center parents over children
-  //  Step C: Recursively place each subtree
-  //  Step D: Place root trees side by side with ROOT_GAP
-
-  // Step A: Row Y positions (all cards at same depth share the same top-Y)
-  const maxHeightPerDepth = new Map<number, number>();
-  for (const c of visibleContainers) {
-    const d = depthMap.get(c.id) ?? 0;
-    const h = cardHeights.get(c.id)!;
-    maxHeightPerDepth.set(d, Math.max(maxHeightPerDepth.get(d) ?? 0, h));
-  }
-
-  const maxDepth = visibleContainers.length > 0
-    ? Math.max(...Array.from(depthMap.values()))
-    : 0;
-
-  const rowY = new Map<number, number>();
-  let currentRowTop = 0;
-  for (let d = 0; d <= maxDepth; d++) {
-    rowY.set(d, currentRowTop);
-    currentRowTop += (maxHeightPerDepth.get(d) ?? HEADER_H) + V_GAP;
-  }
-
-  // Step B: Subtree width (memoized)
-  const subtreeWidthCache = new Map<string, number>();
-  const getSubtreeWidth = (cid: string): number => {
-    if (subtreeWidthCache.has(cid)) return subtreeWidthCache.get(cid)!;
+  // Step B: Subtree height (memoized)
+  const subtreeHeightCache = new Map<string, number>();
+  const getSubtreeHeight = (cid: string): number => {
+    if (subtreeHeightCache.has(cid)) return subtreeHeightCache.get(cid)!;
     const children = childrenMap.get(cid) ?? [];
-    const w = children.length === 0
-      ? COL_W
-      : Math.max(
-          COL_W,
-          children.reduce((sum, id) => sum + getSubtreeWidth(id), 0) +
-            H_GAP * (children.length - 1)
-        );
-    subtreeWidthCache.set(cid, w);
-    return w;
+    const cardH = cardHeights.get(cid)!;
+    if (children.length === 0) {
+      subtreeHeightCache.set(cid, cardH);
+      return cardH;
+    }
+    const childrenH = children.reduce((sum, id) => sum + getSubtreeHeight(id), 0) +
+      H_GAP * (children.length - 1);
+    const h = Math.max(cardH, childrenH);
+    subtreeHeightCache.set(cid, h);
+    return h;
   };
 
-  // Step C: Recursive placement — centers the card over its children
+  // Step C: Recursive placement — centers the card vertically over its children
   const containerPosMap = new Map<
     string,
     { top: number; left: number; width: number; height: number; depth: number }
@@ -292,35 +267,41 @@ export function computeLayout(
       return ta - tb;
     });
 
-  const placeSubtree = (cid: string, subtreeLeft: number): void => {
+  const placeSubtree = (cid: string, subtreeTop: number): void => {
     const depth = depthMap.get(cid) ?? 0;
-    const y = rowY.get(depth) ?? 0;
-    const sw = getSubtreeWidth(cid);
-    // Center card within the subtree band
-    const cardLeft = subtreeLeft + (sw - COL_W) / 2;
+    const leftX = depth * (COL_W + V_GAP);
+    const sh = getSubtreeHeight(cid);
+    const cardHeight = cardHeights.get(cid)!;
+    // Center card vertically within its subtree block
+    const cardTop = subtreeTop + (sh - cardHeight) / 2;
 
     containerPosMap.set(cid, {
-      top: y,
-      left: cardLeft,
+      top: cardTop,
+      left: leftX,
       width: COL_W,
-      height: cardHeights.get(cid)!,
+      height: cardHeight,
       depth,
     });
 
     const children = sortChildren(childrenMap.get(cid) ?? []);
-    let cx = subtreeLeft;
-    for (const childId of children) {
-      placeSubtree(childId, cx);
-      cx += getSubtreeWidth(childId) + H_GAP;
+    if (children.length > 0) {
+      const childrenH = children.reduce((sum, id) => sum + getSubtreeHeight(id), 0) +
+        H_GAP * (children.length - 1);
+      // Center the vertical column of children relative to the parent subtree block
+      let cy = subtreeTop + (sh - childrenH) / 2;
+      for (const childId of children) {
+        placeSubtree(childId, cy);
+        cy += getSubtreeHeight(childId) + H_GAP;
+      }
     }
   };
 
-  // Step D: Root trees side by side
+  // Step D: Root trees stacked vertically chronologically
   const rootIdsSorted = sortChildren(rootIds);
-  let rx = 0;
+  let ry = 0;
   for (const rootId of rootIdsSorted) {
-    placeSubtree(rootId, rx);
-    rx += getSubtreeWidth(rootId) + ROOT_GAP;
+    placeSubtree(rootId, ry);
+    ry += getSubtreeHeight(rootId) + ROOT_GAP;
   }
 
   // ── 6. Build containerLayouts ─────────────────────────────
@@ -373,7 +354,7 @@ export function computeLayout(
     }
   }
 
-  // ── 8. Parent arrows (center-bottom → center-top, vertical) ─
+  // ── 8. Parent arrows (right-center → left-center, horizontal) ─
   const parentArrows: ParentArrow[] = [];
   for (const cl of containerLayouts) {
     if (!cl.parentContainerId) continue;
@@ -382,10 +363,10 @@ export function computeLayout(
     parentArrows.push({
       fromContainerId: cl.parentContainerId,
       toContainerId: cl.containerId,
-      fromX: parentCl.left + parentCl.width / 2,  // center-bottom of parent
-      fromY: parentCl.top + parentCl.height,
-      toX: cl.left + cl.width / 2,                 // center-top of child
-      toY: cl.top,
+      fromX: parentCl.left + parentCl.width,             // right edge of parent
+      fromY: parentCl.top + parentCl.height / 2,         // vertical center of parent card
+      toX: cl.left,                                      // left edge of child
+      toY: cl.top + HEADER_H / 2,                        // vertical center of child card header
       color: getDepthColor(cl.depth),
     });
   }
