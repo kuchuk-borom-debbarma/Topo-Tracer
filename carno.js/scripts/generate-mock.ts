@@ -69,13 +69,10 @@ const createEdge = (fromNode: any, toNode: any, edgeType: string) => {
   const edge = {
     id: nextId(),
     traceId: TRACE_ID,
-    fromContainerId: fromNode.containerId,
-    toContainerId: toNode.containerId,
     fromNodeId: fromNode.id,
-    toNodeId: toNode.id,
-    edgeType,
-    dispatchedAtLocal: fromNode.processedAtLocal,
-    respondedAtLocal: toNode.completedAtLocal
+    toContainerId: toNode.containerId,
+    type: edgeType,
+    timestamp: new Date(fromNode.processedAtLocal).getTime()
   };
   edges.push(edge);
   return edge;

@@ -91,15 +91,7 @@ export class TraceMaterializationWorker {
     for (const edge of rawEdges) {
       const fromNode = nodeMap.get(edge.fromNodeId);
       if (!fromNode) continue;
-      const toIsContainer = containers.some(c => c.id === edge.toNodeId);
-      if (toIsContainer) {
-        triggerNodeForContainer.set(edge.toNodeId, fromNode.id);
-      } else {
-        const toNode = nodeMap.get(edge.toNodeId);
-        if (toNode && fromNode.containerId !== toNode.containerId) {
-          triggerNodeForContainer.set(toNode.containerId, fromNode.id);
-        }
-      }
+      triggerNodeForContainer.set(edge.toContainerId, fromNode.id);
     }
 
     // 4. Resolve container timings (start_time_us, duration_us)
@@ -329,7 +321,7 @@ export class TraceMaterializationWorker {
       if (!primary) continue;
 
       const fromIdx = getChronoIndex(primary.fromNodeId);
-      const toIdx = getChronoIndex(primary.toNodeId);
+      const toIdx = getChronoIndex(primary.toContainerId);
       let distance = 0;
       if (fromIdx !== -1 && toIdx !== -1) {
         distance = Math.max(0, Math.abs(toIdx - fromIdx) - 1);
@@ -339,7 +331,7 @@ export class TraceMaterializationWorker {
         id: eid,
         traceId,
         fromNodeId: primary.fromNodeId,
-        toNodeId: primary.toNodeId,
+        toContainerId: primary.toContainerId,
         type: primary.type,
         distance,
         metadata: null,

@@ -138,14 +138,14 @@ export class TraceContainer {
   }
 
   /**
-   * Logs a connection edge between two nodes.
+   * Logs a connection edge between a node and a container.
    */
-  public logEdge(fromNodeId: string, toNodeId: string, edgeType?: EdgeType | string) {
+  public logEdge(fromNodeId: string, toContainerId: string, edgeType?: EdgeType | string) {
     Tracer.exportEdge({
       id: uuidv4(),
       traceId: this.traceId,
       fromNodeId,
-      toNodeId,
+      toContainerId,
       type: edgeType || "flow",
       timestamp: Date.now(),
     });
@@ -272,7 +272,7 @@ export class TraceContainer {
       id: edgeId,
       traceId: this.traceId,
       fromNodeId: callerNodeId,
-      toNodeId: toNodeId,
+      toContainerId: toContainerId,
       edgeType: typeof edgeType === "string" ? edgeType : "http_request",
     });
   }
@@ -282,27 +282,27 @@ export class ActiveEdge {
   private id: string;
   private traceId: string;
   private fromNodeId: string;
-  private toNodeId: string;
+  private toContainerId: string;
   private edgeType: string;
 
   constructor(opts: {
     id: string;
     traceId: string;
     fromNodeId: string;
-    toNodeId: string;
+    toContainerId: string;
     edgeType: string;
   }) {
     this.id = opts.id;
     this.traceId = opts.traceId;
     this.fromNodeId = opts.fromNodeId;
-    this.toNodeId = opts.toNodeId;
+    this.toContainerId = opts.toContainerId;
     this.edgeType = opts.edgeType;
 
     Tracer.exportEdge({
       id: this.id,
       traceId: this.traceId,
       fromNodeId: this.fromNodeId,
-      toNodeId: this.toNodeId,
+      toContainerId: this.toContainerId,
       type: this.edgeType,
       timestamp: Date.now(),
     });

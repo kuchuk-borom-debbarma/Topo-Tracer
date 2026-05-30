@@ -64,7 +64,7 @@ describe("LogServiceImpl", () => {
         id: "edge_a_b",
         traceId: "trace",
         fromNodeId: "node_a",
-        toNodeId: "node_b",
+        toContainerId: "container_b",
         type: "flow",
         timestamp: 13,
       },

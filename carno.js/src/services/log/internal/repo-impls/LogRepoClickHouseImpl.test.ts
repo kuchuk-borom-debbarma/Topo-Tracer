@@ -80,7 +80,7 @@ describe("LogRepoClickHouseImpl", () => {
         id: "edge_a",
         traceId: "trace",
         fromNodeId: "node_a",
-        toNodeId: "node_b",
+        toContainerId: "container_b",
         type: "call",
         timestamp: new Date(30),
       },
@@ -90,7 +90,7 @@ describe("LogRepoClickHouseImpl", () => {
     expect(client.insertedValues[0]).toMatchObject({
       trace_id: "trace",
       from_node_id: "node_a",
-      to_node_id: "node_b",
+      to_container_id: "container_b",
       type: "call",
       timestamp: 30,
     });

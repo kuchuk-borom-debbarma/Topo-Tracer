@@ -86,7 +86,7 @@ export type ParentArrow = {
 export type EdgeWire = {
   edge: ReadEdge;
   fromNodeId: string;
-  toNodeId: string;
+  toContainerId: string;
   fromX: number;
   fromY: number;
   toX: number;
@@ -224,7 +224,7 @@ export function computeLayout(
     const containerEdgeSet = new Set<string>();
     for (const edge of edges) {
       const fromContainerId = resolveContainerId(edge.fromNodeId);
-      const toContainerId = resolveContainerId(edge.toNodeId);
+      const toContainerId = resolveContainerId(edge.toContainerId);
       if (fromContainerId && toContainerId && fromContainerId !== toContainerId) {
         const key = `${fromContainerId}->${toContainerId}`;
         if (!containerEdgeSet.has(key)) {
@@ -361,17 +361,16 @@ export function computeLayout(
     const wires: EdgeWire[] = [];
     for (const edge of edges) {
       const fromAnchor = resolveAnchor(edge.fromNodeId, true);
-      const toAnchor = resolveAnchor(edge.toNodeId, false);
+      const toAnchor = resolveAnchor(edge.toContainerId, false);
       if (!fromAnchor || !toAnchor) continue;
 
       const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
-      const toNode = nodes.find((n) => n.id === edge.toNodeId);
-      const isCrossContainer = !!(fromNode && toNode && fromNode.containerId !== toNode.containerId);
+      const isCrossContainer = !!(fromNode && fromNode.containerId !== edge.toContainerId);
 
       wires.push({
         edge,
         fromNodeId: edge.fromNodeId,
-        toNodeId: edge.toNodeId,
+        toContainerId: edge.toContainerId,
         fromX: fromAnchor.x,
         fromY: fromAnchor.y,
         toX: toAnchor.x,
@@ -433,17 +432,21 @@ export function computeLayout(
       nodeRanks.set(n.id, 0);
     }
 
-    const visibleEdges = edges.filter((e) => visibleNodeIds.has(e.fromNodeId) && visibleNodeIds.has(e.toNodeId));
-    
     // Relaxation loop to compute longest-path columns for parallel flows
     for (let iter = 0; iter < visibleNodes.length; iter++) {
       let changed = false;
-      for (const edge of visibleEdges) {
+      for (const edge of edges) {
+        if (!visibleNodeIds.has(edge.fromNodeId)) continue;
         const fromRank = nodeRanks.get(edge.fromNodeId) ?? 0;
-        const toRank = nodeRanks.get(edge.toNodeId) ?? 0;
-        if (toRank < fromRank + 1) {
-          nodeRanks.set(edge.toNodeId, fromRank + 1);
-          changed = true;
+
+        // Propagate rank to all visible nodes in the target container
+        const targetNodes = visibleNodes.filter(n => n.containerId === edge.toContainerId);
+        for (const tNode of targetNodes) {
+          const toRank = nodeRanks.get(tNode.id) ?? 0;
+          if (toRank < fromRank + 1) {
+            nodeRanks.set(tNode.id, fromRank + 1);
+            changed = true;
+          }
         }
       }
       if (!changed) break;
@@ -524,17 +527,16 @@ export function computeLayout(
     const wires: EdgeWire[] = [];
     for (const edge of edges) {
       const fromAnchor = resolveAnchor(edge.fromNodeId, true);
-      const toAnchor = resolveAnchor(edge.toNodeId, false);
+      const toAnchor = resolveAnchor(edge.toContainerId, false);
       if (!fromAnchor || !toAnchor) continue;
 
       const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
-      const toNode = nodes.find((n) => n.id === edge.toNodeId);
-      const isCrossContainer = !!(fromNode && toNode && fromNode.containerId !== toNode.containerId);
+      const isCrossContainer = !!(fromNode && fromNode.containerId !== edge.toContainerId);
 
       wires.push({
         edge,
         fromNodeId: edge.fromNodeId,
-        toNodeId: edge.toNodeId,
+        toContainerId: edge.toContainerId,
         fromX: fromAnchor.x,
         fromY: fromAnchor.y,
         toX: toAnchor.x,
@@ -757,11 +759,11 @@ export function computeLayout(
   const wires: EdgeWire[] = [];
   for (const edge of edges) {
     const isFromContainer = visibleContainerIds.has(edge.fromNodeId);
-    const isToContainer = visibleContainerIds.has(edge.toNodeId);
+    const isToContainer = visibleContainerIds.has(edge.toContainerId);
     if (isFromContainer && isToContainer) continue;
 
     const fromAnchor = resolveAnchor(edge.fromNodeId, true);
-    const toAnchor = resolveAnchor(edge.toNodeId, false);
+    const toAnchor = resolveAnchor(edge.toContainerId, false);
     if (!fromAnchor || !toAnchor) continue;
     if (
       Math.abs(fromAnchor.x - toAnchor.x) < 2 &&
@@ -769,13 +771,12 @@ export function computeLayout(
     ) continue;
 
     const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
-    const toNode = nodes.find((n) => n.id === edge.toNodeId);
-    const isCrossContainer = !!(fromNode && toNode && fromNode.containerId !== toNode.containerId);
+    const isCrossContainer = !!(fromNode && fromNode.containerId !== edge.toContainerId);
 
     wires.push({
       edge,
       fromNodeId: edge.fromNodeId,
-      toNodeId: edge.toNodeId,
+      toContainerId: edge.toContainerId,
       fromX: fromAnchor.x,
       fromY: fromAnchor.y,
       toX: toAnchor.x,
