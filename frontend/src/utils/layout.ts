@@ -149,6 +149,16 @@ export function computeLayout(
   const isContainerVisible = (cid: string): boolean => {
     if (containerVisCache.has(cid)) return containerVisCache.get(cid)!;
 
+    // Filter out completely empty containers (no nodes and no child sub-containers)
+    const hasContent =
+      nodes.some((n) => n.containerId === cid) ||
+      containers.some((c) => c.parentContainerId === cid && c.id !== cid);
+
+    if (!hasContent) {
+      containerVisCache.set(cid, false);
+      return false;
+    }
+
     const tagMatched =
       activeTags.size === 0 ||
       (() => {
@@ -179,6 +189,13 @@ export function computeLayout(
   const effectiveParentMap = new Map<string, string | null>();
   for (const c of visibleContainers) {
     let pid = c.parentContainerId;
+    // If the parent ID is a Node ID, resolve its Container ID!
+    if (pid && !visibleContainerIds.has(pid)) {
+      const parentNode = nodes.find((n) => n.id === pid);
+      if (parentNode) {
+        pid = parentNode.containerId;
+      }
+    }
     while (pid && !visibleContainerIds.has(pid)) {
       const p = containers.find((x) => x.id === pid);
       pid = p ? p.parentContainerId : null;

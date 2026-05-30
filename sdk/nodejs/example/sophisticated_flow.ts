@@ -66,6 +66,7 @@ async function runSophisticatedSimulation() {
   httpRequestHeaders = {
     "x-trace-id": gatewayContainer.traceId,
     "x-parent-node-id": paymentClientNodeId,
+    "x-parent-container-id": gatewayContainer.id,
     "x-target-node-id": paymentIncomingNodeId,
     "x-depth-index": processPaymentTx.depthIndex.toString(),
   };
@@ -90,6 +91,7 @@ async function runSophisticatedSimulation() {
     _traceContext: {
       traceId: gatewayContainer.traceId,
       parentNodeId: kafkaProduceNodeId,
+      parentContainerId: gatewayContainer.id,
       targetNodeId: inventoryConsumerNodeId,
       depthIndex: dispatchOrderTx.depthIndex
     }
@@ -105,6 +107,7 @@ async function runSophisticatedSimulation() {
   batchQueuePayloads.push({
     traceId: gatewayContainer.traceId,
     parentNodeId: sqsProduceNodeId,
+    parentContainerId: gatewayContainer.id,
     targetNodeId: reportingTargetNodeId,
     depthIndex: dispatchOrderTx.depthIndex
   });
@@ -138,7 +141,8 @@ async function runSophisticatedSimulation() {
     bTraceId, bParentId, 
     "1.2.1.1 POST /payments/charge", NodeType.HTTP_SERVER, 
     bDepth, undefined, undefined,
-    httpRequestHeaders["x-target-node-id"]
+    httpRequestHeaders["x-target-node-id"],
+    httpRequestHeaders["x-parent-container-id"]
   );
 
   console.log(`   [Service B] Continuing Trace: ${paymentRootContainer.traceId}`);
@@ -198,7 +202,8 @@ async function runSophisticatedSimulation() {
     cTraceCtx.depthIndex, 
     undefined, 
     kafkaScheduled,
-    cTraceCtx.targetNodeId
+    cTraceCtx.targetNodeId,
+    cTraceCtx.parentContainerId
   );
 
   console.log(`   [Service C] Processing Event for Trace: ${inventoryRootContainer.traceId}`);
@@ -285,7 +290,8 @@ async function runSophisticatedSimulation() {
       item.traceId, item.parentNodeId, 
       "1.3.2 Process Report Item", NodeType.FUNCTION, 
       item.depthIndex, undefined, undefined,
-      item.targetNodeId
+      item.targetNodeId,
+      item.parentContainerId
     );
     
     await delay(5);

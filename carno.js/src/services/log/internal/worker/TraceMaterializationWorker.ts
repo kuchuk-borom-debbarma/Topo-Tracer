@@ -90,9 +90,15 @@ export class TraceMaterializationWorker {
     const triggerNodeForContainer = new Map<string, string>(); // containerId -> triggerNodeId
     for (const edge of rawEdges) {
       const fromNode = nodeMap.get(edge.fromNodeId);
-      const toNode = nodeMap.get(edge.toNodeId);
-      if (fromNode && toNode && fromNode.containerId !== toNode.containerId) {
-        triggerNodeForContainer.set(toNode.containerId, fromNode.id);
+      if (!fromNode) continue;
+      const toIsContainer = containers.some(c => c.id === edge.toNodeId);
+      if (toIsContainer) {
+        triggerNodeForContainer.set(edge.toNodeId, fromNode.id);
+      } else {
+        const toNode = nodeMap.get(edge.toNodeId);
+        if (toNode && fromNode.containerId !== toNode.containerId) {
+          triggerNodeForContainer.set(toNode.containerId, fromNode.id);
+        }
       }
     }
 
@@ -161,13 +167,25 @@ export class TraceMaterializationWorker {
       }
 
       const container = containers.find(c => c.id === containerId);
-      if (!container || !container.parentContainerId) {
+      if (!container) {
         const path = [containerId];
         containerParentage.set(containerId, path);
         return path;
       }
 
-      const parentPath = getContainerParentage(container.parentContainerId);
+      let parentCid = container.parentContainerId;
+      if (parentCid && !containers.some(c => c.id === parentCid)) {
+        const parentNode = nodeMap.get(parentCid);
+        parentCid = parentNode ? parentNode.containerId : null;
+      }
+
+      if (!parentCid) {
+        const path = [containerId];
+        containerParentage.set(containerId, path);
+        return path;
+      }
+
+      const parentPath = getContainerParentage(parentCid);
       const triggerNode = triggerNodeForContainer.get(containerId);
       const path = [...parentPath];
       if (triggerNode) {
