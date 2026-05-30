@@ -16,7 +16,7 @@ export function TraceDetailPage() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackStep, setPlaybackStep] = useState<number | null>(null);
-  const [layoutMode, setLayoutMode] = useState<"nested" | "dag">("dag");
+  const [layoutMode, setLayoutMode] = useState<"graph" | "dag" | "nested">("graph");
 
   const activeTagsArray = Array.from(activeTags);
 
@@ -266,6 +266,13 @@ export function TraceDetailPage() {
 
           {/* Layout Mode Selector Toggle Pill */}
           <div className="zoom-levels" style={{ marginRight: 8 }}>
+            <button
+              className={`zoom-level-btn ${layoutMode === "graph" ? "active" : ""}`}
+              onClick={() => setLayoutMode("graph")}
+              title="Switch to Clustered Graph view"
+            >
+              🕸️ Graph View
+            </button>
             <button
               className={`zoom-level-btn ${layoutMode === "dag" ? "active" : ""}`}
               onClick={() => setLayoutMode("dag")}

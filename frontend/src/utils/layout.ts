@@ -112,7 +112,7 @@ export function computeLayout(
   nodes: ReadNode[],
   edges: ReadEdge[],
   activeTags: Set<string>,
-  layoutMode: "nested" | "dag" = "dag"
+  layoutMode: "nested" | "dag" | "graph" = "graph"
 ): LayoutResult {
   const {
     NODE_H, NODE_GAP, CONTAINER_PAD_Y, CONTAINER_PAD_X,
@@ -159,6 +159,211 @@ export function computeLayout(
     containerVisCache.set(cid, false);
     return false;
   };
+
+  // ── 1A. Clustered 2D Graph layout algorithm ──
+  if (layoutMode === "graph") {
+    const ROW_GAP = 36;
+    const COLUMN_GAP = 130;
+    const CONTAINER_W = COL_W + CONTAINER_PAD_X * 2;
+    const PAD_X = 48;
+    const PAD_Y = 48;
+
+    const visibleContainers = containers.filter((c) => isContainerVisible(c.id));
+    const visibleNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
+    const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
+    const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+
+    // Sort containers by their earliest node's start time for vertical tie-breaking
+    const containerEarliestTime = new Map<string, number>();
+    for (const c of visibleContainers) {
+      const cNodes = visibleNodes.filter((n) => n.containerId === c.id);
+      const minTime = cNodes.length > 0 ? Math.min(...cNodes.map((n) => n.startTimeUs)) : c.startTimeUs;
+      containerEarliestTime.set(c.id, minTime);
+    }
+
+    // Graph ranking on containers based on node call edges
+    const containerRanks = new Map<string, number>();
+    for (const c of visibleContainers) {
+      containerRanks.set(c.id, 0);
+    }
+
+    // Extract unique container-to-container edges
+    const containerEdges: Array<{ from: string; to: string }> = [];
+    const containerEdgeSet = new Set<string>();
+    for (const edge of edges) {
+      if (visibleNodeIds.has(edge.fromNodeId) && visibleNodeIds.has(edge.toNodeId)) {
+        const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
+        const toNode = nodes.find((n) => n.id === edge.toNodeId);
+        if (fromNode && toNode && fromNode.containerId !== toNode.containerId) {
+          const key = `${fromNode.containerId}->${toNode.containerId}`;
+          if (!containerEdgeSet.has(key)) {
+            containerEdgeSet.add(key);
+            containerEdges.push({ from: fromNode.containerId, to: toNode.containerId });
+          }
+        }
+      }
+    }
+
+    // Relaxation loop for topological ranking
+    for (let iter = 0; iter < visibleContainers.length; iter++) {
+      let changed = false;
+      for (const edge of containerEdges) {
+        const fromRank = containerRanks.get(edge.from) ?? 0;
+        const toRank = containerRanks.get(edge.to) ?? 0;
+        if (toRank < fromRank + 1) {
+          containerRanks.set(edge.to, fromRank + 1);
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+
+    // Group containers by rank
+    const containersByRank = new Map<number, ReadContainer[]>();
+    let maxRank = 0;
+    for (const c of visibleContainers) {
+      const rank = containerRanks.get(c.id) ?? 0;
+      maxRank = Math.max(maxRank, rank);
+      const list = containersByRank.get(rank) || [];
+      list.push(c);
+      containersByRank.set(rank, list);
+    }
+
+    // Calculate height of each container in Graph mode
+    const containerHeights = new Map<string, number>();
+    for (const c of visibleContainers) {
+      const cNodes = visibleNodes.filter((n) => n.containerId === c.id);
+      cNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+      const numNodes = cNodes.length;
+      const height =
+        HEADER_H +
+        CONTAINER_PAD_Y * 2 +
+        (numNodes > 0 ? numNodes * NODE_H + (numNodes - 1) * NODE_GAP : 0);
+      containerHeights.set(c.id, height);
+    }
+
+    // Calculate column heights to vertically center them
+    const colTotalHeights = new Map<number, number>();
+    let maxColHeight = 0;
+    for (let r = 0; r <= maxRank; r++) {
+      const rContainers = containersByRank.get(r) || [];
+      rContainers.sort((a, b) => (containerEarliestTime.get(a.id) ?? 0) - (containerEarliestTime.get(b.id) ?? 0));
+      let heightSum = 0;
+      rContainers.forEach((c, idx) => {
+        heightSum += (containerHeights.get(c.id) ?? 100);
+        if (idx < rContainers.length - 1) heightSum += ROW_GAP;
+      });
+      colTotalHeights.set(r, heightSum);
+      maxColHeight = Math.max(maxColHeight, heightSum);
+    }
+
+    // Position containers dynamically
+    const containerLayouts: ContainerLayout[] = [];
+    const containerLayoutsMap = new Map<string, ContainerLayout>();
+    const nodePositions = new Map<string, NodePosition>();
+
+    for (let r = 0; r <= maxRank; r++) {
+      const rContainers = containersByRank.get(r) || [];
+      rContainers.sort((a, b) => (containerEarliestTime.get(a.id) ?? 0) - (containerEarliestTime.get(b.id) ?? 0));
+      const colH = colTotalHeights.get(r) ?? 0;
+      const startTop = PAD_Y + Math.max(0, (maxColHeight - colH) / 2);
+      const x = PAD_X + r * (CONTAINER_W + COLUMN_GAP);
+
+      let currentY = startTop;
+      rContainers.forEach((c) => {
+        const height = containerHeights.get(c.id) ?? 100;
+        const layout: ContainerLayout = {
+          containerId: c.id,
+          name: c.name,
+          type: c.type,
+          tags: c.tags || [],
+          depth: r,
+          top: currentY,
+          left: x,
+          width: CONTAINER_W,
+          height,
+          parentContainerId: null,
+        };
+        containerLayouts.push(layout);
+        containerLayoutsMap.set(c.id, layout);
+
+        // Position nodes inside this container
+        const cNodes = visibleNodes.filter((n) => n.containerId === c.id);
+        cNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+        cNodes.forEach((node, nodeIdx) => {
+          const nx = x + CONTAINER_PAD_X;
+          const ny = currentY + HEADER_H + CONTAINER_PAD_Y + nodeIdx * (NODE_H + NODE_GAP);
+          nodePositions.set(node.id, {
+            node,
+            top: ny,
+            left: nx,
+            width: COL_W,
+            height: NODE_H,
+            centerY: ny + NODE_H / 2,
+            leftX: nx,
+            rightX: nx + COL_W,
+            centerX: nx + COL_W / 2,
+            bottomY: ny + NODE_H,
+          });
+        });
+
+        currentY += height + ROW_GAP;
+      });
+    }
+
+    // Connect edges
+    const resolveAnchor = (
+      nodeId: string,
+      isSource: boolean
+    ): { x: number; y: number } | null => {
+      if (visibleNodeIds.has(nodeId)) {
+        const np = nodePositions.get(nodeId)!;
+        return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
+      }
+      if (visibleContainerIds.has(nodeId)) {
+        const cl = containerLayoutsMap.get(nodeId)!;
+        return {
+          x: isSource ? cl.left + cl.width : cl.left,
+          y: cl.top + HEADER_H / 2,
+        };
+      }
+      return null;
+    };
+
+    const wires: EdgeWire[] = [];
+    for (const edge of edges) {
+      const fromAnchor = resolveAnchor(edge.fromNodeId, true);
+      const toAnchor = resolveAnchor(edge.toNodeId, false);
+      if (!fromAnchor || !toAnchor) continue;
+
+      const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
+      const toNode = nodes.find((n) => n.id === edge.toNodeId);
+      const isCrossContainer = !!(fromNode && toNode && fromNode.containerId !== toNode.containerId);
+
+      wires.push({
+        edge,
+        fromNodeId: edge.fromNodeId,
+        toNodeId: edge.toNodeId,
+        fromX: fromAnchor.x,
+        fromY: fromAnchor.y,
+        toX: toAnchor.x,
+        toY: toAnchor.y,
+        isCrossContainer,
+      });
+    }
+
+    const canvasWidth = maxRank * (CONTAINER_W + COLUMN_GAP) + CONTAINER_W + PAD_X * 2;
+    const canvasHeight = maxColHeight + PAD_Y * 2;
+
+    return {
+      containerLayouts,
+      nodePositions,
+      parentArrows: [],
+      wires,
+      canvasWidth,
+      canvasHeight,
+    };
+  }
 
   // ── 1B. Flowchart DAG layout algorithm ──
   if (layoutMode === "dag") {
