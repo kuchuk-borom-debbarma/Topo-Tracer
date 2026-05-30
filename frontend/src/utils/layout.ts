@@ -181,10 +181,54 @@ export function computeLayout(
       containerEarliestTime.set(c.id, minTime);
     }
 
-    // Graph ranking on containers based on node call edges
+    // ── 2. Effective parent map (skip invisible containers + resolve Node IDs) ──
+    const effectiveParentMap = new Map<string, string | null>();
+    for (const c of visibleContainers) {
+      let pid = c.parentContainerId;
+      if (pid && !visibleContainerIds.has(pid)) {
+        const parentNode = nodes.find((n) => n.id === pid);
+        if (parentNode) {
+          pid = parentNode.containerId;
+        }
+      }
+      while (pid && !visibleContainerIds.has(pid)) {
+        const p = containers.find((x) => x.id === pid);
+        pid = p ? p.parentContainerId : null;
+      }
+      effectiveParentMap.set(c.id, pid ?? null);
+    }
+
+    // ── 3. Group child containers ──
+    const childrenMap = new Map<string, ReadContainer[]>();
+    for (const c of visibleContainers) {
+      const pid = effectiveParentMap.get(c.id);
+      if (pid) {
+        const list = childrenMap.get(pid) ?? [];
+        list.push(c);
+        childrenMap.set(pid, list);
+      }
+    }
+
+    // Find root containers (no visible parent)
+    const rootContainers = visibleContainers.filter((c) => !effectiveParentMap.get(c.id));
+    rootContainers.sort((a, b) => a.startTimeUs - b.startTimeUs);
+
+    // Compute structural depth index via BFS
+    const depthMap = new Map<string, number>();
+    const bfsQueue: Array<{ id: string; depth: number }> = rootContainers.map((c) => ({ id: c.id, depth: 0 }));
+    while (bfsQueue.length) {
+      const { id, depth } = bfsQueue.shift()!;
+      if (depthMap.has(id)) continue;
+      depthMap.set(id, depth);
+      for (const child of (childrenMap.get(id) ?? [])) {
+        bfsQueue.push({ id: child.id, depth: depth + 1 });
+      }
+    }
+
+    // Initialize ranks with their structural parentage depth
     const containerRanks = new Map<string, number>();
     for (const c of visibleContainers) {
-      containerRanks.set(c.id, 0);
+      containerRanks.set(c.id, depthMap.get(c.id) ?? 0);
     }
 
     // Extract unique container-to-container edges
