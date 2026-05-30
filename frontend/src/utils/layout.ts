@@ -173,83 +173,28 @@ export function computeLayout(
     const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
     const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
 
-    // Resolve parent container hierarchy skips (Skip invisible containers + resolve Node IDs in parentContainerId)
-    const effectiveParentMap = new Map<string, string | null>();
-    for (const c of visibleContainers) {
-      let pid = c.parentContainerId;
-      if (pid && !visibleContainerIds.has(pid)) {
-        const parentNode = nodes.find((n) => n.id === pid);
-        if (parentNode) {
-          pid = parentNode.containerId;
-        }
-      }
-      while (pid && !visibleContainerIds.has(pid)) {
-        const p = containers.find((x) => x.id === pid);
-        pid = p ? p.parentContainerId : null;
-      }
-      effectiveParentMap.set(c.id, pid ?? null);
-    }
+    const hosts = visibleContainers;
 
-    // Identify Service Host Containers (e.g. Order API Gateway, Payment Processing Service, etc.)
-    // Service hosts are containers with NO parent container, OR containers with an explicit service type.
-    const serviceContainers = visibleContainers.filter((c) => {
-      const isRoot = !effectiveParentMap.get(c.id);
-      const typeLower = c.type.toLowerCase();
-      const isServiceType =
-        typeLower.includes("service") ||
-        typeLower.includes("worker") ||
-        typeLower.includes("job") ||
-        typeLower.includes("api") ||
-        typeLower.includes("gateway") ||
-        typeLower.includes("daemon");
-      return isRoot || isServiceType;
-    });
-
-
-
-    // Fallback: If no service containers were identified (e.g. all are logical modules),
-    // treat all visible containers as separate service hosts (reverts to normal graph mode).
-    const hosts = serviceContainers.length > 0 ? serviceContainers : visibleContainers;
-    const hostIds = new Set(hosts.map((c) => c.id));
-
-    // Map every visible node to its top-level Service Host Container
-    const nodeServiceMap = new Map<string, string>(); // nodeId -> serviceContainerId
+    // Group nodes by their actual Container ID, sorted chronologically
+    const containerNodes = new Map<string, ReadNode[]>();
     for (const n of visibleNodes) {
-      let cid = n.containerId;
-      while (cid && !hostIds.has(cid)) {
-        const parentCid = effectiveParentMap.get(cid);
-        cid = parentCid ?? "";
-      }
-      if (cid) {
-        nodeServiceMap.set(n.id, cid);
-      } else {
-        // Fallback to the first service host or its direct container
-        const fallbackId = hosts[0]?.id || n.containerId;
-        nodeServiceMap.set(n.id, fallbackId);
-      }
-    }
-
-    // Group nodes by their Service Host, sorted chronologically
-    const serviceNodes = new Map<string, ReadNode[]>();
-    for (const n of visibleNodes) {
-      const scid = nodeServiceMap.get(n.id)!;
-      const list = serviceNodes.get(scid) || [];
+      const list = containerNodes.get(n.containerId) || [];
       list.push(n);
-      serviceNodes.set(scid, list);
+      containerNodes.set(n.containerId, list);
     }
 
-    // Sort container nodes chronologically for vertical tie-breaking
+    // Sort container nodes chronologically for vertical column centering
     const containerEarliestTime = new Map<string, number>();
     for (const c of hosts) {
-      const sNodes = serviceNodes.get(c.id) || [];
+      const sNodes = containerNodes.get(c.id) || [];
       const minTime = sNodes.length > 0 ? Math.min(...sNodes.map((n) => n.startTimeUs)) : c.startTimeUs;
       containerEarliestTime.set(c.id, minTime);
     }
 
-    // Calculate height of each Service Container in Graph mode
+    // Calculate height of each Container in Graph mode
     const containerHeights = new Map<string, number>();
     for (const c of hosts) {
-      const sNodes = serviceNodes.get(c.id) || [];
+      const sNodes = containerNodes.get(c.id) || [];
       sNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
       const numNodes = sNodes.length;
       const height =
@@ -265,36 +210,31 @@ export function computeLayout(
       containerRanks.set(c.id, 0); // Initially rank 0
     }
 
-    // Helper to resolve any Node ID or Container ID to its top-level Service Host Container ID
-    const resolveServiceId = (id: string): string | null => {
-      let cid = id;
+    // Helper to resolve any Node ID or Container ID to its Container ID primitive
+    const resolveContainerId = (id: string): string | null => {
       if (visibleNodeIds.has(id)) {
         const node = nodes.find(n => n.id === id);
-        cid = node ? node.containerId : "";
+        return node ? node.containerId : null;
       }
-      while (cid && !hostIds.has(cid)) {
-        const parentCid = effectiveParentMap.get(cid);
-        cid = parentCid ?? "";
-      }
-      return cid && hostIds.has(cid) ? cid : null;
+      return visibleContainerIds.has(id) ? id : null;
     };
 
-    // Extract unique service-to-service dependency edges based on node call edges
+    // Extract unique container-to-container dependency edges based on node call edges
     const containerEdges: Array<{ from: string; to: string }> = [];
     const containerEdgeSet = new Set<string>();
     for (const edge of edges) {
-      const fromServiceId = resolveServiceId(edge.fromNodeId);
-      const toServiceId = resolveServiceId(edge.toNodeId);
-      if (fromServiceId && toServiceId && fromServiceId !== toServiceId) {
-        const key = `${fromServiceId}->${toServiceId}`;
+      const fromContainerId = resolveContainerId(edge.fromNodeId);
+      const toContainerId = resolveContainerId(edge.toNodeId);
+      if (fromContainerId && toContainerId && fromContainerId !== toContainerId) {
+        const key = `${fromContainerId}->${toContainerId}`;
         if (!containerEdgeSet.has(key)) {
           containerEdgeSet.add(key);
-          containerEdges.push({ from: fromServiceId, to: toServiceId });
+          containerEdges.push({ from: fromContainerId, to: toContainerId });
         }
       }
     }
 
-    // Relaxation loop for topological ranking of service containers
+    // Relaxation loop for topological ranking of containers
     for (let iter = 0; iter < hosts.length; iter++) {
       let changed = false;
       for (const edge of containerEdges) {
@@ -365,7 +305,7 @@ export function computeLayout(
         containerLayoutsMap.set(c.id, layout);
 
         // Position nodes inside this container
-        const sNodes = serviceNodes.get(c.id) || [];
+        const sNodes = containerNodes.get(c.id) || [];
         sNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
         sNodes.forEach((node, nodeIdx) => {
           const nx = x + CONTAINER_PAD_X;
@@ -393,24 +333,27 @@ export function computeLayout(
       nodeId: string,
       isSource: boolean
     ): { x: number; y: number } | null => {
-      if (visibleNodeIds.has(nodeId)) {
-        const np = nodePositions.get(nodeId)!;
+      let resolvedId = nodeId;
+
+      if (visibleContainerIds.has(nodeId)) {
+        const treeNodes = visibleNodes.filter((n) => n.containerId === nodeId);
+        if (treeNodes.length > 0) {
+          treeNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+          const targetNode = isSource ? treeNodes[treeNodes.length - 1] : treeNodes[0];
+          resolvedId = targetNode.id;
+        }
+      }
+
+      if (visibleNodeIds.has(resolvedId)) {
+        const np = nodePositions.get(resolvedId)!;
         return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
       }
-      if (visibleContainerIds.has(nodeId)) {
-        // Resolve to the parent service container layout
-        let scid = nodeId;
-        while (scid && !hostIds.has(scid)) {
-          const parentCid = effectiveParentMap.get(scid);
-          scid = parentCid ?? "";
-        }
-        const cl = containerLayoutsMap.get(scid || hosts[0]?.id);
-        if (cl) {
-          return {
-            x: isSource ? cl.left + cl.width : cl.left,
-            y: cl.top + HEADER_H / 2,
-          };
-        }
+      if (visibleContainerIds.has(resolvedId)) {
+        const cl = containerLayoutsMap.get(resolvedId)!;
+        return {
+          x: isSource ? cl.left + cl.width : cl.left,
+          y: cl.top + HEADER_H / 2,
+        };
       }
       return null;
     };
@@ -438,21 +381,6 @@ export function computeLayout(
     }
 
     const parentArrows: ParentArrow[] = [];
-    for (const cl of containerLayouts) {
-      const parentId = effectiveParentMap.get(cl.containerId);
-      if (parentId && containerLayoutsMap.has(parentId)) {
-        const parentLayout = containerLayoutsMap.get(parentId)!;
-        parentArrows.push({
-          fromContainerId: parentId,
-          toContainerId: cl.containerId,
-          fromX: parentLayout.left + parentLayout.width,
-          fromY: parentLayout.top + HEADER_H / 2,
-          toX: cl.left,
-          toY: cl.top + HEADER_H / 2,
-          color: getDepthColor(parentLayout.depth),
-        });
-      }
-    }
 
     const canvasWidth = maxRank * (CONTAINER_W + COLUMN_GAP) + CONTAINER_W + PAD_X * 2;
     const canvasHeight = maxColHeight + PAD_Y * 2;
