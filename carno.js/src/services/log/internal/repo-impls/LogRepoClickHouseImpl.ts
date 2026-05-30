@@ -131,7 +131,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<TraceNodeCollapsed[]>();
+    return result.json<TraceNodeCollapsed>();
   }
 
   override async fetchRawEdges(traceId: string): Promise<TraceEdge[]> {
@@ -140,14 +140,27 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<TraceEdge[]>();
+    return result.json<TraceEdge>();
   }
 
   override async saveReadBlocks(blocks: ReadBlock[]): Promise<void> {
     if (!blocks.length) return;
     await this.clickHouse.client.insert({
       table: "toco_tracer.read_blocks",
-      values: blocks,
+      values: blocks.map(b => ({
+        id: b.id,
+        trace_id: b.traceId,
+        container_id: b.containerId,
+        parent_block_id: b.parentBlockId,
+        calling_node_id: b.callingNodeId,
+        name: b.name,
+        type: b.type,
+        absolute_depth: b.absoluteDepth,
+        start_time_us: b.startTimeUs,
+        duration_us: b.durationUs,
+        ancestry_path: b.ancestryPath,
+        metadata: stringifyJson(b.metadata),
+      })),
       format: "JSONEachRow",
     });
   }
@@ -156,7 +169,19 @@ export class LogRepoClickHouseImpl extends LogRepo {
     if (!nodes.length) return;
     await this.clickHouse.client.insert({
       table: "toco_tracer.read_nodes",
-      values: nodes,
+      values: nodes.map(n => ({
+        id: n.id,
+        trace_id: n.traceId,
+        block_id: n.blockId,
+        name: n.name,
+        type: n.type,
+        zoom_level: n.zoomLevel,
+        local_sequence: n.localSequence,
+        start_time_us: n.startTimeUs,
+        duration_us: n.durationUs,
+        ancestry_path: n.ancestryPath,
+        metadata: stringifyJson(n.metadata),
+      })),
       format: "JSONEachRow",
     });
   }
@@ -165,7 +190,15 @@ export class LogRepoClickHouseImpl extends LogRepo {
     if (!edges.length) return;
     await this.clickHouse.client.insert({
       table: "toco_tracer.read_edges",
-      values: edges,
+      values: edges.map(e => ({
+        id: e.id,
+        edge_id: e.edgeId,
+        trace_id: e.traceId,
+        from_block_id: e.fromBlockId,
+        from_node_id: e.fromNodeId,
+        to_block_id: e.toBlockId,
+        to_node_id: e.toNodeId,
+      })),
       format: "JSONEachRow",
     });
   }
@@ -189,7 +222,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    const rows = await result.json<TraceMetadata[]>();
+    const rows = await result.json<TraceMetadata>();
     return rows[0] || null;
   }
 
@@ -199,7 +232,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<ReadBlock[]>();
+    return result.json<ReadBlock>();
   }
 
   override async fetchReadNodes(traceId: string, zoomLevel: number): Promise<ReadNode[]> {
@@ -208,7 +241,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId, zoomLevel },
       format: "JSONEachRow",
     });
-    return result.json<ReadNode[]>();
+    return result.json<ReadNode>();
   }
 
   override async fetchReadEdges(traceId: string): Promise<ReadEdge[]> {
@@ -217,7 +250,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<ReadEdge[]>();
+    return result.json<ReadEdge>();
   }
 
   override async fetchTracesList(page: number, limit: number): Promise<{ traceId: string; isZoomReady: boolean; maxAvailableDepth: number; createdAt: number; containerNames: string[] }[]> {
@@ -253,7 +286,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       query: `SELECT count(DISTINCT trace_id) AS total FROM toco_tracer.trace_metadata FINAL`,
       format: "JSONEachRow",
     });
-    const rows = await result.json<{ total: number }[]>();
+    const rows = await result.json<{ total: number }>();
     return rows[0]?.total ?? 0;
   }
 }

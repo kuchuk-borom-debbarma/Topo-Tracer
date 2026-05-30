@@ -1,5 +1,6 @@
 import { Service } from "@carno.js/core";
 import { LogRepo } from "../LogRepo";
+import type { ReadBlock, ReadNode, ReadEdge } from "../../types";
 
 /**
  * Background compiler service responsible for converting raw append-only ingestion events
@@ -137,13 +138,14 @@ export class TraceMaterializationWorker {
       nodesByBlock.set(n.blockId, arr);
     }
 
-    const readNodesToInsert: any[] = [];
+    const readNodesToInsert: ReadNode[] = [];
     for (const [blockId, blockNodes] of nodesByBlock.entries()) {
       // Sort chronologically
       blockNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
 
       for (let i = 0; i < blockNodes.length; i++) {
         const node = blockNodes[i];
+        if (!node) continue;
 
         // Assign semantic visual importance zoom thresholds
         let zoomLevel = 1; // General service operations
@@ -161,22 +163,22 @@ export class TraceMaterializationWorker {
 
         readNodesToInsert.push({
           id: node.id,
-          trace_id: traceId,
-          block_id: blockId,
+          traceId,
+          blockId,
           name: node.name,
           type: node.type,
-          zoom_level: zoomLevel,
-          local_sequence: i,
-          start_time_us: node.startTimeUs,
-          duration_us: node.durationUs,
-          ancestry_path: ancestryPath,
-          metadata: typeof node.metadata === "string" ? node.metadata : JSON.stringify(node.metadata || {}),
+          zoomLevel,
+          localSequence: i,
+          startTimeUs: node.startTimeUs,
+          durationUs: node.durationUs,
+          ancestryPath,
+          metadata: node.metadata,
         });
       }
     }
 
     // 7. Map blocks with ancestry paths and depths
-    const readBlocksToInsert = blocks.map(b => {
+    const readBlocksToInsert: ReadBlock[] = blocks.map(b => {
       const depth = blockDepths.get(b.id) || 0;
       const timing = blockTimings.get(b.id) || { start: 0, end: 0 };
 
@@ -193,32 +195,32 @@ export class TraceMaterializationWorker {
 
       return {
         id: b.id,
-        trace_id: traceId,
-        container_id: b.containerId,
-        parent_block_id: blockParentMap.get(b.id) || "",
-        calling_node_id: blockTriggerNodeMap.get(b.id) || "",
+        traceId,
+        containerId: b.containerId,
+        parentBlockId: blockParentMap.get(b.id) || "",
+        callingNodeId: blockTriggerNodeMap.get(b.id) || "",
         name: b.name,
         type: b.type,
-        absolute_depth: depth,
-        start_time_us: timing.start,
-        duration_us: timing.start > 0 ? timing.end - timing.start : 0,
-        ancestry_path: path,
-        metadata: typeof b.metadata === "string" ? b.metadata : JSON.stringify(b.metadata || {}),
+        absoluteDepth: depth,
+        startTimeUs: timing.start,
+        durationUs: timing.start > 0 ? timing.end - timing.start : 0,
+        ancestryPath: path,
+        metadata: b.metadata,
       };
     });
 
     // 8. Map connection wires
-    const readEdgesToInsert = rawEdges.map(e => {
+    const readEdgesToInsert: ReadEdge[] = rawEdges.map(e => {
       const fromNode = nodeToBlockMap.get(e.fromNodeId);
       const toNode = nodeToBlockMap.get(e.toNodeId);
       return {
         id: `${e.id}_wire`,
-        edge_id: e.id,
-        trace_id: traceId,
-        from_block_id: fromNode?.blockId || "",
-        from_node_id: e.fromNodeId,
-        to_block_id: toNode?.blockId || "",
-        to_node_id: e.toNodeId,
+        edgeId: e.id,
+        traceId,
+        fromBlockId: fromNode?.blockId || "",
+        fromNodeId: e.fromNodeId,
+        toBlockId: toNode?.blockId || "",
+        toNodeId: e.toNodeId,
       };
     });
 

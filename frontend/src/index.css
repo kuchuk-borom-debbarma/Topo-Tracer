@@ -613,10 +613,11 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
-  min-width: 280px;
-  width: 280px;
+  min-width: 240px;
+  width: 240px;
   overflow: hidden;
   box-shadow: var(--shadow-md);
+  z-index: 3;
 }
 .block-card:hover {
   border-color: var(--border-strong);

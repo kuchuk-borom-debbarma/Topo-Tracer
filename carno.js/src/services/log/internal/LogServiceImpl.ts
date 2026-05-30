@@ -17,7 +17,7 @@ import { TraceMaterializationWorker } from "./worker/TraceMaterializationWorker"
 export class LogServiceImpl extends LogService {
   constructor(
     private logRepo: LogRepo,
-    private worker: TraceMaterializationWorker
+    private worker?: TraceMaterializationWorker
   ) {
     super();
   }
