@@ -9,6 +9,7 @@ export class TraceContainer {
   public name: string;
   public type: string;
   public tags: string[];
+  public depthIndex: number = 0;
   private isFinished = false;
 
   constructor(opts: {
@@ -18,6 +19,7 @@ export class TraceContainer {
     name: string;
     type?: string;
     tags?: string[];
+    depthIndex?: number;
   }) {
     this.id = opts.id || uuidv4();
     this.traceId = opts.traceId;
@@ -25,6 +27,7 @@ export class TraceContainer {
     this.name = opts.name;
     this.type = opts.type || "Logical Module";
     this.tags = opts.tags || [];
+    this.depthIndex = opts.depthIndex || 0;
 
     // Export "started" event for this container
     Tracer.exportContainer({
@@ -122,6 +125,7 @@ export class TraceContainer {
       name,
       type: type || "Logical Module",
       tags: tags || [],
+      depthIndex: this.depthIndex + 1,
     });
   }
 
@@ -239,6 +243,64 @@ export class TraceContainer {
   public suspend() {}
   public resume() {}
   public markProcessedStatus() {}
+
+  public recordEgressEdge(toContainerId: string, toNodeId: string, edgeType: EdgeType | string): ActiveEdge {
+    const callerNodeId = toNodeId + "_caller";
+    const edgeId = toNodeId + "_edge";
+
+    // 1. Log the starting caller node inside this container
+    this.logNode(`Egress Call to Container ${toContainerId}`, [], null, NodeType.HTTP_CLIENT);
+
+    // 2. Export the egress network edge
+    return new ActiveEdge({
+      id: edgeId,
+      traceId: this.traceId,
+      fromNodeId: callerNodeId,
+      toNodeId: toNodeId,
+      edgeType: typeof edgeType === "string" ? edgeType : "http_request",
+    });
+  }
+}
+
+export class ActiveEdge {
+  private id: string;
+  private traceId: string;
+  private fromNodeId: string;
+  private toNodeId: string;
+  private edgeType: string;
+
+  constructor(opts: {
+    id: string;
+    traceId: string;
+    fromNodeId: string;
+    toNodeId: string;
+    edgeType: string;
+  }) {
+    this.id = opts.id;
+    this.traceId = opts.traceId;
+    this.fromNodeId = opts.fromNodeId;
+    this.toNodeId = opts.toNodeId;
+    this.edgeType = opts.edgeType;
+
+    // Export edge immediately
+    Tracer.exportEdge({
+      id: this.id,
+      traceId: this.traceId,
+      fromNodeId: this.fromNodeId,
+      toNodeId: this.toNodeId,
+      type: this.edgeType,
+      timestamp: Date.now(),
+    });
+  }
+
+  public getEdgeId(): string {
+    return this.id;
+  }
+
+  public complete() {}
+  public autoComplete() {
+    this.complete();
+  }
 }
 
 // Backwards-compatibility class alias: TraceNode maps directly to TraceContainer
