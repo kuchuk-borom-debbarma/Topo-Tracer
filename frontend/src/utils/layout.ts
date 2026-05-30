@@ -4,19 +4,18 @@ import type { ReadContainer, ReadNode, ReadEdge } from "../api/client";
 // Layout Constants
 // ============================================================
 export const LAYOUT = {
-  COL_W: 340,           // container card width
-  COL_GAP: 160,         // horizontal gap between depth columns (for arrows)
-  NODE_H: 68,           // fixed node card height
-  NODE_GAP: 6,          // gap between node cards
-  CONTAINER_PAD_TOP: 10,// padding above first node inside container
-  CONTAINER_PAD_BOT: 12,// padding below last node inside container
-  HEADER_H: 52,         // container header height
-  CONTAINER_GAP: 24,    // vertical gap between containers in same column
-  CANVAS_PAD: 60,       // outer canvas padding
+  COL_W: 280,           // container card width
+  COL_GAP: 56,          // horizontal gap between columns (for arrows)
+  NODE_H: 62,           // fixed node card height
+  NODE_GAP: 5,          // gap between node cards
+  CONTAINER_PAD_TOP: 8, // padding above first node inside container
+  CONTAINER_PAD_BOT: 10,// padding below last node inside container
+  HEADER_H: 48,         // container header height
+  CANVAS_PAD: 48,       // outer canvas padding
 } as const;
 
 // ============================================================
-// Depth color palette
+// Depth color palette (decorative only — shown as left border)
 // ============================================================
 const DEPTH_COLORS = [
   "hsl(217, 91%, 62%)",   // Depth 0: Electric Blue
@@ -63,13 +62,13 @@ export type ContainerLayout = {
 
 export type NodePosition = {
   node: ReadNode;
-  top: number;        // absolute top position on canvas
-  left: number;       // left offset of the node card (inside the container)
-  width: number;      // node card width
-  height: number;     // node card height
-  centerY: number;    // vertical center for wire connections
-  leftX: number;      // container left edge (wire entry point)
-  rightX: number;     // container right edge (wire exit point)
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  centerY: number;
+  leftX: number;   // container left edge (wire entry)
+  rightX: number;  // container right edge (wire exit)
 };
 
 export type ParentArrow = {
@@ -103,10 +102,17 @@ export type LayoutResult = {
 };
 
 // ============================================================
-// Layout computation — column-based tree layout
-// X axis = depth (each depth level is a vertical column)
-// Y axis = same-depth containers stacked top-to-bottom
-// Arrows flow left→right (parent→child) across column gaps
+// Layout computation — CHRONOLOGICAL column layout
+//
+// Key insight: sort all containers by startTimeUs (left = oldest).
+// Children naturally appear after parents in time, so the flow
+// reads left → right organically.  Depth is decorative (border color)
+// rather than positional — no false "same depth = same column" grouping.
+//
+//  [container A] ──► [container B] ──► [container C] ...
+//    [node 1]           [node 1]          [node 1]
+//    [node 2]           [node 2]
+//    [node 3]
 // ============================================================
 
 export function computeLayout(
@@ -120,11 +126,10 @@ export function computeLayout(
     NODE_H, NODE_GAP,
     CONTAINER_PAD_TOP, CONTAINER_PAD_BOT,
     HEADER_H,
-    CONTAINER_GAP,
     CANVAS_PAD,
   } = LAYOUT;
 
-  // ── 1. Strict Visibility Filter (AND logic) ────────────────
+  // ── 1. AND-logic visibility filter ────────────────────────
   const isNodeVisible = (n: ReadNode): boolean => {
     if (activeTags.size === 0) return true;
     return Array.from(activeTags).every((tag) => n.tags && n.tags.includes(tag));
@@ -141,24 +146,15 @@ export function computeLayout(
         return !!(c && Array.from(activeTags).every((tag) => c.tags && c.tags.includes(tag)));
       })();
 
-    if (tagMatched) {
-      containerVisCache.set(cid, true);
-      return true;
-    }
+    if (tagMatched) { containerVisCache.set(cid, true); return true; }
 
     const hasVisibleNode = nodes.some((n) => n.containerId === cid && isNodeVisible(n));
-    if (hasVisibleNode) {
-      containerVisCache.set(cid, true);
-      return true;
-    }
+    if (hasVisibleNode) { containerVisCache.set(cid, true); return true; }
 
     const hasVisibleChild = containers.some(
       (c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id)
     );
-    if (hasVisibleChild) {
-      containerVisCache.set(cid, true);
-      return true;
-    }
+    if (hasVisibleChild) { containerVisCache.set(cid, true); return true; }
 
     containerVisCache.set(cid, false);
     return false;
@@ -168,56 +164,48 @@ export function computeLayout(
   const visibleNodes = nodes.filter(
     (n) => isNodeVisible(n) && isContainerVisible(n.containerId)
   );
-
   const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
   const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
 
-  // ── 2. Build effective parent map ──────────────────────────
-  // For each visible container, find closest visible ancestor
+  // ── 2. Effective parent map ───────────────────────────────
   const effectiveParentMap = new Map<string, string | null>();
+  for (const c of visibleContainers) {
+    let pid = c.parentContainerId;
+    while (pid && !visibleContainerIds.has(pid)) {
+      const p = containers.find((x) => x.id === pid);
+      pid = p ? p.parentContainerId : null;
+    }
+    effectiveParentMap.set(c.id, pid ?? null);
+  }
+
+  // ── 3. Assign depths (BFS from roots) ─────────────────────
+  const depthMap = new Map<string, number>();
   const childrenMap = new Map<string, string[]>();
 
   for (const c of visibleContainers) {
-    let parentId = c.parentContainerId;
-    while (parentId && !visibleContainerIds.has(parentId)) {
-      const p = containers.find((x) => x.id === parentId);
-      parentId = p ? p.parentContainerId : null;
-    }
-    effectiveParentMap.set(c.id, parentId ?? null);
-    if (parentId) {
-      const list = childrenMap.get(parentId) ?? [];
+    const pid = effectiveParentMap.get(c.id);
+    if (pid) {
+      const list = childrenMap.get(pid) ?? [];
       list.push(c.id);
-      childrenMap.set(parentId, list);
+      childrenMap.set(pid, list);
     }
   }
 
-  // Root containers (no visible ancestor)
   const rootIds = visibleContainers
     .filter((c) => !effectiveParentMap.get(c.id))
-    .map((c) => c.id)
-    .sort((a, b) => {
-      const ca = visibleContainers.find((c) => c.id === a)!;
-      const cb = visibleContainers.find((c) => c.id === b)!;
-      return ca.startTimeUs - cb.startTimeUs;
-    });
+    .map((c) => c.id);
 
-  // ── 3. Assign depths (BFS) ─────────────────────────────────
-  const depthMap = new Map<string, number>();
-  const bfsQueue: Array<{ id: string; depth: number }> = rootIds.map((id) => ({
-    id,
-    depth: 0,
-  }));
-  while (bfsQueue.length > 0) {
+  const bfsQueue: Array<{ id: string; depth: number }> = rootIds.map((id) => ({ id, depth: 0 }));
+  while (bfsQueue.length) {
     const { id, depth } = bfsQueue.shift()!;
     if (depthMap.has(id)) continue;
     depthMap.set(id, depth);
-    const children = childrenMap.get(id) ?? [];
-    for (const childId of children) {
+    for (const childId of (childrenMap.get(id) ?? [])) {
       bfsQueue.push({ id: childId, depth: depth + 1 });
     }
   }
 
-  // ── 4. Compute container card heights ─────────────────────
+  // ── 4. Group nodes by container ───────────────────────────
   const containerNodesMap = new Map<string, ReadNode[]>();
   for (const n of visibleNodes) {
     const list = containerNodesMap.get(n.containerId) ?? [];
@@ -226,46 +214,29 @@ export function computeLayout(
   }
 
   const getCardHeight = (cid: string): number => {
-    const ownNodes = containerNodesMap.get(cid) ?? [];
-    const n = ownNodes.length;
-    const nodesH =
-      n > 0
-        ? CONTAINER_PAD_TOP + n * NODE_H + (n - 1) * NODE_GAP + CONTAINER_PAD_BOT
-        : CONTAINER_PAD_TOP + CONTAINER_PAD_BOT;
+    const n = (containerNodesMap.get(cid) ?? []).length;
+    const nodesH = n > 0
+      ? CONTAINER_PAD_TOP + n * NODE_H + (n - 1) * NODE_GAP + CONTAINER_PAD_BOT
+      : CONTAINER_PAD_TOP + CONTAINER_PAD_BOT;
     return HEADER_H + nodesH;
   };
 
-  // ── 5. Column-based position assignment (DFS) ──────────────
-  // col current Y tracks the next free Y for each depth column
-  const colCurrentY = new Map<number, number>();
+  // ── 5. Chronological column placement ─────────────────────
+  // Sort ALL visible containers by startTimeUs → determines left-to-right order.
+  // Children naturally follow parents because they start after being called.
+  const sorted = [...visibleContainers].sort((a, b) => a.startTimeUs - b.startTimeUs);
 
   const containerPosMap = new Map<
     string,
     { top: number; left: number; width: number; height: number; depth: number }
   >();
 
-  const positionSubtree = (cid: string, depth: number, minY: number): void => {
-    const left = depth * (COL_W + COL_GAP);
-    const top = Math.max(colCurrentY.get(depth) ?? 0, minY);
-    const height = getCardHeight(cid);
-
-    containerPosMap.set(cid, { top, left, width: COL_W, height, depth });
-    colCurrentY.set(depth, top + height + CONTAINER_GAP);
-
-    // Position children: try to start at same Y as parent, but respect column advancement
-    const children = (childrenMap.get(cid) ?? []).slice().sort((a, b) => {
-      const ca = visibleContainers.find((c) => c.id === a)!;
-      const cb = visibleContainers.find((c) => c.id === b)!;
-      return ca.startTimeUs - cb.startTimeUs;
-    });
-
-    for (const childId of children) {
-      positionSubtree(childId, depth + 1, top);
-    }
-  };
-
-  for (const rootId of rootIds) {
-    positionSubtree(rootId, 0, colCurrentY.get(0) ?? 0);
+  let currentX = 0;
+  for (const c of sorted) {
+    const height = getCardHeight(c.id);
+    const depth = depthMap.get(c.id) ?? 0;
+    containerPosMap.set(c.id, { top: 0, left: currentX, width: COL_W, height, depth });
+    currentX += COL_W + COL_GAP;
   }
 
   // ── 6. Build containerLayouts ─────────────────────────────
@@ -291,41 +262,37 @@ export function computeLayout(
     containerLayoutsMap.set(c.id, cl);
   }
 
-  // ── 7. Compute node positions ─────────────────────────────
+  // ── 7. Node positions ─────────────────────────────────────
   const nodePositions = new Map<string, NodePosition>();
 
   for (const cl of containerLayouts) {
     const ownNodes = (containerNodesMap.get(cl.containerId) ?? []).slice().sort(
       (a, b) => a.localSequence - b.localSequence || a.startTimeUs - b.startTimeUs
     );
-
-    const NODE_CARD_INSET = 10; // horizontal inset inside container card
+    const INSET = 8;
     let nodeY = cl.top + HEADER_H + CONTAINER_PAD_TOP;
 
     for (const node of ownNodes) {
-      const nodeLeft = cl.left + NODE_CARD_INSET;
-      const nodeWidth = cl.width - NODE_CARD_INSET * 2;
       nodePositions.set(node.id, {
         node,
         top: nodeY,
-        left: nodeLeft,
-        width: nodeWidth,
+        left: cl.left + INSET,
+        width: cl.width - INSET * 2,
         height: NODE_H,
         centerY: nodeY + NODE_H / 2,
-        leftX: cl.left,               // container card left edge (wire entry)
-        rightX: cl.left + cl.width,   // container card right edge (wire exit)
+        leftX: cl.left,
+        rightX: cl.left + cl.width,
       });
       nodeY += NODE_H + NODE_GAP;
     }
   }
 
-  // ── 8. Compute parent arrows ──────────────────────────────
+  // ── 8. Parent arrows (hierarchy) ─────────────────────────
   const parentArrows: ParentArrow[] = [];
   for (const cl of containerLayouts) {
     if (!cl.parentContainerId) continue;
     const parentCl = containerLayoutsMap.get(cl.parentContainerId);
     if (!parentCl) continue;
-
     parentArrows.push({
       fromContainerId: cl.parentContainerId,
       toContainerId: cl.containerId,
@@ -337,18 +304,15 @@ export function computeLayout(
     });
   }
 
-  // ── 9. Compute node edge wires ────────────────────────────
+  // ── 9. Node edge wires ────────────────────────────────────
   const resolveAnchor = (
     nodeId: string,
     isSource: boolean
   ): { x: number; y: number } | null => {
-    // 1. Visible node — snap to its container boundary at node's Y center
     if (visibleNodeIds.has(nodeId)) {
       const np = nodePositions.get(nodeId)!;
       return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
     }
-
-    // 2. Visible container referenced as node ID
     if (visibleContainerIds.has(nodeId)) {
       const cl = containerLayoutsMap.get(nodeId)!;
       return {
@@ -356,41 +320,29 @@ export function computeLayout(
         y: cl.top + HEADER_H / 2,
       };
     }
-
-    // 3. Hidden container — walk ancestor chain
     const asContainer = containers.find((x) => x.id === nodeId);
     if (asContainer) {
       let pid = asContainer.parentContainerId;
       while (pid) {
         if (visibleContainerIds.has(pid)) {
           const cl = containerLayoutsMap.get(pid)!;
-          return {
-            x: isSource ? cl.left + cl.width : cl.left,
-            y: cl.top + HEADER_H / 2,
-          };
+          return { x: isSource ? cl.left + cl.width : cl.left, y: cl.top + HEADER_H / 2 };
         }
         const p = containers.find((x) => x.id === pid);
         pid = p ? p.parentContainerId : null;
       }
       return null;
     }
-
-    // 4. Hidden node — walk parentage
     const asNode = nodes.find((x) => x.id === nodeId);
     if (!asNode) return null;
-
-    const path = [...asNode.parentage].reverse();
-    for (const ancestorId of path) {
+    for (const ancestorId of [...asNode.parentage].reverse()) {
       if (visibleNodeIds.has(ancestorId)) {
         const np = nodePositions.get(ancestorId)!;
         return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
       }
       if (visibleContainerIds.has(ancestorId)) {
         const cl = containerLayoutsMap.get(ancestorId)!;
-        return {
-          x: isSource ? cl.left + cl.width : cl.left,
-          y: cl.top + HEADER_H / 2,
-        };
+        return { x: isSource ? cl.left + cl.width : cl.left, y: cl.top + HEADER_H / 2 };
       }
     }
     return null;
@@ -401,21 +353,11 @@ export function computeLayout(
     const fromAnchor = resolveAnchor(edge.fromNodeId, true);
     const toAnchor = resolveAnchor(edge.toNodeId, false);
     if (!fromAnchor || !toAnchor) continue;
-
-    // Skip degenerate wires
-    if (
-      Math.abs(fromAnchor.x - toAnchor.x) < 2 &&
-      Math.abs(fromAnchor.y - toAnchor.y) < 2
-    )
-      continue;
+    if (Math.abs(fromAnchor.x - toAnchor.x) < 2 && Math.abs(fromAnchor.y - toAnchor.y) < 2) continue;
 
     const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
     const toNode = nodes.find((n) => n.id === edge.toNodeId);
-    const isCrossContainer = !!(
-      fromNode &&
-      toNode &&
-      fromNode.containerId !== toNode.containerId
-    );
+    const isCrossContainer = !!(fromNode && toNode && fromNode.containerId !== toNode.containerId);
 
     wires.push({
       edge,

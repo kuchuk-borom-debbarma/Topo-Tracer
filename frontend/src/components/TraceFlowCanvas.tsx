@@ -94,9 +94,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 a.node.startTimeUs - b.node.startTimeUs
             );
 
-          const visibleTags = cl.tags.slice(0, 3);
-          const extraTagCount = cl.tags.length - 3;
-
           return (
             <div
               key={cl.containerId}
@@ -128,9 +125,10 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 >
                   {getContainerIcon(cl.type)}
                 </span>
-                <span className="container-card-name">{cl.name}</span>
+                <span className="container-card-name" title={cl.name}>{cl.name}</span>
 
                 <div className="container-card-meta">
+                  <span className="container-type-pill">{cl.type}</span>
                   <span
                     className="container-depth-chip"
                     style={{
@@ -141,25 +139,8 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                   >
                     D{cl.depth}
                   </span>
-                  <span className="container-type-pill">{cl.type}</span>
                 </div>
               </div>
-
-              {/* Tags row */}
-              {visibleTags.length > 0 && (
-                <div className="container-card-tags">
-                  {visibleTags.map((tag) => (
-                    <span key={tag} className="container-card-tag">
-                      #{tag}
-                    </span>
-                  ))}
-                  {extraTagCount > 0 && (
-                    <span className="container-card-tag container-card-tag--more">
-                      +{extraTagCount}
-                    </span>
-                  )}
-                </div>
-              )}
 
               {/* Node cards */}
               <div className="container-card-body">
@@ -254,14 +235,15 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             </marker>
           </defs>
 
-          {/* ── Parent relationship arrows ── */}
+          {/* ── Parent relationship arrows (very subtle hierarchy guides) ── */}
           {parentArrows.map((pa, i) => {
             const fx = pa.fromX + PAD;
             const fy = pa.fromY + PAD;
             const tx = pa.toX + PAD;
             const ty = pa.toY + PAD;
             const dx = tx - fx;
-            const offset = Math.max(30, dx * 0.45);
+            // Smooth bezier with control points pulling horizontally
+            const offset = Math.max(24, Math.abs(dx) * 0.4);
             const d = `M ${fx} ${fy} C ${fx + offset} ${fy}, ${tx - offset} ${ty}, ${tx} ${ty}`;
 
             const isHoveredArrow =
@@ -275,9 +257,9 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 fill="none"
                 stroke={pa.color}
                 strokeWidth={isHoveredArrow ? 1.5 : 1}
-                strokeDasharray="5 3"
-                opacity={isHoveredArrow ? 0.65 : 0.28}
-                style={{ transition: "opacity 150ms ease, stroke-width 150ms ease" }}
+                strokeDasharray="4 4"
+                opacity={isHoveredArrow ? 0.55 : 0.12}
+                style={{ transition: "opacity 200ms ease, stroke-width 200ms ease" }}
               />
             );
           })}
