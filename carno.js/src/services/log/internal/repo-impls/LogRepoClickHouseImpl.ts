@@ -2,15 +2,14 @@ import { Service } from "@carno.js/core";
 import { ClickHouseService } from "../../../../infra/ClickHouseService";
 import { LogRepo } from "../LogRepo";
 import type { 
-  TraceBlock, 
   TraceContainer, 
   TraceEdge, 
   TraceNode, 
-  ReadBlock, 
+  ReadContainer, 
   ReadNode, 
   ReadEdge, 
   TraceMetadata, 
-  TraceNodeCollapsed 
+  TraceListItem
 } from "../../types";
 
 @Service()
@@ -23,32 +22,16 @@ export class LogRepoClickHouseImpl extends LogRepo {
     if (!containers.length) return;
 
     await this.clickHouse.client.insert({
-      table: "toco_tracer.containers",
+      table: "toco_tracer.raw_containers",
       values: containers.map(container => ({
         id: container.id,
         trace_id: container.traceId,
+        parent_container_id: container.parentContainerId ?? "",
         name: container.name,
         type: container.type,
-        metadata: stringifyJson(container.metadata),
-        createdAtLocal: container.createdAtLocal.getTime(),
-        createdAtRemote: container.createdAtRemote.getTime(),
-      })),
-      format: "JSONEachRow",
-    });
-  }
-
-  override async saveBlocks(blocks: TraceBlock[]): Promise<void> {
-    if (!blocks.length) return;
-
-    await this.clickHouse.client.insert({
-      table: "toco_tracer.blocks",
-      values: blocks.map(block => ({
-        id: block.id,
-        trace_id: block.traceId,
-        containerId: block.containerId,
-        name: block.name,
-        type: block.type,
-        metadata: stringifyJson(block.metadata),
+        tags: container.tags,
+        event_type: container.eventType,
+        timestamp: container.timestamp.getTime(),
       })),
       format: "JSONEachRow",
     });
@@ -58,17 +41,17 @@ export class LogRepoClickHouseImpl extends LogRepo {
     if (!nodes.length) return;
 
     await this.clickHouse.client.insert({
-      table: "toco_tracer.nodes",
+      table: "toco_tracer.raw_nodes",
       values: nodes.map(node => ({
         id: node.id,
         trace_id: node.traceId,
-        blockId: node.blockId,
+        container_id: node.containerId,
         name: node.name,
         type: node.type,
+        tags: node.tags,
+        event_type: node.eventType,
+        timestamp: node.timestamp.getTime(),
         metadata: stringifyJson(node.metadata),
-        eventType: node.eventType,
-        eventAtLocal: node.eventAtLocal.getTime(),
-        ingestedAtRemote: node.ingestedAtRemote.getTime(),
       })),
       format: "JSONEachRow",
     });
@@ -78,17 +61,14 @@ export class LogRepoClickHouseImpl extends LogRepo {
     if (!edges.length) return;
 
     await this.clickHouse.client.insert({
-      table: "toco_tracer.edges",
+      table: "toco_tracer.raw_edges",
       values: edges.map(edge => ({
         id: edge.id,
         trace_id: edge.traceId,
-        fromNodeId: edge.fromNodeId,
-        toNodeId: edge.toNodeId,
+        from_node_id: edge.fromNodeId,
+        to_node_id: edge.toNodeId,
         type: edge.type,
-        metadata: stringifyJson(edge.metadata),
-        eventType: edge.eventType,
-        eventAtLocal: edge.eventAtLocal.getTime(),
-        ingestedAtRemote: edge.ingestedAtRemote.getTime(),
+        timestamp: edge.timestamp.getTime(),
       })),
       format: "JSONEachRow",
     });
@@ -96,70 +76,59 @@ export class LogRepoClickHouseImpl extends LogRepo {
 
   override async fetchContainers(traceId: string): Promise<TraceContainer[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, name, type, metadata, toDateTime(createdAtLocal/1000) as createdAtLocal FROM toco_tracer.containers WHERE trace_id = {traceId: String}`,
+      query: `SELECT id, trace_id as traceId, parent_container_id as parentContainerId, name, type, tags, event_type as eventType, timestamp FROM toco_tracer.raw_containers WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json();
+    const rows = await result.json<any>();
+    return rows.map((r: any) => ({
+      ...r,
+      timestamp: new Date(Number(r.timestamp)),
+      parentContainerId: r.parentContainerId || null,
+    }));
   }
 
-  override async fetchBlocks(traceId: string): Promise<TraceBlock[]> {
+  override async fetchNodes(traceId: string): Promise<TraceNode[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, containerId, name, type, metadata FROM toco_tracer.blocks WHERE trace_id = {traceId: String}`,
+      query: `SELECT id, trace_id as traceId, container_id as containerId, name, type, tags, event_type as eventType, timestamp, metadata FROM toco_tracer.raw_nodes WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json();
-  }
-
-  override async fetchCollapsedNodes(traceId: string): Promise<TraceNodeCollapsed[]> {
-    const result = await this.clickHouse.client.query({
-      query: `
-        SELECT
-          id,
-          argMax(blockId, eventAtLocal) AS blockId,
-          anyLast(name)                 AS name,
-          any(type)                     AS type,
-          anyLast(metadata)             AS metadata,
-          minIf(eventAtLocal, eventType = 'started') AS startTimeUs,
-          maxIf(eventAtLocal, eventType = 'ended')   AS endTimeUs,
-          if(endTimeUs > 0, endTimeUs - startTimeUs, null) AS durationUs
-        FROM toco_tracer.nodes
-        WHERE trace_id = {traceId: String}
-        GROUP BY id
-      `,
-      query_params: { traceId },
-      format: "JSONEachRow",
-    });
-    return result.json<TraceNodeCollapsed>();
+    const rows = await result.json<any>();
+    return rows.map((r: any) => ({
+      ...r,
+      timestamp: new Date(Number(r.timestamp)),
+      metadata: r.metadata ? parseJson(r.metadata) : null,
+    }));
   }
 
   override async fetchRawEdges(traceId: string): Promise<TraceEdge[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, fromNodeId, toNodeId, type, metadata, eventType, toDateTime(eventAtLocal/1000) as eventAtLocal FROM toco_tracer.edges WHERE trace_id = {traceId: String} AND eventType = 'requested'`,
+      query: `SELECT id, trace_id as traceId, from_node_id as fromNodeId, to_node_id as toNodeId, type, timestamp FROM toco_tracer.raw_edges WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<TraceEdge>();
+    const rows = await result.json<any>();
+    return rows.map((r: any) => ({
+      ...r,
+      timestamp: new Date(Number(r.timestamp)),
+    }));
   }
 
-  override async saveReadBlocks(blocks: ReadBlock[]): Promise<void> {
-    if (!blocks.length) return;
+  override async saveReadContainers(containers: ReadContainer[]): Promise<void> {
+    if (!containers.length) return;
     await this.clickHouse.client.insert({
-      table: "toco_tracer.read_blocks",
-      values: blocks.map(b => ({
-        id: b.id,
-        trace_id: b.traceId,
-        container_id: b.containerId,
-        parent_block_id: b.parentBlockId,
-        calling_node_id: b.callingNodeId,
-        name: b.name,
-        type: b.type,
-        absolute_depth: b.absoluteDepth,
-        start_time_us: b.startTimeUs,
-        duration_us: b.durationUs,
-        ancestry_path: b.ancestryPath,
-        metadata: stringifyJson(b.metadata),
+      table: "toco_tracer.read_containers",
+      values: containers.map(c => ({
+        id: c.id,
+        trace_id: c.traceId,
+        parent_container_id: c.parentContainerId ?? "",
+        name: c.name,
+        type: c.type,
+        tags: c.tags,
+        start_time_us: c.startTimeUs,
+        duration_us: c.durationUs,
+        metadata: stringifyJson(c.metadata),
       })),
       format: "JSONEachRow",
     });
@@ -172,14 +141,14 @@ export class LogRepoClickHouseImpl extends LogRepo {
       values: nodes.map(n => ({
         id: n.id,
         trace_id: n.traceId,
-        block_id: n.blockId,
+        container_id: n.containerId,
         name: n.name,
         type: n.type,
-        zoom_level: n.zoomLevel,
+        tags: n.tags,
+        parentage: n.parentage,
         local_sequence: n.localSequence,
         start_time_us: n.startTimeUs,
         duration_us: n.durationUs,
-        ancestry_path: n.ancestryPath,
         metadata: stringifyJson(n.metadata),
       })),
       format: "JSONEachRow",
@@ -192,12 +161,11 @@ export class LogRepoClickHouseImpl extends LogRepo {
       table: "toco_tracer.read_edges",
       values: edges.map(e => ({
         id: e.id,
-        edge_id: e.edgeId,
         trace_id: e.traceId,
-        from_block_id: e.fromBlockId,
         from_node_id: e.fromNodeId,
-        to_block_id: e.toBlockId,
         to_node_id: e.toNodeId,
+        type: e.type,
+        metadata: stringifyJson(e.metadata),
       })),
       format: "JSONEachRow",
     });
@@ -216,6 +184,19 @@ export class LogRepoClickHouseImpl extends LogRepo {
     });
   }
 
+  override async saveReadTrace(trace: { traceId: string; containerIds: string[]; tags: string[]; createdAt: number }): Promise<void> {
+    await this.clickHouse.client.insert({
+      table: "toco_tracer.read_traces",
+      values: [{
+        trace_id: trace.traceId,
+        container_ids: trace.containerIds,
+        tags: trace.tags,
+        created_at: trace.createdAt,
+      }],
+      format: "JSONEachRow",
+    });
+  }
+
   override async fetchTraceMetadata(traceId: string): Promise<TraceMetadata | null> {
     const result = await this.clickHouse.client.query({
       query: `SELECT trace_id as traceId, is_zoom_ready as isZoomReady, max_available_depth as maxAvailableDepth, materialized_offset as materializedOffset FROM toco_tracer.trace_metadata WHERE trace_id = {traceId: String}`,
@@ -226,75 +207,116 @@ export class LogRepoClickHouseImpl extends LogRepo {
     return rows[0] || null;
   }
 
-  override async fetchReadBlocks(traceId: string): Promise<ReadBlock[]> {
+  override async fetchReadContainers(traceId: string): Promise<ReadContainer[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, container_id as containerId, parent_block_id as parentBlockId, calling_node_id as callingNodeId, name, type, absolute_depth as absoluteDepth, start_time_us as startTimeUs, duration_us as durationUs, ancestry_path as ancestryPath, metadata FROM toco_tracer.read_blocks WHERE trace_id = {traceId: String} ORDER BY absolute_depth ASC, start_time_us ASC`,
+      query: `SELECT id, trace_id as traceId, parent_container_id as parentContainerId, name, type, tags, start_time_us as startTimeUs, duration_us as durationUs, metadata FROM toco_tracer.read_containers WHERE trace_id = {traceId: String} ORDER BY start_time_us ASC`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<ReadBlock>();
+    const rows = await result.json<any>();
+    return rows.map((r: any) => ({
+      ...r,
+      parentContainerId: r.parentContainerId || null,
+      startTimeUs: Number(r.startTimeUs),
+      durationUs: r.durationUs !== null ? Number(r.durationUs) : null,
+      metadata: r.metadata ? parseJson(r.metadata) : null,
+    }));
   }
 
-  override async fetchReadNodes(traceId: string, _zoomLevel: number): Promise<ReadNode[]> {
+  override async fetchReadNodes(traceId: string): Promise<ReadNode[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, block_id as blockId, name, type, zoom_level as zoomLevel, local_sequence as localSequence, start_time_us as startTimeUs, duration_us as durationUs, ancestry_path as ancestryPath, metadata FROM toco_tracer.read_nodes WHERE trace_id = {traceId: String} ORDER BY block_id, local_sequence ASC`,
+      query: `SELECT id, trace_id as traceId, container_id as containerId, name, type, tags, parentage, local_sequence as localSequence, start_time_us as startTimeUs, duration_us as durationUs, metadata FROM toco_tracer.read_nodes WHERE trace_id = {traceId: String} ORDER BY container_id, local_sequence ASC`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<ReadNode>();
+    const rows = await result.json<any>();
+    return rows.map((r: any) => ({
+      ...r,
+      startTimeUs: Number(r.startTimeUs),
+      durationUs: r.durationUs !== null ? Number(r.durationUs) : null,
+      localSequence: Number(r.localSequence),
+      metadata: r.metadata ? parseJson(r.metadata) : null,
+    }));
   }
 
   override async fetchReadEdges(traceId: string): Promise<ReadEdge[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, edge_id as edgeId, trace_id as traceId, from_block_id as fromBlockId, from_node_id as fromNodeId, to_block_id as toBlockId, to_node_id as toNodeId FROM toco_tracer.read_edges WHERE trace_id = {traceId: String}`,
+      query: `SELECT id, trace_id as traceId, from_node_id as fromNodeId, to_node_id as toNodeId, type, metadata FROM toco_tracer.read_edges WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
-    return result.json<ReadEdge>();
+    const rows = await result.json<any>();
+    return rows.map((r: any) => ({
+      ...r,
+      metadata: r.metadata ? parseJson(r.metadata) : null,
+    }));
   }
 
-  override async fetchTracesList(page: number, limit: number): Promise<{ traceId: string; isZoomReady: boolean; maxAvailableDepth: number; createdAt: number; containerNames: string[] }[]> {
+  override async fetchTracesList(page: number, limit: number): Promise<TraceListItem[]> {
     const offset = (page - 1) * limit;
     const result = await this.clickHouse.client.query({
       query: `
         SELECT
-          tm.trace_id AS traceId,
-          anyLast(tm.is_zoom_ready) AS isZoomReady,
-          anyLast(tm.max_available_depth) AS maxAvailableDepth,
-          min(c.createdAtLocal) AS createdAt,
-          groupArray(c.name) AS containerNames
-        FROM (
-          SELECT trace_id, is_zoom_ready, max_available_depth
-          FROM toco_tracer.trace_metadata FINAL
-        ) tm
-        LEFT JOIN (
-          SELECT DISTINCT trace_id, name, createdAtLocal
-          FROM toco_tracer.containers
-        ) c ON c.trace_id = tm.trace_id
-        GROUP BY tm.trace_id
-        ORDER BY createdAt DESC
+          trace_id AS traceId,
+          container_ids AS containerIds,
+          tags,
+          created_at AS createdAt
+        FROM toco_tracer.read_traces
+        ORDER BY created_at DESC
         LIMIT {limit: UInt32} OFFSET {offset: UInt32}
       `,
       query_params: { limit, offset },
       format: "JSONEachRow",
     });
-    return result.json();
+    const rows = await result.json<any>();
+    
+    const traceIds = rows.map((r: any) => r.traceId);
+    if (!traceIds.length) return [];
+
+    const namesResult = await this.clickHouse.client.query({
+      query: `
+        SELECT trace_id as traceId, groupArray(name) as containerNames
+        FROM toco_tracer.read_containers
+        WHERE trace_id IN (${traceIds.map((id: string) => `'${id}'`).join(",")})
+        GROUP BY trace_id
+      `,
+      format: "JSONEachRow",
+    });
+    const namesRows = await namesResult.json<any>();
+    const namesMap = new Map<string, string[]>();
+    for (const nr of namesRows) {
+      namesMap.set(nr.traceId, nr.containerNames);
+    }
+
+    return rows.map((r: any) => ({
+      traceId: r.traceId,
+      isZoomReady: true,
+      createdAt: Number(r.createdAt),
+      containerNames: namesMap.get(r.traceId) || [],
+      tags: r.tags || [],
+    }));
   }
 
   override async fetchTracesCount(): Promise<number> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT count(DISTINCT trace_id) AS total FROM toco_tracer.trace_metadata FINAL`,
+      query: `SELECT count(DISTINCT trace_id) AS total FROM toco_tracer.read_traces`,
       format: "JSONEachRow",
     });
     const rows = await result.json<{ total: number }>();
-    return rows[0]?.total ?? 0;
+    return Number(rows[0]?.total ?? 0);
   }
 }
-
-
-
 
 function stringifyJson(value: unknown): string {
   if (value === undefined || value === null) return "";
   return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function parseJson(value: string | null): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }

@@ -1,10 +1,10 @@
 import { Service } from "@carno.js/core";
 import { LogRepo } from "../LogRepo";
-import type { ReadBlock, ReadNode, ReadEdge } from "../../types";
+import type { ReadContainer, ReadNode, ReadEdge } from "../../types";
 
 /**
  * Background compiler service responsible for converting raw append-only ingestion events
- * (containers, blocks, nodes, edges) into coordinates and sequences optimized for dynamic zooming.
+ * (containers, nodes, edges) into coordinates and sequences optimized for dynamic tag-based filter snapping.
  */
 @Service()
 export class TraceMaterializationWorker {
@@ -17,7 +17,7 @@ export class TraceMaterializationWorker {
 
   /**
    * Schedules or resets a debounced materialization task for a given trace.
-   * Aggregates writes over a 10-second inactive window.
+   * Aggregates writes over a 1-second inactive window.
    */
   public triggerMaterialization(traceId: string): void {
     if (!traceId) return;
@@ -30,7 +30,7 @@ export class TraceMaterializationWorker {
     const timer = setTimeout(async () => {
       this.timers.delete(traceId);
       await this.runMaterializationSafely(traceId);
-    }, 10000); // 10-second debounce window
+    }, 1000); // 1-second debounce window
 
     this.timers.set(traceId, timer);
   }
@@ -47,9 +47,9 @@ export class TraceMaterializationWorker {
 
     this.runningTraces.add(traceId);
     try {
-      console.log(`[TraceMaterializationWorker] Compiling zoom layout for trace: ${traceId}`);
+      console.log(`[TraceMaterializationWorker] Compiling V3 layout for trace: ${traceId}`);
       await this.materialize(traceId);
-      console.log(`[TraceMaterializationWorker] Zoom layout completed successfully for trace: ${traceId}`);
+      console.log(`[TraceMaterializationWorker] V3 layout completed successfully for trace: ${traceId}`);
     } catch (error) {
       console.error(`[TraceMaterializationWorker] Materialization failed for trace ${traceId}:`, error);
     } finally {
@@ -58,14 +58,13 @@ export class TraceMaterializationWorker {
   }
 
   /**
-   * Dynamic Layout Compiler (Chronological Y-sequence & Nested X-depth resolver).
+   * Dynamic V3 Layout Compiler.
    */
-  private async materialize(traceId: string): Promise<void> {
+  public async materialize(traceId: string): Promise<void> {
     // 1. Bulk-fetch raw trace facts
-    const [containers, blocks, collapsedNodes, rawEdges] = await Promise.all([
+    const [containers, nodes, rawEdges] = await Promise.all([
       this.logRepo.fetchContainers(traceId),
-      this.logRepo.fetchBlocks(traceId),
-      this.logRepo.fetchCollapsedNodes(traceId),
+      this.logRepo.fetchNodes(traceId),
       this.logRepo.fetchRawEdges(traceId),
     ]);
 
@@ -74,170 +73,259 @@ export class TraceMaterializationWorker {
       return;
     }
 
-    // 2. Map blocks and nodes for O(1) key lookups
-    const blockMap = new Map<string, typeof blocks[0]>();
-    for (const b of blocks) {
-      blockMap.set(b.id, b);
+    // 2. Map containers and nodes for O(1) key lookups
+    const containerMap = new Map<string, typeof containers[0]>();
+    for (const c of containers) {
+      containerMap.set(c.id, c);
     }
 
-    const nodeToBlockMap = new Map<string, typeof collapsedNodes[0]>();
-    for (const n of collapsedNodes) {
-      nodeToBlockMap.set(n.id, n);
+    const nodeMap = new Map<string, typeof nodes[0]>();
+    for (const n of nodes) {
+      nodeMap.set(n.id, n);
     }
 
-    // 3. Resolve parent-child block hierarchy using raw calling edge transitions
-    const blockParentMap = new Map<string, string>();        // child block -> parent block
-    const blockTriggerNodeMap = new Map<string, string>();    // child block -> parent triggering node
-
+    // 3. Resolve parent-child container hierarchy using raw edges to detect trigger nodes:
+    // If there is an edge from node S (in container A) to node T (in container B),
+    // then node S is the trigger node that called container B.
+    const triggerNodeForContainer = new Map<string, string>(); // containerId -> triggerNodeId
     for (const edge of rawEdges) {
-      const fromNode = nodeToBlockMap.get(edge.fromNodeId);
-      const toNode = nodeToBlockMap.get(edge.toNodeId);
-
-      if (fromNode && toNode && fromNode.blockId !== toNode.blockId) {
-        // Node in fromNode.blockId triggered a call to toNode.blockId
-        blockParentMap.set(toNode.blockId, fromNode.blockId);
-        blockTriggerNodeMap.set(toNode.blockId, fromNode.id);
+      const fromNode = nodeMap.get(edge.fromNodeId);
+      const toNode = nodeMap.get(edge.toNodeId);
+      if (fromNode && toNode && fromNode.containerId !== toNode.containerId) {
+        triggerNodeForContainer.set(toNode.containerId, fromNode.id);
       }
     }
 
-    // 4. Resolve absolute block horizontal offset nesting depth (X-Coordinate)
-    const blockDepths = new Map<string, number>();
-    const getBlockDepth = (blockId: string): number => {
-      if (blockDepths.has(blockId)) return blockDepths.get(blockId)!;
+    // 4. Resolve container timings (start_time_us, duration_us)
+    const containerNodes = new Map<string, typeof nodes>();
+    for (const n of nodes) {
+      const list = containerNodes.get(n.containerId) || [];
+      list.push(n);
+      containerNodes.set(n.containerId, list);
+    }
 
-      const parentId = blockParentMap.get(blockId);
-      if (!parentId || !blockMap.has(parentId)) {
-        blockDepths.set(blockId, 0); // Root function scope is at depth 0
-        return 0;
+    const containerTimings = new Map<string, { start: number; end: number }>();
+    const getContainerTimings = (containerId: string): { start: number; end: number } => {
+      if (containerTimings.has(containerId)) {
+        return containerTimings.get(containerId)!;
       }
 
-      const depth = getBlockDepth(parentId) + 1;
-      blockDepths.set(blockId, depth);
-      return depth;
+      let start = Infinity;
+      let end = -Infinity;
+
+      // started/ended events for the container itself
+      const containerEvents = containers.filter(c => c.id === containerId);
+      for (const ev of containerEvents) {
+        const tUs = ev.timestamp.getTime() * 1000;
+        if (ev.eventType === "started") {
+          start = Math.min(start, tUs);
+        } else if (ev.eventType === "ended") {
+          end = Math.max(end, tUs);
+        }
+      }
+
+      // Node events inside this container
+      const nList = containerNodes.get(containerId) || [];
+      for (const n of nList) {
+        const nUs = n.timestamp.getTime() * 1000;
+        start = Math.min(start, nUs);
+        end = Math.max(end, nUs);
+      }
+
+      // Child containers
+      const childContainers = containers.filter(c => c.parentContainerId === containerId && c.id !== containerId);
+      for (const cc of childContainers) {
+        const ccTimings = getContainerTimings(cc.id);
+        start = Math.min(start, ccTimings.start);
+        end = Math.max(end, ccTimings.end);
+      }
+
+      if (start === Infinity) start = Date.now() * 1000;
+      if (end === -Infinity) end = start;
+
+      const timing = { start, end };
+      containerTimings.set(containerId, timing);
+      return timing;
     };
 
-    for (const b of blocks) {
-      getBlockDepth(b.id);
+    const uniqueContainerIds = Array.from(new Set(containers.map(c => c.id)));
+    for (const cid of uniqueContainerIds) {
+      getContainerTimings(cid);
     }
 
-    // 5. Derive block-level start/end times based on child nodes
-    const blockTimings = new Map<string, { start: number; end: number }>();
-    for (const n of collapsedNodes) {
-      const current = blockTimings.get(n.blockId) || { start: Infinity, end: -Infinity };
-      blockTimings.set(n.blockId, {
-        start: Math.min(current.start, n.startTimeUs),
-        end: Math.max(current.end, n.endTimeUs || n.startTimeUs),
+    // 5. Resolve recursive parentage paths for containers
+    const containerParentage = new Map<string, string[]>();
+    const getContainerParentage = (containerId: string): string[] => {
+      if (containerParentage.has(containerId)) {
+        return containerParentage.get(containerId)!;
+      }
+
+      const container = containers.find(c => c.id === containerId);
+      if (!container || !container.parentContainerId) {
+        const path = [containerId];
+        containerParentage.set(containerId, path);
+        return path;
+      }
+
+      const parentPath = getContainerParentage(container.parentContainerId);
+      const triggerNode = triggerNodeForContainer.get(containerId);
+      const path = [...parentPath];
+      if (triggerNode) {
+        path.push(triggerNode);
+      }
+      path.push(containerId);
+      containerParentage.set(containerId, path);
+      return path;
+    };
+
+    // Compile read containers
+    const readContainersToInsert: ReadContainer[] = [];
+    const containerTagsMap = new Map<string, string[]>();
+
+    for (const cid of uniqueContainerIds) {
+      const containerEvents = containers.filter(c => c.id === cid);
+      if (!containerEvents.length) continue;
+      const primary = containerEvents[0];
+
+      // Merge tags across all events of this container
+      const tagsSet = new Set<string>();
+      containerEvents.forEach(e => e.tags && e.tags.forEach(t => tagsSet.add(t)));
+      const tags = Array.from(tagsSet);
+      containerTagsMap.set(cid, tags);
+
+      const timing = containerTimings.get(cid) || { start: 0, end: 0 };
+      const durationUs = timing.end > timing.start ? timing.end - timing.start : 0;
+
+      readContainersToInsert.push({
+        id: cid,
+        traceId,
+        parentContainerId: primary.parentContainerId,
+        name: primary.name,
+        type: primary.type,
+        tags,
+        startTimeUs: timing.start,
+        durationUs: durationUs || null,
+        metadata: null,
       });
     }
 
-    // 6. Group nodes by block to assign vertical flow indices (Y-Coordinate sequence)
-    const nodesByBlock = new Map<string, typeof collapsedNodes>();
-    for (const n of collapsedNodes) {
-      const arr = nodesByBlock.get(n.blockId) || [];
-      arr.push(n);
-      nodesByBlock.set(n.blockId, arr);
-    }
+    // 6. Compile nodes and node durations
+    const collapsedNodesMap = new Map<string, {
+      id: string;
+      containerId: string;
+      name: string;
+      type: string;
+      tags: string[];
+      startTimeUs: number;
+      endTimeUs?: number;
+      metadata?: any;
+    }>();
 
-    const readNodesToInsert: ReadNode[] = [];
-    for (const [blockId, blockNodes] of nodesByBlock.entries()) {
-      // Sort chronologically
-      blockNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
-
-      for (let i = 0; i < blockNodes.length; i++) {
-        const node = blockNodes[i];
-        if (!node) continue;
-
-        // Assign semantic visual importance zoom thresholds
-        let zoomLevel = 1; // General service operations
-        if (node.type === "http_server" || node.type === "rpc_server" || node.type === "express_api") {
-          zoomLevel = 0; // Critical root milestones
-        } else if (node.type === "db" || node.type === "step" || node.type === "log") {
-          zoomLevel = 2; // Detailed debug logs
-        }
-
-        const parentBlock = blockMap.get(blockId);
-        const containerId = parentBlock?.containerId || "";
-        
-        // Node ancestry path: [containerId, blockId, nodeId]
-        const ancestryPath = [containerId, blockId, node.id];
-
-        readNodesToInsert.push({
-          id: node.id,
-          traceId,
-          blockId,
-          name: node.name,
-          type: node.type,
-          zoomLevel,
-          localSequence: i,
-          startTimeUs: node.startTimeUs,
-          durationUs: node.durationUs,
-          ancestryPath,
-          metadata: node.metadata,
+    for (const n of nodes) {
+      const existing = collapsedNodesMap.get(n.id);
+      const tUs = n.timestamp.getTime() * 1000;
+      if (!existing) {
+        collapsedNodesMap.set(n.id, {
+          id: n.id,
+          containerId: n.containerId,
+          name: n.name,
+          type: n.type,
+          tags: n.tags || [],
+          startTimeUs: tUs,
+          endTimeUs: n.eventType === "ended" ? tUs : undefined,
+          metadata: n.metadata,
         });
+      } else {
+        if (n.eventType === "started") {
+          existing.startTimeUs = Math.min(existing.startTimeUs, tUs);
+        } else {
+          existing.endTimeUs = existing.endTimeUs ? Math.max(existing.endTimeUs, tUs) : tUs;
+        }
+        if (n.metadata) {
+          existing.metadata = { ...existing.metadata, ...n.metadata };
+        }
+        const tagsSet = new Set([...existing.tags, ...(n.tags || [])]);
+        existing.tags = Array.from(tagsSet);
       }
     }
 
-    // 7. Map blocks with ancestry paths and depths
-    const readBlocksToInsert: ReadBlock[] = blocks.map(b => {
-      const depth = blockDepths.get(b.id) || 0;
-      const timing = blockTimings.get(b.id) || { start: 0, end: 0 };
+    // Group nodes by container to compute localSequence Y-coordinates
+    const nodesByContainer = new Map<string, ReadNode[]>();
+    const readNodesToInsert: ReadNode[] = [];
 
-      // Reconstruct ancestry path: [containerId, parent_blocks..., child_block_id]
-      const path: string[] = [b.containerId];
-      let currentId = b.id;
-      const ancestors: string[] = [];
-      while (blockParentMap.has(currentId)) {
-        const parentId = blockParentMap.get(currentId)!;
-        ancestors.unshift(parentId);
-        currentId = parentId;
+    for (const cn of collapsedNodesMap.values()) {
+      const parentage = [...getContainerParentage(cn.containerId), cn.id];
+      const durationUs = cn.endTimeUs && cn.endTimeUs > cn.startTimeUs ? cn.endTimeUs - cn.startTimeUs : 0;
+
+      const readNode: ReadNode = {
+        id: cn.id,
+        traceId,
+        containerId: cn.containerId,
+        name: cn.name,
+        type: cn.type,
+        tags: cn.tags,
+        parentage,
+        localSequence: 0, // Assigned below
+        startTimeUs: cn.startTimeUs,
+        durationUs: durationUs || null,
+        metadata: cn.metadata,
+      };
+
+      const list = nodesByContainer.get(cn.containerId) || [];
+      list.push(readNode);
+      nodesByContainer.set(cn.containerId, list);
+    }
+
+    // Assign localSequence chronologically within each container
+    for (const [cid, cNodes] of nodesByContainer.entries()) {
+      cNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+      for (let i = 0; i < cNodes.length; i++) {
+        cNodes[i].localSequence = i;
+        readNodesToInsert.push(cNodes[i]);
       }
-      path.push(...ancestors, b.id);
+    }
 
-      return {
-        id: b.id,
+    // 7. Compile read edges
+    const readEdgesToInsert: ReadEdge[] = [];
+    const uniqueEdgeIds = Array.from(new Set(rawEdges.map(e => e.id)));
+    for (const eid of uniqueEdgeIds) {
+      const edgeEvents = rawEdges.filter(e => e.id === eid);
+      if (!edgeEvents.length) continue;
+      const primary = edgeEvents[0];
+      readEdgesToInsert.push({
+        id: eid,
         traceId,
-        containerId: b.containerId,
-        parentBlockId: blockParentMap.get(b.id) || "",
-        callingNodeId: blockTriggerNodeMap.get(b.id) || "",
-        name: b.name,
-        type: b.type,
-        absoluteDepth: depth,
-        startTimeUs: timing.start,
-        durationUs: timing.start > 0 ? timing.end - timing.start : 0,
-        ancestryPath: path,
-        metadata: b.metadata,
-      };
-    });
+        fromNodeId: primary.fromNodeId,
+        toNodeId: primary.toNodeId,
+        type: primary.type,
+        metadata: null,
+      });
+    }
 
-    // 8. Map connection wires
-    const readEdgesToInsert: ReadEdge[] = rawEdges.map(e => {
-      const fromNode = nodeToBlockMap.get(e.fromNodeId);
-      const toNode = nodeToBlockMap.get(e.toNodeId);
-      return {
-        id: `${e.id}_wire`,
-        edgeId: e.id,
-        traceId,
-        fromBlockId: fromNode?.blockId || "",
-        fromNodeId: e.fromNodeId,
-        toBlockId: toNode?.blockId || "",
-        toNodeId: e.toNodeId,
-      };
-    });
+    // 8. Cache trace level aggregations
+    const allTags = new Set<string>();
+    readContainersToInsert.forEach(c => c.tags && c.tags.forEach(t => allTags.add(t)));
+    readNodesToInsert.forEach(n => n.tags && n.tags.forEach(t => allTags.add(t)));
 
-    // 9. Batch-write layout coordinates to ClickHouse
+    const minCreatedAt = Math.min(...readContainersToInsert.map(c => c.startTimeUs)) / 1000 || Date.now();
+
+    // 9. Batch insert read path structures
     await Promise.all([
-      this.logRepo.saveReadBlocks(readBlocksToInsert),
+      this.logRepo.saveReadContainers(readContainersToInsert),
       this.logRepo.saveReadNodes(readNodesToInsert),
       this.logRepo.saveReadEdges(readEdgesToInsert),
+      this.logRepo.saveReadTrace({
+        traceId,
+        containerIds: uniqueContainerIds,
+        tags: Array.from(allTags),
+        createdAt: minCreatedAt,
+      }),
+      this.logRepo.saveTraceMetadata({
+        traceId,
+        isZoomReady: true,
+        maxAvailableDepth: 0,
+        materializedOffset: 0,
+      }),
     ]);
-
-    // 10. Persist dynamic slider range metadata
-    const maxDepth = Math.max(...Array.from(blockDepths.values()), 0);
-    await this.logRepo.saveTraceMetadata({
-      traceId,
-      isZoomReady: true,
-      maxAvailableDepth: maxDepth,
-      materializedOffset: 0,
-    });
   }
 }

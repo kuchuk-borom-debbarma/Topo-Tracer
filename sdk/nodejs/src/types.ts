@@ -27,30 +27,24 @@ export enum EdgeType {
 export type TraceContainerInput = {
   id: string;
   traceId: string;
+  parentContainerId: string | null;
   name: string;
   type: string;
-  metadata?: any;
-  createdAtLocal: Date;
-};
-
-export type TraceBlockInput = {
-  id: string;
-  traceId: string;
-  containerId: string;
-  name: string;
-  type: string;
-  metadata?: any;
+  tags: string[];
+  eventType: "started" | "ended";
+  timestamp: number; // in milliseconds
 };
 
 export type TraceNodeInput = {
   id: string;
   traceId: string;
-  blockId: string;
+  containerId: string;
   name: string;
   type: string;
-  metadata?: any;
+  tags: string[];
   eventType: "started" | "ended";
-  eventAtLocal: Date;
+  timestamp: number; // in milliseconds
+  metadata?: any;
 };
 
 export type TraceEdgeInput = {
@@ -59,15 +53,8 @@ export type TraceEdgeInput = {
   fromNodeId: string;
   toNodeId: string;
   type: string;
-  metadata?: any;
-  eventType: "requested" | "responded";
-  eventAtLocal: Date;
+  timestamp: number; // in milliseconds
 };
-
-// Backward-compatibility aliases
-export type ContainerInput = Omit<TraceContainerInput, "traceId"> & { containerType?: string };
-export type NodeInput = TraceNodeInput;
-export type EdgeInput = TraceEdgeInput;
 
 export interface TracerConfig {
   /**
@@ -87,4 +74,3 @@ export interface TracerConfig {
    */
   flushIntervalMs?: number;
 }
-

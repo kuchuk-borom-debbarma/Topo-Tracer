@@ -63,10 +63,21 @@ export function TracesListPage() {
           ),
       },
       {
-        id: "maxDepth",
-        header: "Max Depth",
+        id: "tags",
+        header: "Tags",
         cell: ({ row }) => (
-          <span className="badge badge-depth">D{row.original.maxAvailableDepth}</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {(row.original.tags || []).slice(0, 3).map((t) => (
+              <span key={t} className="badge badge-depth">
+                {t}
+              </span>
+            ))}
+            {(row.original.tags || []).length > 3 && (
+              <span className="badge badge-depth">
+                +{(row.original.tags || []).length - 3}
+              </span>
+            )}
+          </div>
         ),
       },
       {

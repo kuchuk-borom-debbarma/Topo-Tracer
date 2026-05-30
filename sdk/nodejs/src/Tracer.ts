@@ -1,6 +1,6 @@
 import { BatchExporter } from "./BatchExporter";
-import { TraceNode } from "./TraceNode";
-import { TraceContainerInput, TraceBlockInput, TraceNodeInput, TraceEdgeInput, TracerConfig, NodeType } from "./types";
+import { TraceContainer } from "./TraceNode";
+import { TraceContainerInput, TraceNodeInput, TraceEdgeInput, TracerConfig, NodeType } from "./types";
 import { v4 as uuidv4 } from "uuid";
 
 export class Tracer {
@@ -67,80 +67,98 @@ export class Tracer {
       this.exporter.addContainer({
         id: containerId,
         traceId,
+        parentContainerId: null,
         name: config.name,
         type: config.type,
-        createdAtLocal: new Date()
+        tags: [],
+        eventType: "started",
+        timestamp: Date.now()
       });
     }
   }
 
   /**
-   * Executes a root async operation, automatically managing the span's lifecycle (processing, error catching, and completion).
+   * Starts a completely new root container (Distributed Trace).
+   */
+  public static startContainer(name: string, tags?: string[], type?: string): TraceContainer {
+    const traceId = uuidv4();
+    const containerId = this.getContainerId();
+    this.exportContainerForTrace(traceId, containerId);
+
+    return new TraceContainer({
+      id: containerId,
+      traceId,
+      parentContainerId: null,
+      name,
+      type: type || "Logical Module",
+      tags: tags || []
+    });
+  }
+
+  /**
+   * Executes a root async operation, automatically managing the container scope's lifecycle.
    */
   public static async trace<T>(
     name: string,
     nodeType: NodeType | string,
-    fn: (node: TraceNode) => Promise<T>,
-    group?: string
+    fn: (container: TraceContainer) => Promise<T>
   ): Promise<T> {
-    const node = this.startTrace(name, nodeType, group);
-    node.markProcessed();
+    const container = this.startTrace(name, nodeType);
     try {
-      return await fn(node);
-    } catch (error: any) {
-      node.metadata = { ...node.metadata, error: error.message || String(error) };
-      throw error;
+      return await fn(container);
     } finally {
-      node.markCompleted();
+      container.complete();
     }
   }
 
   /**
-   * Starts a completely new distributed trace.
+   * Starts a completely new distributed trace (Backward compatibility).
    */
-  public static startTrace(name: string, nodeType: NodeType | string, group?: string): TraceNode {
+  public static startTrace(name: string, nodeType: NodeType | string): TraceContainer {
     const traceId = uuidv4();
-    this.exportContainerForTrace(traceId, this.getContainerId());
-    return new TraceNode({
+    const containerId = this.getContainerId();
+    this.exportContainerForTrace(traceId, containerId);
+
+    return new TraceContainer({
+      id: containerId,
       traceId,
-      containerId: this.getContainerId(),
+      parentContainerId: null,
       name,
-      nodeType,
+      type: typeof nodeType === "string" ? nodeType : "Logical Module",
+      tags: []
     });
   }
 
   /**
    * Continues an existing trace (e.g. from an incoming HTTP request containing trace headers).
-   * Pass `overrideId` (= the targetNodeId put in the egress edge by the caller) to ensure the
-   * node/block ID matches what the upstream service recorded as the edge destination.
    */
   public static continueTrace(
     traceId: string, 
     parentNodeId: string, 
     name: string, 
     nodeType: NodeType | string, 
-    parentDepthIndex: number = 0,
-    group?: string,
-    scheduledAtLocal?: Date,
+    _parentDepthIndex: number = 0,
+    _group?: string,
+    _scheduledAtLocal?: Date,
     overrideId?: string
-  ): TraceNode {
+  ): TraceContainer {
     this.exportContainerForTrace(traceId, this.getContainerId());
-    return new TraceNode({
+    return new TraceContainer({
+      id: overrideId || this.getContainerId(),
       traceId,
-      containerId: this.getContainerId(),
+      parentContainerId: parentNodeId,
       name,
-      nodeType,
-      parentNodeId,
-      overrideId,        // locks _blockId = overrideId so egress edges resolve correctly
+      type: typeof nodeType === "string" ? nodeType : "Logical Module",
+      tags: []
     });
   }
 
   /**
-   * Internal method used to queue a block for export.
+   * Internal method used to queue a container event for export.
    */
-  public static exportBlock(block: TraceBlockInput) {
+  public static exportContainer(container: TraceContainerInput) {
     if (this.exporter) {
-      this.exporter.addBlock(block);
+      this.exporter.addContainer(container);
     }
   }
 
@@ -180,4 +198,3 @@ export class Tracer {
     }
   }
 }
-

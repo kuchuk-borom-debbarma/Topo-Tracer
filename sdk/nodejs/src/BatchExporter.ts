@@ -1,4 +1,4 @@
-import { TraceContainerInput, TraceBlockInput, TraceNodeInput, TraceEdgeInput, TracerConfig } from "./types";
+import { TraceContainerInput, TraceNodeInput, TraceEdgeInput, TracerConfig } from "./types";
 
 export class BatchExporter {
   private baseUrl: string;
@@ -6,7 +6,6 @@ export class BatchExporter {
   private flushIntervalMs: number;
 
   private containers: TraceContainerInput[] = [];
-  private blocks: TraceBlockInput[] = [];
   private nodes: TraceNodeInput[] = [];
   private edges: TraceEdgeInput[] = [];
 
@@ -41,11 +40,6 @@ export class BatchExporter {
     this.checkBatchSize();
   }
 
-  public addBlock(block: TraceBlockInput) {
-    this.blocks.push(block);
-    this.checkBatchSize();
-  }
-
   public addNode(node: TraceNodeInput) {
     this.nodes.push(node);
     this.checkBatchSize();
@@ -59,7 +53,6 @@ export class BatchExporter {
   private checkBatchSize() {
     if (
       this.containers.length >= this.batchSize ||
-      this.blocks.length >= this.batchSize ||
       this.nodes.length >= this.batchSize ||
       this.edges.length >= this.batchSize
     ) {
@@ -74,13 +67,11 @@ export class BatchExporter {
     if (this.isFlushing) return;
     
     const containersToFlush = this.containers.splice(0, this.containers.length);
-    const blocksToFlush = this.blocks.splice(0, this.blocks.length);
     const nodesToFlush = this.nodes.splice(0, this.nodes.length);
     const edgesToFlush = this.edges.splice(0, this.edges.length);
 
     if (
       containersToFlush.length === 0 &&
-      blocksToFlush.length === 0 &&
       nodesToFlush.length === 0 &&
       edgesToFlush.length === 0
     ) {
@@ -92,9 +83,6 @@ export class BatchExporter {
     try {
       if (containersToFlush.length > 0) {
         await this.post("/telemetry/containers", containersToFlush);
-      }
-      if (blocksToFlush.length > 0) {
-        await this.post("/telemetry/blocks", blocksToFlush);
       }
       if (nodesToFlush.length > 0) {
         await this.post("/telemetry/nodes", nodesToFlush);
@@ -125,4 +113,3 @@ export class BatchExporter {
     }
   }
 }
-

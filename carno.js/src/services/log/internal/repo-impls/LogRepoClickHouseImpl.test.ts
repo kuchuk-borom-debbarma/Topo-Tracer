@@ -13,62 +13,35 @@ class MockClickHouseClient {
 }
 
 describe("LogRepoClickHouseImpl", () => {
-  it("writes blocks to ClickHouse", async () => {
+  it("writes containers to ClickHouse", async () => {
     const client = new MockClickHouseClient();
     const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
 
-    await repo.saveBlocks([
+    await repo.saveContainers([
       {
-        id: "block",
+        id: "container_a",
         traceId: "trace",
-        containerId: "api",
-        name: "foo()",
-        type: "function",
-        metadata: { route: "/orders" },
+        parentContainerId: null,
+        name: "service-a",
+        type: "service",
+        tags: ["api"],
+        eventType: "started",
+        timestamp: new Date(10),
       },
     ]);
 
-    expect(client.insertedTable).toBe("toco_tracer.blocks");
+    expect(client.insertedTable).toBe("toco_tracer.raw_containers");
     expect(client.insertedValues[0]).toMatchObject({
       trace_id: "trace",
-      containerId: "api",
-      type: "function",
-      metadata: JSON.stringify({ route: "/orders" }),
+      parent_container_id: "",
+      name: "service-a",
+      tags: ["api"],
+      event_type: "started",
+      timestamp: 10,
     });
   });
 
-  it("writes edges as primitive node connections", async () => {
-    const client = new MockClickHouseClient();
-    const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
-
-    await repo.saveEdges([
-      {
-        id: "edge_a_b",
-        traceId: "trace",
-        fromNodeId: "node_a",
-        toNodeId: "node_b",
-        type: "call",
-        metadata: { sync: true },
-        eventType: "requested",
-        eventAtLocal: new Date(30),
-        ingestedAtRemote: new Date(40),
-      },
-    ]);
-
-    expect(client.insertedTable).toBe("toco_tracer.edges");
-    expect(client.insertedValues[0]).toMatchObject({
-      trace_id: "trace",
-      fromNodeId: "node_a",
-      toNodeId: "node_b",
-      type: "call",
-      metadata: JSON.stringify({ sync: true }),
-      eventType: "requested",
-      eventAtLocal: 30,
-      ingestedAtRemote: 40,
-    });
-  });
-
-  it("writes nodes as append-only lifecycle events", async () => {
+  it("writes nodes to ClickHouse", async () => {
     const client = new MockClickHouseClient();
     const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
 
@@ -76,23 +49,50 @@ describe("LogRepoClickHouseImpl", () => {
       {
         id: "node_a",
         traceId: "trace",
-        blockId: "block",
-        name: "validate",
+        containerId: "container_a",
+        name: "step-a",
         type: "step",
-        metadata: { ok: true },
-        eventType: "ended",
-        eventAtLocal: new Date(60),
-        ingestedAtRemote: new Date(70),
+        tags: ["validation"],
+        eventType: "started",
+        timestamp: new Date(20),
+        metadata: { key: "val" },
       },
     ]);
 
-    expect(client.insertedTable).toBe("toco_tracer.nodes");
+    expect(client.insertedTable).toBe("toco_tracer.raw_nodes");
     expect(client.insertedValues[0]).toMatchObject({
       trace_id: "trace",
-      blockId: "block",
-      eventType: "ended",
-      eventAtLocal: 60,
-      ingestedAtRemote: 70,
+      container_id: "container_a",
+      name: "step-a",
+      tags: ["validation"],
+      event_type: "started",
+      timestamp: 20,
+      metadata: JSON.stringify({ key: "val" }),
+    });
+  });
+
+  it("writes edges to ClickHouse", async () => {
+    const client = new MockClickHouseClient();
+    const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
+
+    await repo.saveEdges([
+      {
+        id: "edge_a",
+        traceId: "trace",
+        fromNodeId: "node_a",
+        toNodeId: "node_b",
+        type: "call",
+        timestamp: new Date(30),
+      },
+    ]);
+
+    expect(client.insertedTable).toBe("toco_tracer.raw_edges");
+    expect(client.insertedValues[0]).toMatchObject({
+      trace_id: "trace",
+      from_node_id: "node_a",
+      to_node_id: "node_b",
+      type: "call",
+      timestamp: 30,
     });
   });
 });
