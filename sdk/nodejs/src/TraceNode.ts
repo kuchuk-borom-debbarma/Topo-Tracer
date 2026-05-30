@@ -138,14 +138,15 @@ export class TraceContainer {
   }
 
   /**
-   * Logs a connection edge between a node and a container.
+   * Logs a connection edge between a node and a target (either a node or a container).
    */
-  public logEdge(fromNodeId: string, toContainerId: string, edgeType?: EdgeType | string) {
+  public logEdge(fromNodeId: string, toId: string, toType: "node" | "container", edgeType?: EdgeType | string) {
     Tracer.exportEdge({
       id: uuidv4(),
       traceId: this.traceId,
       fromNodeId,
-      toContainerId,
+      toId,
+      toType,
       type: edgeType || "flow",
       timestamp: Date.now(),
     });
@@ -182,142 +183,6 @@ export class TraceContainer {
       timestamp: Date.now(),
     });
   }
-
-  // --- 100% Backwards Compatibility Proxy Methods ---
-  public startChild(name: string, nodeType: NodeType | string): TraceContainer {
-    // Treat child blocks as sub-containers in V3
-    return this.startChildContainer(name, [], typeof nodeType === "string" ? nodeType : "Logical Module");
-  }
-
-  public startChildInContainer(opts: {
-    containerId: string;
-    containerName?: string;
-    containerType?: string;
-    name: string;
-    nodeType: NodeType | string;
-    edgeType?: EdgeType | string;
-  }): TraceContainer {
-    if (opts.containerName) {
-      Tracer.registerContainer({
-        id: opts.containerId,
-        name: opts.containerName,
-        type: opts.containerType || "Logical Module"
-      });
-    }
-
-    const child = new TraceContainer({
-      id: opts.containerId,
-      traceId: this.traceId,
-      parentContainerId: this.id,
-      name: opts.name,
-      type: opts.containerType || "Logical Module",
-      tags: [],
-    });
-
-    const callerNodeId = this.logNode(`Call: ${opts.name}`, [], null, opts.nodeType);
-    const entryNodeId = child.logNode(`Enter: ${opts.name}`, [], null, opts.nodeType);
-    this.logEdge(callerNodeId, entryNodeId, opts.edgeType);
-
-    return child;
-  }
-
-  public async traceChild<T>(
-    name: string,
-    nodeType: NodeType | string,
-    fn: (childNode: TraceContainer) => Promise<T>
-  ): Promise<T> {
-    const child = this.startChild(name, nodeType);
-    try {
-      return await fn(child);
-    } finally {
-      child.complete();
-    }
-  }
-
-  public async traceChildInContainer<T>(
-    opts: {
-      containerId: string;
-      containerName?: string;
-      containerType?: string;
-      name: string;
-      nodeType: NodeType | string;
-      edgeType?: EdgeType | string;
-    },
-    fn: (childNode: TraceContainer) => Promise<T>
-  ): Promise<T> {
-    const child = this.startChildInContainer(opts);
-    try {
-      return await fn(child);
-    } finally {
-      child.complete();
-    }
-  }
-
-  public markCompleted() {
-    this.complete();
-  }
-
-  public markProcessed() {}
-  public suspend() {}
-  public resume() {}
-  public markProcessedStatus() {}
-
-  public recordEgressEdge(toContainerId: string, toNodeId: string, edgeType: EdgeType | string): ActiveEdge {
-    const callerNodeId = toNodeId + "_caller";
-    const edgeId = toNodeId + "_edge";
-
-    this.logNode(`Egress Call to Container ${toContainerId}`, [], null, NodeType.HTTP_CLIENT);
-
-    return new ActiveEdge({
-      id: edgeId,
-      traceId: this.traceId,
-      fromNodeId: callerNodeId,
-      toContainerId: toContainerId,
-      edgeType: typeof edgeType === "string" ? edgeType : "http_request",
-    });
-  }
 }
 
-export class ActiveEdge {
-  private id: string;
-  private traceId: string;
-  private fromNodeId: string;
-  private toContainerId: string;
-  private edgeType: string;
-
-  constructor(opts: {
-    id: string;
-    traceId: string;
-    fromNodeId: string;
-    toContainerId: string;
-    edgeType: string;
-  }) {
-    this.id = opts.id;
-    this.traceId = opts.traceId;
-    this.fromNodeId = opts.fromNodeId;
-    this.toContainerId = opts.toContainerId;
-    this.edgeType = opts.edgeType;
-
-    Tracer.exportEdge({
-      id: this.id,
-      traceId: this.traceId,
-      fromNodeId: this.fromNodeId,
-      toContainerId: this.toContainerId,
-      type: this.edgeType,
-      timestamp: Date.now(),
-    });
-  }
-
-  public getEdgeId(): string {
-    return this.id;
-  }
-
-  public complete() {}
-  public autoComplete() {
-    this.complete();
-  }
-}
-
-// Backwards-compatibility class alias: TraceNode maps directly to TraceContainer
-export const TraceNode = TraceContainer;
 export default TraceContainer;

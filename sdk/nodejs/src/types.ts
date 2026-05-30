@@ -51,7 +51,8 @@ export type TraceEdgeInput = {
   id: string;
   traceId: string;
   fromNodeId: string;
-  toContainerId: string;
+  toId: string;
+  toType: "node" | "container";
   type: string;
   timestamp: number; // in milliseconds
 };

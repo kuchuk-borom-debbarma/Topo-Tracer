@@ -96,73 +96,16 @@ export class Tracer {
   }
 
   /**
-   * Executes a root async operation, automatically managing the container scope's lifecycle.
-   */
-  public static async trace<T>(
-    name: string,
-    nodeType: NodeType | string,
-    fn: (container: TraceContainer) => Promise<T>
-  ): Promise<T> {
-    const container = this.startTrace(name, nodeType);
-    try {
-      return await fn(container);
-    } finally {
-      container.complete();
-    }
-  }
-
-  /**
-   * Starts a completely new distributed trace (Backward compatibility).
-   */
-  public static startTrace(name: string, nodeType: NodeType | string): TraceContainer {
-    const traceId = uuidv4();
-    const containerId = this.getContainerId();
-    this.exportContainerForTrace(traceId, containerId);
-
-    return new TraceContainer({
-      id: containerId,
-      traceId,
-      parentContainerId: null,
-      name,
-      type: typeof nodeType === "string" ? nodeType : "Logical Module",
-      tags: []
-    });
-  }
-
-  /**
    * Continues an existing trace (e.g. from an incoming HTTP request containing trace headers).
    */
   public static continueTrace(
-    traceIdOrHeaders: string | Record<string, string | undefined>,
-    parentNodeIdOrName: string,
-    nameOrType?: string | NodeType,
-    nodeType?: NodeType | string,
-    _parentDepthIndex: number = 0,
-    _group?: string,
-    _scheduledAtLocal?: Date,
-    overrideId?: string,
-    parentContainerId?: string
+    headers: Record<string, string | undefined>,
+    name: string,
+    type?: string
   ): TraceContainer {
-    let traceId: string;
-    let name: string;
-    let type: string;
-    let targetId = overrideId;
-    let parentCid = parentContainerId;
-
-    if (typeof traceIdOrHeaders === "object" && traceIdOrHeaders !== null) {
-      // Extract properties implicitly from headers/carrier context
-      traceId = traceIdOrHeaders["x-trace-id"] || uuidv4();
-      parentCid = traceIdOrHeaders["x-parent-container-id"] || undefined;
-      targetId = traceIdOrHeaders["x-target-node-id"] || undefined;
-      
-      name = parentNodeIdOrName;
-      type = (nameOrType as string) || "Logical Module";
-    } else {
-      // Backward compatibility signature
-      traceId = traceIdOrHeaders;
-      name = nameOrType as string;
-      type = (nodeType as string) || "Logical Module";
-    }
+    const traceId = headers["x-trace-id"] || uuidv4();
+    const parentCid = headers["x-parent-container-id"] || undefined;
+    const targetId = headers["x-target-node-id"] || undefined;
 
     this.exportContainerForTrace(traceId, this.getContainerId(), parentCid || null);
     return new TraceContainer({
@@ -170,7 +113,7 @@ export class Tracer {
       traceId,
       parentContainerId: this.getContainerId(),
       name,
-      type,
+      type: type || "Logical Module",
       tags: []
     });
   }

@@ -67,7 +67,8 @@ export class ClickHouseService {
           id String,
           trace_id String,
           from_node_id String,
-          to_container_id String,
+          to_id String,
+          to_type String,
           type String,
           timestamp Int64
         ) ENGINE = MergeTree()
@@ -131,7 +132,8 @@ export class ClickHouseService {
           id String,
           trace_id String,
           from_node_id String,
-          to_container_id String,
+          to_id String,
+          to_type String,
           type String,
           distance Int32,
           metadata String
