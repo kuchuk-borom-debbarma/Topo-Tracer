@@ -14,9 +14,6 @@ export function NodeCard({ node, isHovered, onHover, onSelect, isSelected }: Pro
   const color = getNodeColor(node.type);
   const typeLabel = getNodeTypeLabel(node.type);
   const duration = formatDuration(node.durationUs);
-  const tags = node.tags || [];
-  const visibleTags = tags.slice(0, 2);
-  const extraTagCount = tags.length - 2;
 
   return (
     <div
@@ -39,25 +36,17 @@ export function NodeCard({ node, isHovered, onHover, onSelect, isSelected }: Pro
         {typeLabel}
       </span>
 
-      {/* Center: name + meta row */}
+      {/* Center: name + duration */}
       <div className="node-card-content">
         <div className="node-card-name">{node.name}</div>
-        <div className="node-card-footer">
-          {duration && <span className="node-card-duration">{duration}</span>}
-          {visibleTags.map((tag) => (
-            <span key={tag} className="node-card-tag">
-              #{tag}
-            </span>
-          ))}
-          {extraTagCount > 0 && (
-            <span className="node-card-tag node-card-tag--more">
-              +{extraTagCount}
-            </span>
-          )}
-        </div>
+        {duration && (
+          <div className="node-card-footer">
+            <span className="node-card-duration">{duration}</span>
+          </div>
+        )}
       </div>
 
-      {/* Right: indicator dot for selected / has metadata */}
+      {/* Right: color indicator */}
       <div
         className="node-card-indicator"
         style={{ background: color }}
