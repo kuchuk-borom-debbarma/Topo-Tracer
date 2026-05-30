@@ -26,6 +26,7 @@ export class LogServiceImpl extends LogService {
     const createdAtRemote = new Date();
     const enriched: TraceContainer[] = containers.map(container => ({
       ...container,
+      createdAtLocal: typeof container.createdAtLocal === "string" ? new Date(container.createdAtLocal) : container.createdAtLocal,
       metadata: container.metadata ?? null,
       createdAtRemote,
     }));
@@ -48,6 +49,7 @@ export class LogServiceImpl extends LogService {
     const ingestedAtRemote = new Date();
     const enriched: TraceNode[] = nodes.map(node => ({
       ...node,
+      eventAtLocal: typeof node.eventAtLocal === "string" ? new Date(node.eventAtLocal) : node.eventAtLocal,
       metadata: node.metadata ?? null,
       ingestedAtRemote,
     }));
@@ -60,6 +62,7 @@ export class LogServiceImpl extends LogService {
     const ingestedAtRemote = new Date();
     const enriched: TraceEdge[] = edges.map(edge => ({
       ...edge,
+      eventAtLocal: typeof edge.eventAtLocal === "string" ? new Date(edge.eventAtLocal) : edge.eventAtLocal,
       metadata: edge.metadata ?? null,
       ingestedAtRemote,
     }));

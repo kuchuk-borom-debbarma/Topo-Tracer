@@ -1,13 +1,14 @@
-import { ContainerInput, EdgeInput, NodeInput, TracerConfig } from "./types";
+import { TraceContainerInput, TraceBlockInput, TraceNodeInput, TraceEdgeInput, TracerConfig } from "./types";
 
 export class BatchExporter {
   private baseUrl: string;
   private batchSize: number;
   private flushIntervalMs: number;
 
-  private containers: ContainerInput[] = [];
-  private nodes: NodeInput[] = [];
-  private edges: EdgeInput[] = [];
+  private containers: TraceContainerInput[] = [];
+  private blocks: TraceBlockInput[] = [];
+  private nodes: TraceNodeInput[] = [];
+  private edges: TraceEdgeInput[] = [];
 
   private timer: NodeJS.Timeout | null = null;
   private isFlushing = false;
@@ -35,17 +36,22 @@ export class BatchExporter {
     return this.flush();
   }
 
-  public addContainer(container: ContainerInput) {
+  public addContainer(container: TraceContainerInput) {
     this.containers.push(container);
     this.checkBatchSize();
   }
 
-  public addNode(node: NodeInput) {
+  public addBlock(block: TraceBlockInput) {
+    this.blocks.push(block);
+    this.checkBatchSize();
+  }
+
+  public addNode(node: TraceNodeInput) {
     this.nodes.push(node);
     this.checkBatchSize();
   }
 
-  public addEdge(edge: EdgeInput) {
+  public addEdge(edge: TraceEdgeInput) {
     this.edges.push(edge);
     this.checkBatchSize();
   }
@@ -53,6 +59,7 @@ export class BatchExporter {
   private checkBatchSize() {
     if (
       this.containers.length >= this.batchSize ||
+      this.blocks.length >= this.batchSize ||
       this.nodes.length >= this.batchSize ||
       this.edges.length >= this.batchSize
     ) {
@@ -67,10 +74,16 @@ export class BatchExporter {
     if (this.isFlushing) return;
     
     const containersToFlush = this.containers.splice(0, this.containers.length);
+    const blocksToFlush = this.blocks.splice(0, this.blocks.length);
     const nodesToFlush = this.nodes.splice(0, this.nodes.length);
     const edgesToFlush = this.edges.splice(0, this.edges.length);
 
-    if (containersToFlush.length === 0 && nodesToFlush.length === 0 && edgesToFlush.length === 0) {
+    if (
+      containersToFlush.length === 0 &&
+      blocksToFlush.length === 0 &&
+      nodesToFlush.length === 0 &&
+      edgesToFlush.length === 0
+    ) {
       return;
     }
 
@@ -80,6 +93,9 @@ export class BatchExporter {
       if (containersToFlush.length > 0) {
         await this.post("/telemetry/containers", containersToFlush);
       }
+      if (blocksToFlush.length > 0) {
+        await this.post("/telemetry/blocks", blocksToFlush);
+      }
       if (nodesToFlush.length > 0) {
         await this.post("/telemetry/nodes", nodesToFlush);
       }
@@ -87,8 +103,7 @@ export class BatchExporter {
         await this.post("/telemetry/edges", edgesToFlush);
       }
     } catch (error) {
-      // On failure, we could potentially re-queue, but for telemetry we often prefer dropping to avoid memory leaks.
-      // For a robust SDK, you might implement a retry buffer with a max limit.
+      // On failure, we drop to avoid memory leaks.
       console.warn("[TopoTracer] Failed to flush telemetry batch. Data dropped.", error);
     } finally {
       this.isFlushing = false;
@@ -110,3 +125,4 @@ export class BatchExporter {
     }
   }
 }
+
