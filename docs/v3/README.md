@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
   from_node_id String,
   to_node_id String,
   type String,
+  distance Int32,                -- Pre-compiled logical hop distance between nodes
   metadata String
 ) ENGINE = MergeTree()
 ORDER BY (trace_id, id);
@@ -215,3 +216,19 @@ When drawing a connection wire from $S$ to $T$:
     *   Select the **deepest ancestor ID** that is present in the visible nodes list.
     *   If no ancestor node is visible, snap the endpoint directly to the **closest visible parent Container boundary box** (`container:${id}`).
 3.  If a wire resolves to connect an element to itself, it is omitted to prevent visual loops.
+
+---
+
+### 4.4 Edge Distance Metric & Parametric Midpoint Badges
+To signify execution gaps and hops between non-consecutive operations:
+1.  **Logical Hop Distance:**
+    The materialization worker compiles a global chronological sequence of all containers and nodes in the trace, sorted by their `startTimeUs`. The logical transition distance is calculated as:
+    $$\text{distance} = \max(0, |\text{targetIndex} - \text{sourceIndex}| - 1)$$
+2.  **Dashed Indirect Connections:**
+    *   If $\text{distance} = 0$, the edge is drawn as a **solid line** indicating immediate transition.
+    *   If $\text{distance} > 0$, the edge is drawn as a **dashed line** (`strokeDasharray: "5 4"`) indicating gaps.
+3.  **Cubic Parametric Midpoint Capsule:**
+    For cubic Bezier curves, the midpoint $(X_m, Y_m)$ at parameter $t = 0.5$ is calculated as:
+    $$X_m = 0.125 \cdot X_{\text{from}} + 0.375 \cdot CX_1 + 0.375 \cdot CX_2 + 0.125 \cdot X_{\text{to}}$$
+    $$Y_m = \frac{Y_{\text{from}} + Y_{\text{to}}}{2}$$
+    A glassmorphic capsule badge displaying `+{distance} steps` is rendered at this midpoint.
