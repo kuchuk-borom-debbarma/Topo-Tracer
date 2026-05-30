@@ -1121,51 +1121,73 @@ body {
 
 .container-card {
   position: absolute;
-  border-radius: var(--radius-lg);
-  background: rgba(11, 14, 22, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-left-width: 4px;          /* depth-colored left border set inline */
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  border-radius: 12px;
+  background: rgba(9, 11, 20, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left-width: 5px;          /* depth-colored, set inline */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
   z-index: 3;
-  transition: opacity 150ms ease, box-shadow 150ms ease;
+  transition: opacity 180ms ease, box-shadow 180ms ease;
 }
 
 .container-card--highlighted {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-right-color: rgba(255, 255, 255, 0.1);
+  border-top-color: rgba(255, 255, 255, 0.1);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
+/* 2-row header layout */
 .container-card-header {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 14px;
-  height: 52px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 13px 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  min-height: 68px;
+}
+
+/* Row 1: icon + name */
+.container-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
 }
 
 .container-card-icon {
-  font-size: 14px;
-  line-height: 1;
+  font-size: 13px;
+  line-height: 1.35;
   flex-shrink: 0;
-  opacity: 0.85;
+  opacity: 0.9;
+  margin-top: 1px;
 }
 
 .container-card-name {
   font-family: var(--font-mono);
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.01em;
+  line-height: 1.35;
+  /* allow 2-line wrap for long names */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
+/* Row 2: depth chip + type pill */
+.container-card-pills {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 20px;   /* indent to align with name */
+}
+
+/* keep .container-card-meta for any legacy usage */
 .container-card-meta {
   display: flex;
   align-items: center;
@@ -1177,11 +1199,11 @@ body {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  padding: 2px 6px;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
   border-radius: var(--radius-full);
   border: 1px solid;
-  /* color, background, borderColor set inline based on depth */
+  white-space: nowrap;
 }
 
 .container-type-pill {
@@ -1191,11 +1213,11 @@ body {
   letter-spacing: 0.06em;
   color: var(--text-muted);
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   padding: 2px 7px;
   border-radius: var(--radius-full);
   white-space: nowrap;
-  max-width: 80px;
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1227,7 +1249,7 @@ body {
 .container-card-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   padding: 10px 10px 12px;
   overflow: visible;
 }
@@ -1236,61 +1258,69 @@ body {
   font-size: 11px;
   color: var(--text-disabled);
   text-align: center;
-  padding: 8px 0;
+  padding: 12px 0;
   font-style: italic;
+  opacity: 0.6;
 }
 
 /* ============================================================
-   NODE CARD  — Full-width card replacing the old node-row
+   NODE CARD  — Full-width timeline card
    ============================================================ */
 
 .node-card {
   display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: 8px;
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left-width: 3px;          /* node-type color set inline */
+  border-radius: 7px;
   cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  min-height: 58px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
   overflow: hidden;
-  position: relative;
-  min-height: 68px;
 }
 
 .node-card:hover,
 .node-card--hovered {
-  background: rgba(255, 255, 255, 0.055);
-  border-color: rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.065);
+  border-right-color: rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.12);
+  border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
 .node-card--selected {
-  background: hsla(258, 85%, 66%, 0.08) !important;
-  border-color: hsla(258, 85%, 66%, 0.4) !important;
-  box-shadow: 0 0 12px hsla(258, 85%, 66%, 0.12);
+  background: hsla(258, 85%, 66%, 0.1) !important;
+  border-left-color: hsl(258, 85%, 68%) !important;
+  border-right-color: hsla(258, 85%, 66%, 0.3) !important;
+  border-top-color: hsla(258, 85%, 66%, 0.3) !important;
+  border-bottom-color: hsla(258, 85%, 66%, 0.3) !important;
 }
 
+/* The actual flex row inside the card */
 .node-card-main {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 10px 10px 10px 12px;
+  gap: 10px;
+  padding: 9px 10px 9px 11px;
   flex: 1;
-  min-height: 58px;
+  min-width: 0;
 }
 
 .node-type-badge {
   font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 3px 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 4px 7px;
   border-radius: 5px;
   border: 1px solid;
-  min-width: 34px;
+  min-width: 36px;
   text-align: center;
   flex-shrink: 0;
-  line-height: 1.3;
-  /* color, background, borderColor set inline via getNodeColor */
+  line-height: 1.2;
 }
 
 .node-card-content {
@@ -1299,13 +1329,14 @@ body {
 }
 
 .node-card-name {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.3;
+  line-height: 1.35;
+  letter-spacing: 0.005em;
 }
 
 .node-card-footer {
@@ -1318,13 +1349,15 @@ body {
 
 .node-card-duration {
   font-family: var(--font-mono);
-  font-size: 9.5px;
-  color: var(--status-success);
-  background: hsla(142, 71%, 45%, 0.1);
-  border: 1px solid hsla(142, 71%, 45%, 0.2);
+  font-size: 9px;
+  font-weight: 600;
+  color: hsl(142, 71%, 58%);
+  background: hsla(142, 71%, 45%, 0.12);
+  border: 1px solid hsla(142, 71%, 45%, 0.22);
   padding: 1px 6px;
   border-radius: 4px;
-  line-height: 1.4;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
 }
 
 .node-card-tag {

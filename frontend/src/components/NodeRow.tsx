@@ -23,35 +23,31 @@ export function NodeCard({ node, isHovered, onHover, onSelect, isSelected }: Pro
       onMouseLeave={() => onHover?.(null)}
       onClick={() => onSelect?.(isSelected ? null : node)}
       title={node.name}
+      style={{ borderLeftColor: color }}
     >
-      {/* Left: type badge */}
-      <span
-        className="node-type-badge"
-        style={{
-          color,
-          background: `color-mix(in srgb, ${color} 15%, transparent)`,
-          borderColor: `color-mix(in srgb, ${color} 35%, transparent)`,
-        }}
-      >
-        {typeLabel}
-      </span>
+      <div className="node-card-main">
+        {/* Type badge */}
+        <span
+          className="node-type-badge"
+          style={{
+            color,
+            background: `color-mix(in srgb, ${color} 18%, transparent)`,
+            borderColor: `color-mix(in srgb, ${color} 40%, transparent)`,
+          }}
+        >
+          {typeLabel}
+        </span>
 
-      {/* Center: name + duration */}
-      <div className="node-card-content">
-        <div className="node-card-name">{node.name}</div>
-        {duration && (
-          <div className="node-card-footer">
-            <span className="node-card-duration">{duration}</span>
-          </div>
-        )}
+        {/* Name + duration */}
+        <div className="node-card-content">
+          <div className="node-card-name">{node.name}</div>
+          {duration && (
+            <div className="node-card-footer">
+              <span className="node-card-duration">{duration}</span>
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* Right: color indicator */}
-      <div
-        className="node-card-indicator"
-        style={{ background: color }}
-        aria-hidden="true"
-      />
     </div>
   );
 }

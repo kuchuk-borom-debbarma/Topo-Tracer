@@ -4,13 +4,13 @@ import type { ReadContainer, ReadNode, ReadEdge } from "../api/client";
 // Layout Constants
 // ============================================================
 export const LAYOUT = {
-  COL_W: 280,           // container card width
-  COL_GAP: 56,          // horizontal gap between columns (for arrows)
-  NODE_H: 62,           // fixed node card height
+  COL_W: 320,           // container card width
+  COL_GAP: 52,          // horizontal gap between columns (for arrows)
+  NODE_H: 58,           // fixed node card height
   NODE_GAP: 5,          // gap between node cards
-  CONTAINER_PAD_TOP: 8, // padding above first node inside container
-  CONTAINER_PAD_BOT: 10,// padding below last node inside container
-  HEADER_H: 48,         // container header height
+  CONTAINER_PAD_TOP: 10,// padding above first node inside container
+  CONTAINER_PAD_BOT: 12,// padding below last node inside container
+  HEADER_H: 68,         // container header height (2-row: title + meta)
   CANVAS_PAD: 48,       // outer canvas padding
 } as const;
 
