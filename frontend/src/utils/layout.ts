@@ -797,6 +797,10 @@ export function computeLayout(
 
   const wires: EdgeWire[] = [];
   for (const edge of edges) {
+    const isFromContainer = visibleContainerIds.has(edge.fromNodeId);
+    const isToContainer = visibleContainerIds.has(edge.toNodeId);
+    if (isFromContainer && isToContainer) continue;
+
     const fromAnchor = resolveAnchor(edge.fromNodeId, true);
     const toAnchor = resolveAnchor(edge.toNodeId, false);
     if (!fromAnchor || !toAnchor) continue;
