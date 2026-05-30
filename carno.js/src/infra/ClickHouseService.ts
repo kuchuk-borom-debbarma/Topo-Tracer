@@ -89,12 +89,78 @@ export class ClickHouseService {
         ORDER BY (trace_id, id, eventAtLocal);
       `,
     });
+
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.read_blocks (
+          id String,
+          trace_id String,
+          container_id String,
+          parent_block_id String,
+          calling_node_id String,
+          name String,
+          type String,
+          absolute_depth UInt16,
+          start_time_us Int64,
+          duration_us Nullable(Int64),
+          metadata String
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id, absolute_depth, start_time_us);
+      `,
+    });
+
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.read_nodes (
+          id String,
+          trace_id String,
+          block_id String,
+          name String,
+          type String,
+          zoom_level UInt8,
+          local_sequence UInt32,
+          start_time_us Int64,
+          duration_us Nullable(Int64),
+          metadata String
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id, block_id, local_sequence);
+      `,
+    });
+
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
+          id String,
+          edge_id String,
+          trace_id String,
+          from_block_id String,
+          from_node_id String,
+          to_block_id String,
+          to_node_id String
+        ) ENGINE = MergeTree()
+        ORDER BY (trace_id, id);
+      `,
+    });
+
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS toco_tracer.trace_metadata (
+          trace_id String,
+          is_zoom_ready UInt8,
+          max_available_depth UInt16,
+          materialized_offset UInt32
+        ) ENGINE = ReplacingMergeTree()
+        ORDER BY trace_id;
+      `,
+    });
   }
 
   private async resetSchema(): Promise<void> {
     const tables = [
       "trace_metadata",
       "read_edges",
+      "read_nodes",
+      "read_blocks",
       "edge_egress_ancestry",
       "node_ancestry",
       "v2_logs",
@@ -114,3 +180,4 @@ export class ClickHouseService {
     }
   }
 }
+

@@ -47,3 +47,48 @@ export type TraceContainerInput = Omit<TraceContainer, "createdAtRemote">;
 export type TraceBlockInput = TraceBlock;
 export type TraceNodeInput = Omit<TraceNode, "ingestedAtRemote">;
 export type TraceEdgeInput = Omit<TraceEdge, "ingestedAtRemote">;
+
+export type ReadBlock = {
+  id: string;
+  traceId: string;
+  containerId: string;
+  parentBlockId: string;
+  callingNodeId: string;
+  name: string;
+  type: string;
+  absoluteDepth: number;
+  startTimeUs: number;
+  durationUs: number | null;
+  metadata?: JsonValue;
+};
+
+export type ReadNode = {
+  id: string;
+  traceId: string;
+  blockId: string;
+  name: string;
+  type: string;
+  zoomLevel: number;
+  localSequence: number;
+  startTimeUs: number;
+  durationUs: number | null;
+  metadata?: JsonValue;
+};
+
+export type ReadEdge = {
+  id: string;
+  edgeId: string;
+  traceId: string;
+  fromBlockId: string;
+  fromNodeId: string;
+  toBlockId: string;
+  toNodeId: string;
+};
+
+export type TraceMetadata = {
+  traceId: string;
+  isZoomReady: boolean;
+  maxAvailableDepth: number;
+  materializedOffset: number;
+};
+
