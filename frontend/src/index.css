@@ -604,6 +604,54 @@ body {
   z-index: 1;
 }
 
+/* ── Diagram Legend ─────────────────────────────────────────── */
+.diagram-legend {
+  position: sticky;
+  bottom: 16px;
+  left: calc(100% - 224px);
+  width: 208px;
+  z-index: 50;
+  background: rgba(9, 11, 20, 0.93);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px 11px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  float: right;
+  margin-right: 16px;
+  margin-top: -48px;
+}
+
+.diagram-legend-title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+
+.diagram-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.diagram-legend-svg {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.diagram-legend-item span {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* Band separator — horizontal rule between independent root-service bands */
 .band-separator {
   position: absolute;

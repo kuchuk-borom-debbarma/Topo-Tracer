@@ -236,7 +236,40 @@ export function TraceDetailPage() {
       )}
 
       {/* Canvas */}
-      <div className="flow-canvas-wrapper">
+      <div className="flow-canvas-wrapper" style={{ position: "relative" }}>
+        {/* Legend — always visible, bottom-right of the wrapper */}
+        <div className="diagram-legend">
+          <div className="diagram-legend-title">Legend</div>
+          <div className="diagram-legend-item">
+            <svg width="36" height="12" className="diagram-legend-svg">
+              <line x1="0" y1="6" x2="30" y2="6" stroke="hsl(258,85%,68%)" strokeWidth="1.5" />
+              <polygon points="28,3 36,6 28,9" fill="hsl(258,85%,68%)" opacity="0.75" />
+            </svg>
+            <span>Parent → child (hierarchy)</span>
+          </div>
+          <div className="diagram-legend-item">
+            <svg width="36" height="12" className="diagram-legend-svg">
+              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" />
+              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
+            </svg>
+            <span>Direct call</span>
+          </div>
+          <div className="diagram-legend-item">
+            <svg width="36" height="12" className="diagram-legend-svg">
+              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" strokeDasharray="5 3" />
+              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
+            </svg>
+            <span>Indirect call (+N steps)</span>
+          </div>
+          <div className="diagram-legend-item">
+            <svg width="36" height="12" className="diagram-legend-svg">
+              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(280,80%,72%)" strokeWidth="2" />
+              <polygon points="26,3 34,6 26,9" fill="hsl(280,80%,72%)" opacity="0.9" />
+            </svg>
+            <span>Cross-service call</span>
+          </div>
+        </div>
+
         {isLoading ? (
           <div
             className="loading-overlay"
