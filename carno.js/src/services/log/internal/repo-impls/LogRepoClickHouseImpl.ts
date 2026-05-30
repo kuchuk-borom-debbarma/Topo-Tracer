@@ -126,6 +126,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
         name: c.name,
         type: c.type,
         tags: c.tags,
+        parentage: c.parentage,
         start_time_us: c.startTimeUs,
         duration_us: c.durationUs,
         metadata: stringifyJson(c.metadata),
@@ -210,7 +211,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
 
   override async fetchReadContainers(traceId: string): Promise<ReadContainer[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, parent_container_id as parentContainerId, name, type, tags, start_time_us as startTimeUs, duration_us as durationUs, metadata FROM toco_tracer.read_containers WHERE trace_id = {traceId: String} ORDER BY start_time_us ASC`,
+      query: `SELECT id, trace_id as traceId, parent_container_id as parentContainerId, name, type, tags, parentage, start_time_us as startTimeUs, duration_us as durationUs, metadata FROM toco_tracer.read_containers WHERE trace_id = {traceId: String} ORDER BY start_time_us ASC`,
       query_params: { traceId },
       format: "JSONEachRow",
     });

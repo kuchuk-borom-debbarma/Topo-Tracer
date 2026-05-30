@@ -97,6 +97,7 @@ export class ClickHouseService {
           name String,
           type String,
           tags Array(String),
+          parentage Array(String),
           start_time_us Int64,
           duration_us Nullable(Int64),
           metadata String

@@ -184,8 +184,8 @@ export class TraceMaterializationWorker {
 
     for (const cid of uniqueContainerIds) {
       const containerEvents = containers.filter(c => c.id === cid);
-      if (!containerEvents.length) continue;
       const primary = containerEvents[0];
+      if (!primary) continue;
 
       // Merge tags across all events of this container
       const tagsSet = new Set<string>();
@@ -203,6 +203,7 @@ export class TraceMaterializationWorker {
         name: primary.name,
         type: primary.type,
         tags,
+        parentage: getContainerParentage(cid),
         startTimeUs: timing.start,
         durationUs: durationUs || null,
         metadata: null,
@@ -280,8 +281,11 @@ export class TraceMaterializationWorker {
     for (const [cid, cNodes] of nodesByContainer.entries()) {
       cNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
       for (let i = 0; i < cNodes.length; i++) {
-        cNodes[i].localSequence = i;
-        readNodesToInsert.push(cNodes[i]);
+        const node = cNodes[i];
+        if (node) {
+          node.localSequence = i;
+          readNodesToInsert.push(node);
+        }
       }
     }
 
@@ -303,8 +307,8 @@ export class TraceMaterializationWorker {
 
     for (const eid of uniqueEdgeIds) {
       const edgeEvents = rawEdges.filter(e => e.id === eid);
-      if (!edgeEvents.length) continue;
       const primary = edgeEvents[0];
+      if (!primary) continue;
 
       const fromIdx = getChronoIndex(primary.fromNodeId);
       const toIdx = getChronoIndex(primary.toNodeId);

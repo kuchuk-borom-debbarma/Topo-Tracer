@@ -223,11 +223,13 @@ describe("V3 Telemetry compilation and read path integration", () => {
     expect(rootC.parentContainerId).toBeNull();
     expect(rootC.startTimeUs).toBe(1000 * 1000);
     expect(rootC.durationUs).toBe(8000 * 1000); // 9000 - 1000
+    expect(rootC.parentage).toEqual(["container_root"]);
 
     expect(childC.name).toBe("Payment API");
     expect(childC.parentContainerId).toBe("container_root");
     expect(childC.startTimeUs).toBe(3000 * 1000);
     expect(childC.durationUs).toBe(5000 * 1000); // 8000 - 3000
+    expect(childC.parentage).toEqual(["container_root", "node_call_payment", "container_child"]);
 
     // Verify Compiled Nodes
     expect(layout!.nodes.length).toBe(3);
@@ -256,9 +258,10 @@ describe("V3 Telemetry compilation and read path integration", () => {
 
     // Verify Compiled Edges
     expect(layout!.edges.length).toBe(1);
-    expect(layout!.edges[0].id).toBe("edge_payment_rpc");
-    expect(layout!.edges[0].fromNodeId).toBe("node_call_payment");
-    expect(layout!.edges[0].toNodeId).toBe("node_charge");
-    expect(layout!.edges[0].distance).toBe(1);
+    const edge = layout!.edges[0]!;
+    expect(edge.id).toBe("edge_payment_rpc");
+    expect(edge.fromNodeId).toBe("node_call_payment");
+    expect(edge.toNodeId).toBe("node_charge");
+    expect(edge.distance).toBe(1);
   });
 });

@@ -1,5 +1,5 @@
 import { Service } from "@carno.js/core";
-import { LogService, type TraceListResponse } from "../LogService";
+import { LogService } from "../LogService";
 import type {
   TraceContainer,
   TraceContainerInput,
@@ -8,6 +8,7 @@ import type {
   TraceNode,
   TraceNodeInput,
   TraceLayoutResponse,
+  TraceListResponse,
 } from "../types";
 import { LogRepo } from "./LogRepo";
 import { TraceMaterializationWorker } from "./worker/TraceMaterializationWorker";
