@@ -106,9 +106,6 @@ export class Tracer {
       containerId: this.getContainerId(),
       name,
       nodeType,
-      depthIndex: 0,
-      localDepthIndex: 0,
-      group
     });
   }
 
@@ -134,10 +131,6 @@ export class Tracer {
       name,
       nodeType,
       parentNodeId,
-      depthIndex: parentDepthIndex + 1,
-      localDepthIndex: 0,
-      group,
-      scheduledAtLocal,
       overrideId,        // locks _blockId = overrideId so egress edges resolve correctly
     });
   }

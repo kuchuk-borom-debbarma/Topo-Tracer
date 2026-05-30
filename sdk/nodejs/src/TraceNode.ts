@@ -9,18 +9,11 @@ export class TraceNode {
   public parentNodeId?: string;
   public name: string;
   public nodeType: NodeType | string;
-  public depthIndex: number;
-  public localDepthIndex: number;
-  public group?: string;
+  public depthIndex: number = 0;
   
   public metadata?: any;
   public initiatedAtLocal: Date;
-  public processedAtLocal?: Date;
   public completedAtLocal?: Date;
-  public scheduledAtLocal?: Date;
-  public cpuActiveDurationUs?: number;
-  public suspendedAtLocal: Date[] = [];
-  public resumedAtLocal: Date[] = [];
   public incomingEdge?: ActiveEdge;
 
   // Immutable block identity — never changes even when this.id is mutated externally
@@ -35,7 +28,6 @@ export class TraceNode {
   
   private isFinished = false;
   private activeEdges: ActiveEdge[] = [];
-  private startCpuUsage: NodeJS.CpuUsage;
 
   constructor(opts: {
     traceId: string;
@@ -43,8 +35,8 @@ export class TraceNode {
     name: string;
     nodeType: NodeType | string;
     parentNodeId?: string;
-    depthIndex: number;
-    localDepthIndex: number;
+    depthIndex?: number;
+    localDepthIndex?: number;
     group?: string;
     scheduledAtLocal?: Date;
     /** Override the node/block ID (e.g. to match a pre-assigned targetNodeId from the caller). */
@@ -59,12 +51,8 @@ export class TraceNode {
     this.name = opts.name;
     this.nodeType = opts.nodeType;
     this.parentNodeId = opts.parentNodeId;
-    this.depthIndex = opts.depthIndex;
-    this.localDepthIndex = opts.localDepthIndex;
-    this.group = opts.group || `${opts.containerId}_${opts.depthIndex}`;
-    this.scheduledAtLocal = opts.scheduledAtLocal;
+    this.depthIndex = opts.depthIndex || 0;
     this.initiatedAtLocal = new Date();
-    this.startCpuUsage = process.cpuUsage();
 
     // 1. Export the TraceBlock using the immutable _blockId
     Tracer.exportBlock({
@@ -101,9 +89,6 @@ export class TraceNode {
       nodeType,
       parentNodeId: this._blockId,     // Use immutable parent blockId
       depthIndex: this.depthIndex + 1,
-      localDepthIndex: this.localDepthIndex + 1,
-      group,
-      scheduledAtLocal
     });
 
     // Wire back the parent's immutable block ID for Call Finished attribution
@@ -175,13 +160,9 @@ export class TraceNode {
       nodeType: opts.nodeType,
       parentNodeId: this._blockId,
       depthIndex: this.depthIndex + 1,
-      localDepthIndex: 0,
-      group: opts.group,
-      scheduledAtLocal: opts.scheduledAtLocal
     });
 
     childNode._parentBlockId = this._blockId;
-    childNode.markProcessed();
 
     const callerNodeId = childNode._blockId + "_caller";
     const edgeType = opts.edgeType || EdgeType.HTTP_REQUEST;
@@ -227,7 +208,6 @@ export class TraceNode {
     group?: string
   ): Promise<T> {
     const childNode = this.startChild(name, nodeType, group);
-    childNode.markProcessed();
     try {
       return await fn(childNode);
     } catch (error: any) {
@@ -265,27 +245,17 @@ export class TraceNode {
     }
   }
 
-  public suspend() { this.suspendedAtLocal.push(new Date()); }
-  public resume()  { this.resumedAtLocal.push(new Date()); }
-
-  public markProcessed() {
-    if (!this.processedAtLocal) {
-      this.processedAtLocal = new Date();
-    }
-  }
+  // Backward-compatibility empty helpers
+  public suspend() {}
+  public resume()  {}
+  public markProcessed() {}
 
   public markCompleted(metadata?: any) {
     if (this.isFinished) return;
     this.isFinished = true;
     
-    if (!this.processedAtLocal) {
-      this.processedAtLocal = new Date();
-    }
     this.completedAtLocal = new Date();
     this.metadata = metadata;
-
-    const elapsedCpu = process.cpuUsage(this.startCpuUsage);
-    this.cpuActiveDurationUs = elapsedCpu.user + elapsedCpu.system;
 
     for (const edge of this.activeEdges) {
       edge.autoComplete();
