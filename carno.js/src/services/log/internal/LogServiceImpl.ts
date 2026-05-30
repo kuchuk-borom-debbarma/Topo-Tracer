@@ -166,9 +166,9 @@ export class LogServiceImpl extends LogService {
 
       for (const edge of edges) {
         const fromId = resolveAnchorId(edge.fromNodeId);
-        const toId = resolveAnchorId(edge.toContainerId);
+        const toId = resolveAnchorId(edge.toId);
         if (fromId && toId && fromId !== toId) {
-          const isSnapped = fromId !== edge.fromNodeId || toId !== edge.toContainerId;
+          const isSnapped = fromId !== edge.fromNodeId || toId !== edge.toId;
           const connKey = `${fromId}->${toId}`;
 
           let distance = 0;
@@ -176,12 +176,15 @@ export class LogServiceImpl extends LogService {
             distance = Math.max(1, edge.distance);
           }
 
+          const resolvedToType = visibleContainerIds.has(toId) ? "container" : "node";
+
           if (!seenConnections.has(connKey)) {
             seenConnections.add(connKey);
             snappedEdges.push({
               ...edge,
               fromNodeId: fromId,
-              toContainerId: toId,
+              toId,
+              toType: resolvedToType,
               distance,
             });
           }

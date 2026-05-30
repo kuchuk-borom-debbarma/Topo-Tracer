@@ -29,7 +29,8 @@ export type TraceEdge = {
   id: string;
   traceId: string;
   fromNodeId: string;
-  toContainerId: string;
+  toId: string;
+  toType: "node" | "container";
   type: string;
   timestamp: Date;
 };
@@ -61,7 +62,8 @@ export type TraceEdgeInput = {
   id: string;
   traceId: string;
   fromNodeId: string;
-  toContainerId: string;
+  toId: string;
+  toType: "node" | "container";
   type: string;
   timestamp: number; // UNIX timestamp in ms
 };
@@ -97,7 +99,8 @@ export type ReadEdge = {
   id: string;
   traceId: string;
   fromNodeId: string;
-  toContainerId: string;
+  toId: string;
+  toType: "node" | "container";
   type: string;
   distance: number;
   metadata?: JsonValue;

@@ -86,7 +86,8 @@ export type ParentArrow = {
 export type EdgeWire = {
   edge: ReadEdge;
   fromNodeId: string;
-  toContainerId: string;
+  toId: string;
+  toType: "node" | "container";
   fromX: number;
   fromY: number;
   toX: number;
@@ -204,48 +205,33 @@ export function computeLayout(
       containerHeights.set(c.id, height);
     }
 
-    // Group containers by rank
+    // Calculate effective parentage map for visible containers
+    const effectiveParentMap = new Map<string, string | null>();
+    for (const c of hosts) {
+      let pid = c.parentContainerId;
+      if (pid && !visibleContainerIds.has(pid)) {
+        const parentNode = nodes.find((n) => n.id === pid);
+        if (parentNode) {
+          pid = parentNode.containerId;
+        }
+      }
+      while (pid && !visibleContainerIds.has(pid)) {
+        const p = containers.find((x) => x.id === pid);
+        pid = p ? p.parentContainerId : null;
+      }
+      effectiveParentMap.set(c.id, pid ?? null);
+    }
+
+    // Group containers by rank (nesting depth)
     const containerRanks = new Map<string, number>();
     for (const c of hosts) {
-      containerRanks.set(c.id, 0); // Initially rank 0
-    }
-
-    // Helper to resolve any Node ID or Container ID to its Container ID primitive
-    const resolveContainerId = (id: string): string | null => {
-      if (visibleNodeIds.has(id)) {
-        const node = nodes.find(n => n.id === id);
-        return node ? node.containerId : null;
+      let depth = 0;
+      let pid = effectiveParentMap.get(c.id);
+      while (pid) {
+        depth++;
+        pid = effectiveParentMap.get(pid);
       }
-      return visibleContainerIds.has(id) ? id : null;
-    };
-
-    // Extract unique container-to-container dependency edges based on node call edges
-    const containerEdges: Array<{ from: string; to: string }> = [];
-    const containerEdgeSet = new Set<string>();
-    for (const edge of edges) {
-      const fromContainerId = resolveContainerId(edge.fromNodeId);
-      const toContainerId = resolveContainerId(edge.toContainerId);
-      if (fromContainerId && toContainerId && fromContainerId !== toContainerId) {
-        const key = `${fromContainerId}->${toContainerId}`;
-        if (!containerEdgeSet.has(key)) {
-          containerEdgeSet.add(key);
-          containerEdges.push({ from: fromContainerId, to: toContainerId });
-        }
-      }
-    }
-
-    // Relaxation loop for topological ranking of containers
-    for (let iter = 0; iter < hosts.length; iter++) {
-      let changed = false;
-      for (const edge of containerEdges) {
-        const fromRank = containerRanks.get(edge.from) ?? 0;
-        const toRank = containerRanks.get(edge.to) ?? 0;
-        if (toRank < fromRank + 1) {
-          containerRanks.set(edge.to, fromRank + 1);
-          changed = true;
-        }
-      }
-      if (!changed) break;
+      containerRanks.set(c.id, depth);
     }
 
     // Group service containers by rank
@@ -330,47 +316,61 @@ export function computeLayout(
 
     // Connect edges
     const resolveAnchor = (
-      nodeId: string,
+      id: string,
+      toType: "node" | "container",
       isSource: boolean
     ): { x: number; y: number } | null => {
-      let resolvedId = nodeId;
-
-      if (visibleContainerIds.has(nodeId)) {
-        const treeNodes = visibleNodes.filter((n) => n.containerId === nodeId);
-        if (treeNodes.length > 0) {
-          treeNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
-          const targetNode = isSource ? treeNodes[treeNodes.length - 1] : treeNodes[0];
-          resolvedId = targetNode.id;
+      if (toType === "container") {
+        if (visibleContainerIds.has(id)) {
+          const treeNodes = visibleNodes.filter((n) => n.containerId === id);
+          if (treeNodes.length > 0) {
+            treeNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+            const targetNode = isSource ? treeNodes[treeNodes.length - 1] : treeNodes[0];
+            const np = nodePositions.get(targetNode.id);
+            if (np) {
+              return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
+            }
+          }
+          const cl = containerLayoutsMap.get(id);
+          if (cl) {
+            return {
+              x: isSource ? cl.left + cl.width : cl.left,
+              y: cl.top + HEADER_H / 2,
+            };
+          }
         }
-      }
-
-      if (visibleNodeIds.has(resolvedId)) {
-        const np = nodePositions.get(resolvedId)!;
-        return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
-      }
-      if (visibleContainerIds.has(resolvedId)) {
-        const cl = containerLayoutsMap.get(resolvedId)!;
-        return {
-          x: isSource ? cl.left + cl.width : cl.left,
-          y: cl.top + HEADER_H / 2,
-        };
+      } else { // type === "node"
+        if (visibleNodeIds.has(id)) {
+          const np = nodePositions.get(id);
+          if (np) {
+            return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
+          }
+        }
       }
       return null;
     };
 
     const wires: EdgeWire[] = [];
     for (const edge of edges) {
-      const fromAnchor = resolveAnchor(edge.fromNodeId, true);
-      const toAnchor = resolveAnchor(edge.toContainerId, false);
+      const fromAnchor = resolveAnchor(edge.fromNodeId, "node", true);
+      const toAnchor = resolveAnchor(edge.toId, edge.toType, false);
       if (!fromAnchor || !toAnchor) continue;
 
       const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
-      const isCrossContainer = !!(fromNode && fromNode.containerId !== edge.toContainerId);
+      let toContainerId: string | null = null;
+      if (edge.toType === "container") {
+        toContainerId = edge.toId;
+      } else {
+        const targetNode = nodes.find(n => n.id === edge.toId);
+        toContainerId = targetNode ? targetNode.containerId : null;
+      }
+      const isCrossContainer = !!(fromNode && toContainerId && fromNode.containerId !== toContainerId);
 
       wires.push({
         edge,
         fromNodeId: edge.fromNodeId,
-        toContainerId: edge.toContainerId,
+        toId: edge.toId,
+        toType: edge.toType,
         fromX: fromAnchor.x,
         fromY: fromAnchor.y,
         toX: toAnchor.x,
@@ -439,13 +439,22 @@ export function computeLayout(
         if (!visibleNodeIds.has(edge.fromNodeId)) continue;
         const fromRank = nodeRanks.get(edge.fromNodeId) ?? 0;
 
-        // Propagate rank to all visible nodes in the target container
-        const targetNodes = visibleNodes.filter(n => n.containerId === edge.toContainerId);
-        for (const tNode of targetNodes) {
-          const toRank = nodeRanks.get(tNode.id) ?? 0;
-          if (toRank < fromRank + 1) {
-            nodeRanks.set(tNode.id, fromRank + 1);
-            changed = true;
+        if (edge.toType === "container") {
+          const targetNodes = visibleNodes.filter(n => n.containerId === edge.toId);
+          for (const tNode of targetNodes) {
+            const toRank = nodeRanks.get(tNode.id) ?? 0;
+            if (toRank < fromRank + 1) {
+              nodeRanks.set(tNode.id, fromRank + 1);
+              changed = true;
+            }
+          }
+        } else { // type === "node"
+          if (visibleNodeIds.has(edge.toId)) {
+            const toRank = nodeRanks.get(edge.toId) ?? 0;
+            if (toRank < fromRank + 1) {
+              nodeRanks.set(edge.toId, fromRank + 1);
+              changed = true;
+            }
           }
         }
       }
@@ -507,36 +516,52 @@ export function computeLayout(
 
     // Connect edges
     const resolveAnchor = (
-      nodeId: string,
+      id: string,
+      toType: "node" | "container",
       isSource: boolean
     ): { x: number; y: number } | null => {
-      if (visibleNodeIds.has(nodeId)) {
-        const np = nodePositions.get(nodeId)!;
-        return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
-      }
-      if (visibleContainerIds.has(nodeId)) {
-        const cl = containerLayoutsMap.get(nodeId)!;
-        return {
-          x: isSource ? cl.left + cl.width : cl.left,
-          y: cl.top + 34 / 2,
-        };
+      if (toType === "container") {
+        if (visibleContainerIds.has(id)) {
+          const cl = containerLayoutsMap.get(id);
+          if (cl) {
+            return {
+              x: isSource ? cl.left + cl.width : cl.left,
+              y: cl.top + 34 / 2,
+            };
+          }
+        }
+      } else { // type === "node"
+        if (visibleNodeIds.has(id)) {
+          const np = nodePositions.get(id);
+          if (np) {
+            return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
+          }
+        }
       }
       return null;
     };
 
     const wires: EdgeWire[] = [];
     for (const edge of edges) {
-      const fromAnchor = resolveAnchor(edge.fromNodeId, true);
-      const toAnchor = resolveAnchor(edge.toContainerId, false);
+      const fromAnchor = resolveAnchor(edge.fromNodeId, "node", true);
+      const toAnchor = resolveAnchor(edge.toId, edge.toType, false);
       if (!fromAnchor || !toAnchor) continue;
 
       const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
-      const isCrossContainer = !!(fromNode && fromNode.containerId !== edge.toContainerId);
+      let toContainerId: string | null = null;
+      if (edge.toType === "container") {
+        toContainerId = edge.toId;
+      } else {
+        const targetNode = nodes.find(n => n.id === edge.toId);
+        toContainerId = targetNode ? targetNode.containerId : null;
+      }
+      const isCrossContainer = !!(fromNode && toContainerId && fromNode.containerId !== toContainerId);
 
       wires.push({
         edge,
         fromNodeId: edge.fromNodeId,
-        toContainerId: edge.toContainerId,
+        toId: edge.toId,
+        toType: edge.toType,
         fromX: fromAnchor.x,
         fromY: fromAnchor.y,
         toX: toAnchor.x,
@@ -714,56 +739,59 @@ export function computeLayout(
   }
 
   const resolveAnchor = (
-    nodeId: string,
+    id: string,
+    toType: "node" | "container",
     isSource: boolean
   ): { x: number; y: number } | null => {
-    let resolvedId = nodeId;
-
-    if (visibleContainerIds.has(nodeId)) {
-      // Find all visible containers in this container's subtree
-      const subContainers = new Set<string>([nodeId]);
-      let added = true;
-      while (added) {
-        added = false;
-        for (const c of visibleContainers) {
-          const parent = effectiveParentMap.get(c.id);
-          if (parent && subContainers.has(parent) && !subContainers.has(c.id)) {
-            subContainers.add(c.id);
-            added = true;
+    if (toType === "container") {
+      if (visibleContainerIds.has(id)) {
+        // Find all visible containers in this container's subtree
+        const subContainers = new Set<string>([id]);
+        let added = true;
+        while (added) {
+          added = false;
+          for (const c of visibleContainers) {
+            const parent = effectiveParentMap.get(c.id);
+            if (parent && subContainers.has(parent) && !subContainers.has(c.id)) {
+              subContainers.add(c.id);
+              added = true;
+            }
           }
         }
-      }
 
-      const treeNodes = visibleNodes.filter((n) => subContainers.has(n.containerId));
-      if (treeNodes.length > 0) {
-        treeNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
-        const targetNode = isSource ? treeNodes[treeNodes.length - 1] : treeNodes[0];
-        resolvedId = targetNode.id;
-      }
-    }
+        const treeNodes = visibleNodes.filter((n) => subContainers.has(n.containerId));
+        if (treeNodes.length > 0) {
+          treeNodes.sort((a, b) => a.startTimeUs - b.startTimeUs);
+          const targetNode = isSource ? treeNodes[treeNodes.length - 1] : treeNodes[0];
+          const np = nodePositions.get(targetNode.id);
+          if (np) {
+            return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
+          }
+        }
 
-    if (visibleNodeIds.has(resolvedId)) {
-      const np = nodePositions.get(resolvedId)!;
-      return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
-    }
-    if (visibleContainerIds.has(resolvedId)) {
-      const cl = containerLayoutsMap.get(resolvedId)!;
-      return {
-        x: isSource ? cl.left + cl.width : cl.left,
-        y: cl.top + HEADER_H / 2,
-      };
+        const cl = containerLayoutsMap.get(id);
+        if (cl) {
+          return {
+            x: isSource ? cl.left + cl.width : cl.left,
+            y: cl.top + HEADER_H / 2,
+          };
+        }
+      }
+    } else { // type === "node"
+      if (visibleNodeIds.has(id)) {
+        const np = nodePositions.get(id);
+        if (np) {
+          return { x: isSource ? np.rightX : np.leftX, y: np.centerY };
+        }
+      }
     }
     return null;
   };
 
   const wires: EdgeWire[] = [];
   for (const edge of edges) {
-    const isFromContainer = visibleContainerIds.has(edge.fromNodeId);
-    const isToContainer = visibleContainerIds.has(edge.toContainerId);
-    if (isFromContainer && isToContainer) continue;
-
-    const fromAnchor = resolveAnchor(edge.fromNodeId, true);
-    const toAnchor = resolveAnchor(edge.toContainerId, false);
+    const fromAnchor = resolveAnchor(edge.fromNodeId, "node", true);
+    const toAnchor = resolveAnchor(edge.toId, edge.toType, false);
     if (!fromAnchor || !toAnchor) continue;
     if (
       Math.abs(fromAnchor.x - toAnchor.x) < 2 &&
@@ -771,12 +799,20 @@ export function computeLayout(
     ) continue;
 
     const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
-    const isCrossContainer = !!(fromNode && fromNode.containerId !== edge.toContainerId);
+    let toContainerId: string | null = null;
+    if (edge.toType === "container") {
+      toContainerId = edge.toId;
+    } else {
+      const targetNode = nodes.find(n => n.id === edge.toId);
+      toContainerId = targetNode ? targetNode.containerId : null;
+    }
+    const isCrossContainer = !!(fromNode && toContainerId && fromNode.containerId !== toContainerId);
 
     wires.push({
       edge,
       fromNodeId: edge.fromNodeId,
-      toContainerId: edge.toContainerId,
+      toId: edge.toId,
+      toType: edge.toType,
       fromX: fromAnchor.x,
       fromY: fromAnchor.y,
       toX: toAnchor.x,

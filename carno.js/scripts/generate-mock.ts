@@ -66,11 +66,13 @@ const createNode = (
 };
 
 const createEdge = (fromNode: any, toNode: any, edgeType: string) => {
+  const isCross = fromNode.containerId !== toNode.containerId;
   const edge = {
     id: nextId(),
     traceId: TRACE_ID,
     fromNodeId: fromNode.id,
-    toContainerId: toNode.containerId,
+    toId: isCross ? toNode.containerId : toNode.id,
+    toType: isCross ? "container" : "node",
     type: edgeType,
     timestamp: new Date(fromNode.processedAtLocal).getTime()
   };

@@ -195,7 +195,8 @@ describe("V3 Telemetry compilation and read path integration", () => {
         id: "edge_payment_rpc",
         traceId,
         fromNodeId: "node_call_payment",
-        toContainerId: "container_child",
+        toId: "container_child",
+        toType: "container",
         type: "http_request",
         timestamp: 2900,
       }
@@ -268,7 +269,8 @@ describe("V3 Telemetry compilation and read path integration", () => {
     const edge = layout!.edges[0]!;
     expect(edge.id).toBe("edge_payment_rpc");
     expect(edge.fromNodeId).toBe("node_call_payment");
-    expect(edge.toContainerId).toBe("container_child");
+    expect(edge.toId).toBe("container_child");
+    expect(edge.toType).toBe("container");
     expect(edge.distance).toBe(0);
 
     // Verify Compiled Edges in database repository (raw pre-compiled distance = 0)
