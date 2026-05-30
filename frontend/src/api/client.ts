@@ -50,6 +50,7 @@ export type ReadEdge = {
   fromNodeId: string;
   toNodeId: string;
   type: string;
+  distance: number;
   metadata?: any;
 };
 

@@ -247,6 +247,7 @@ export function computeLayout(
 
   // ── 4. Dynamic Snap Re-linking & Border Snapping ─────────
   const resolveNodeAnchor = (nodeId: string, isSource: boolean): { x: number; y: number } | null => {
+    // 1. If it's a visible node, return its anchor
     if (visibleNodeIds.has(nodeId)) {
       const np = nodePositions.get(nodeId)!;
       return {
@@ -255,7 +256,34 @@ export function computeLayout(
       };
     }
 
-    // Snapping logic: traverse parentage backward from node to find closest visible ancestor
+    // 2. If it's a visible container, return its container card anchor
+    if (visibleContainerIds.has(nodeId)) {
+      const cl = containerLayoutsMap.get(nodeId)!;
+      return {
+        x: isSource ? cl.left + cl.width : cl.left,
+        y: cl.top + CONTAINER_HEADER_H / 2
+      };
+    }
+
+    // 3. Maybe it is a container ID that is hidden. Let's walk its container parent hierarchy
+    const container = containers.find(x => x.id === nodeId);
+    if (container) {
+      let parentId = container.parentContainerId;
+      while (parentId) {
+        if (visibleContainerIds.has(parentId)) {
+          const cl = containerLayoutsMap.get(parentId)!;
+          return {
+            x: isSource ? cl.left + cl.width : cl.left,
+            y: cl.top + CONTAINER_HEADER_H / 2
+          };
+        }
+        const p = containers.find(x => x.id === parentId);
+        parentId = p ? p.parentContainerId : null;
+      }
+      return null;
+    }
+
+    // 4. Otherwise, it is a hidden node. Let's traverse its parentage path
     const node = nodes.find(x => x.id === nodeId);
     if (!node) return null;
 
