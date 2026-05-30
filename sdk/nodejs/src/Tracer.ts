@@ -55,7 +55,7 @@ export class Tracer {
   /**
    * Dynamically exports a container registration for a given trace ID if it hasn't been logged yet.
    */
-  public static exportContainerForTrace(traceId: string, containerId: string) {
+  public static exportContainerForTrace(traceId: string, containerId: string, parentContainerId: string | null = null) {
     if (!this.exporter) return;
     const key = `${traceId}:${containerId}`;
     if (!this.loggedContainers.has(key)) {
@@ -67,7 +67,7 @@ export class Tracer {
       this.exporter.addContainer({
         id: containerId,
         traceId,
-        parentContainerId: null,
+        parentContainerId: parentContainerId,
         name: config.name,
         type: config.type,
         tags: [],
@@ -140,13 +140,14 @@ export class Tracer {
     _parentDepthIndex: number = 0,
     _group?: string,
     _scheduledAtLocal?: Date,
-    overrideId?: string
+    overrideId?: string,
+    parentContainerId?: string
   ): TraceContainer {
-    this.exportContainerForTrace(traceId, this.getContainerId());
+    this.exportContainerForTrace(traceId, this.getContainerId(), parentContainerId || null);
     return new TraceContainer({
       id: overrideId || this.getContainerId(),
       traceId,
-      parentContainerId: parentNodeId,
+      parentContainerId: this.getContainerId(),
       name,
       type: typeof nodeType === "string" ? nodeType : "Logical Module",
       tags: []
