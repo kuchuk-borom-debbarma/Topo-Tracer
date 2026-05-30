@@ -1,11 +1,14 @@
 import { BatchExporter } from "./BatchExporter";
 import { TraceNode } from "./TraceNode";
-import { ContainerInput, EdgeInput, TracerConfig, NodeType } from "./types";
+import { TraceContainerInput, TraceBlockInput, TraceNodeInput, TraceEdgeInput, TracerConfig, NodeType } from "./types";
 import { v4 as uuidv4 } from "uuid";
 
 export class Tracer {
   private static exporter: BatchExporter | null = null;
   private static containerId: string | null = null;
+  
+  private static registeredContainers = new Map<string, { name: string; type: string }>();
+  private static loggedContainers = new Set<string>();
 
   /**
    * Initialize the global Tracer.
@@ -14,33 +17,29 @@ export class Tracer {
    */
   public static init(
     config: TracerConfig, 
-    containerConfig: Omit<ContainerInput, "id" | "createdAtLocal"> & { id?: string }
+    containerConfig: { id?: string; name: string; containerType?: string; type?: string }
   ) {
     this.exporter = new BatchExporter(config);
     this.exporter.start();
 
     this.containerId = containerConfig.id || uuidv4();
+    const type = containerConfig.type || containerConfig.containerType || "Logical Module";
     
-    this.exporter.addContainer({
-      id: this.containerId,
+    this.registeredContainers.set(this.containerId, {
       name: containerConfig.name,
-      containerType: containerConfig.containerType,
-      createdAtLocal: new Date()
+      type: type
     });
   }
 
   /**
    * Dynamically registers a logical container/service on the fly.
    */
-  public static registerContainer(containerConfig: Omit<ContainerInput, "createdAtLocal">) {
-    if (this.exporter) {
-      this.exporter.addContainer({
-        id: containerConfig.id,
-        name: containerConfig.name,
-        containerType: containerConfig.containerType,
-        createdAtLocal: new Date()
-      });
-    }
+  public static registerContainer(containerConfig: { id: string; name: string; containerType?: string; type?: string }) {
+    const type = containerConfig.type || containerConfig.containerType || "Logical Module";
+    this.registeredContainers.set(containerConfig.id, {
+      name: containerConfig.name,
+      type: type
+    });
   }
 
   /**
@@ -51,6 +50,28 @@ export class Tracer {
       throw new Error("Tracer not initialized. Call Tracer.init() first.");
     }
     return this.containerId;
+  }
+
+  /**
+   * Dynamically exports a container registration for a given trace ID if it hasn't been logged yet.
+   */
+  public static exportContainerForTrace(traceId: string, containerId: string) {
+    if (!this.exporter) return;
+    const key = `${traceId}:${containerId}`;
+    if (!this.loggedContainers.has(key)) {
+      this.loggedContainers.add(key);
+      const config = this.registeredContainers.get(containerId) || {
+        name: "Unknown Container",
+        type: "Logical Module"
+      };
+      this.exporter.addContainer({
+        id: containerId,
+        traceId,
+        name: config.name,
+        type: config.type,
+        createdAtLocal: new Date()
+      });
+    }
   }
 
   /**
@@ -79,19 +100,19 @@ export class Tracer {
    */
   public static startTrace(name: string, nodeType: NodeType | string, group?: string): TraceNode {
     const traceId = uuidv4();
+    this.exportContainerForTrace(traceId, this.getContainerId());
     return new TraceNode({
       traceId,
       containerId: this.getContainerId(),
       name,
       nodeType,
-      depthIndex: 0,
-      localDepthIndex: 0,
-      group
     });
   }
 
   /**
    * Continues an existing trace (e.g. from an incoming HTTP request containing trace headers).
+   * Pass `overrideId` (= the targetNodeId put in the egress edge by the caller) to ensure the
+   * node/block ID matches what the upstream service recorded as the edge destination.
    */
   public static continueTrace(
     traceId: string, 
@@ -100,51 +121,45 @@ export class Tracer {
     nodeType: NodeType | string, 
     parentDepthIndex: number = 0,
     group?: string,
-    scheduledAtLocal?: Date
+    scheduledAtLocal?: Date,
+    overrideId?: string
   ): TraceNode {
+    this.exportContainerForTrace(traceId, this.getContainerId());
     return new TraceNode({
       traceId,
       containerId: this.getContainerId(),
       name,
       nodeType,
       parentNodeId,
-      depthIndex: parentDepthIndex + 1,
-      localDepthIndex: 0,
-      group,
-      scheduledAtLocal
+      overrideId,        // locks _blockId = overrideId so egress edges resolve correctly
     });
   }
 
-  public static exportNode(node: TraceNode) {
-    if (!this.exporter) return;
-    this.exporter.addNode({
-      id: node.id,
-      traceId: node.traceId,
-      containerId: node.containerId,
-      parentNodeId: node.parentNodeId,
-      name: node.name,
-      nodeType: node.nodeType,
-      depthIndex: node.depthIndex,
-      localDepthIndex: node.localDepthIndex,
-      group: node.group,
-      metadata: node.metadata,
-      initiatedAtLocal: node.initiatedAtLocal,
-      processedAtLocal: node.processedAtLocal!,
-      completedAtLocal: node.completedAtLocal,
-      scheduledAtLocal: node.scheduledAtLocal,
-      cpuActiveDurationUs: node.cpuActiveDurationUs,
-      suspendedAtLocal: node.suspendedAtLocal,
-      resumedAtLocal: node.resumedAtLocal
-    });
+  /**
+   * Internal method used to queue a block for export.
+   */
+  public static exportBlock(block: TraceBlockInput) {
+    if (this.exporter) {
+      this.exporter.addBlock(block);
+    }
   }
 
+  /**
+   * Internal method used to queue a node event for export.
+   */
+  public static exportNode(node: TraceNodeInput) {
+    if (this.exporter) {
+      this.exporter.addNode(node);
+    }
+  }
 
   /**
    * Internal method used to queue an edge for export.
    */
-  public static exportEdge(edge: EdgeInput) {
-    if (!this.exporter) return;
-    this.exporter.addEdge(edge);
+  public static exportEdge(edge: TraceEdgeInput) {
+    if (this.exporter) {
+      this.exporter.addEdge(edge);
+    }
   }
   
   /**
@@ -165,3 +180,4 @@ export class Tracer {
     }
   }
 }
+

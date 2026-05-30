@@ -24,20 +24,20 @@ async function runSophisticatedSimulation() {
   console.log("🟢 [Service A] Initializing Order API Gateway...");
   Tracer.init({ baseUrl: "http://localhost:3000" }, { name: "Order API Gateway", containerType: ContainerType.EXPRESS_API, id: orderSvcId });
 
-  const rootNode = Tracer.startTrace("POST /v1/checkout", NodeType.HTTP_SERVER);
+  const rootNode = Tracer.startTrace("1. POST /v1/checkout", NodeType.HTTP_SERVER);
   console.log(`   [Service A] Started Trace: ${rootNode.traceId}`);
   await delay(15);
   rootNode.markProcessed();
 
   // 1. Linear Step 1: Validation
-  const validationNode = rootNode.startChild("validateOrder()", NodeType.FUNCTION);
+  const validationNode = rootNode.startChild("1.1 validateOrder()", NodeType.FUNCTION);
   validationNode.markProcessed();
   console.log(`   [Service A] Executing concurrent queries in validation...`);
   
   // Simulate database queue delay (scheduled 35ms ago)
   const userQueryScheduled = new Date(Date.now() - 35);
-  const userQueryNode = validationNode.startChild("DB: Fetch User", NodeType.DATABASE, undefined, userQueryScheduled);
-  const fraudScoreNode = validationNode.startChild("API: Fraud Check", NodeType.HTTP_CLIENT);
+  const userQueryNode = validationNode.startChild("1.1.1 DB: Fetch User", NodeType.DATABASE, undefined, userQueryScheduled);
+  const fraudScoreNode = validationNode.startChild("1.1.2 API: Fraud Check", NodeType.HTTP_CLIENT);
   
   await Promise.all([
     (async () => {
@@ -65,10 +65,10 @@ async function runSophisticatedSimulation() {
   validationNode.markCompleted({ valid: true });
 
   // 2. Linear Step 2: Payment Processing
-  const processPaymentNode = rootNode.startChild("processPayment()", NodeType.FUNCTION);
+  const processPaymentNode = rootNode.startChild("1.2 processPayment()", NodeType.FUNCTION);
   processPaymentNode.markProcessed();
   
-  const paymentClientNode = processPaymentNode.startChild("HTTP POST /payments/charge", NodeType.HTTP_CLIENT);
+  const paymentClientNode = processPaymentNode.startChild("1.2.1 HTTP POST /payments/charge", NodeType.HTTP_CLIENT);
   await delay(5);
   paymentClientNode.markProcessed();
   
@@ -89,10 +89,10 @@ async function runSophisticatedSimulation() {
   processPaymentNode.markCompleted({ status: "payment_failed_fallback" });
 
   // 3. Linear Step 3: Dispatch & Reporting
-  const dispatchOrderNode = rootNode.startChild("dispatchOrder()", NodeType.FUNCTION);
+  const dispatchOrderNode = rootNode.startChild("1.3 dispatchOrder()", NodeType.FUNCTION);
   dispatchOrderNode.markProcessed();
 
-  const eventPublisherNode = dispatchOrderNode.startChild("Kafka Produce: OrderCreated", NodeType.MESSAGE_PRODUCER);
+  const eventPublisherNode = dispatchOrderNode.startChild("1.3.1 Kafka Produce: OrderCreated", NodeType.MESSAGE_PRODUCER);
   await delay(5);
   eventPublisherNode.markProcessed();
 
@@ -146,15 +146,20 @@ async function runSophisticatedSimulation() {
   const bParentId = httpRequestHeaders["x-parent-node-id"];
   const bDepth = parseInt(httpRequestHeaders["x-depth-index"], 10);
   
-  const paymentRootNode = Tracer.continueTrace(bTraceId, bParentId, "POST /payments/charge", NodeType.HTTP_SERVER, bDepth);
-  paymentRootNode.id = httpRequestHeaders["x-target-node-id"];
+  const paymentRootNode = Tracer.continueTrace(
+    bTraceId, bParentId, 
+    "1.2.1.1 POST /payments/charge", NodeType.HTTP_SERVER, 
+    bDepth, undefined, undefined,
+    httpRequestHeaders["x-target-node-id"]  // overrideId — matches the egress edge destination
+  );
+  // No id mutation needed — _blockId is locked to x-target-node-id from construction
 
   console.log(`   [Service B] Continuing Trace: ${paymentRootNode.traceId}`);
   await delay(10);
   paymentRootNode.markProcessed();
 
   // 5. Error & Exception Flow
-  const stripeNode = paymentRootNode.startChild("Stripe API Charge", NodeType.HTTP_CLIENT);
+  const stripeNode = paymentRootNode.startChild("1.2.1.1.1 Stripe API Charge", NodeType.HTTP_CLIENT);
   await delay(15);
   stripeNode.markProcessed();
   
@@ -170,7 +175,7 @@ async function runSophisticatedSimulation() {
     });
 
     // Fallback/Retry flow
-    const fallbackNode = paymentRootNode.startChild("Paypal API Fallback", NodeType.HTTP_CLIENT);
+    const fallbackNode = paymentRootNode.startChild("1.2.1.1.2 Paypal API Fallback", NodeType.HTTP_CLIENT);
     await delay(30);
     fallbackNode.markProcessed();
     fallbackNode.markCompleted({ success: true, gateway: "paypal" });
@@ -196,13 +201,14 @@ async function runSophisticatedSimulation() {
   const inventoryRootNode = Tracer.continueTrace(
     cTraceCtx.traceId, 
     cTraceCtx.parentNodeId, 
-    "Consume Kafka: OrderCreated", 
+    "1.3.1.1 Consume Kafka: OrderCreated", 
     NodeType.MESSAGE_CONSUMER, 
     cTraceCtx.depthIndex, 
     undefined, 
-    kafkaScheduled
+    kafkaScheduled,
+    cTraceCtx.targetNodeId  // overrideId — matches the egress edge destination
   );
-  inventoryRootNode.id = cTraceCtx.targetNodeId;
+  // No id mutation needed
 
   console.log(`   [Service C] Processing Event for Trace: ${inventoryRootNode.traceId}`);
   
@@ -213,12 +219,12 @@ async function runSophisticatedSimulation() {
   inventoryRootNode.markProcessed();
 
   // DEEP NESTING: processInventoryUpdate -> validateStock -> DB Check
-  const processInventoryNode = inventoryRootNode.startChild("processInventoryUpdate()", NodeType.FUNCTION);
+  const processInventoryNode = inventoryRootNode.startChild("1.3.1.1.1 processInventoryUpdate()", NodeType.FUNCTION);
   await delay(2);
   processInventoryNode.markProcessed();
 
-  const validateStockNode = processInventoryNode.startChild("validateStock()", NodeType.FUNCTION);
-  const dbCheckNode = validateStockNode.startChild("DB: Check Current Stock", NodeType.DATABASE);
+  const validateStockNode = processInventoryNode.startChild("1.3.1.1.1.1 validateStock()", NodeType.FUNCTION);
+  const dbCheckNode = validateStockNode.startChild("1.3.1.1.1.1.1 DB: Check Current Stock", NodeType.DATABASE);
   await delay(10);
   dbCheckNode.markProcessed();
   
@@ -232,21 +238,21 @@ async function runSophisticatedSimulation() {
   validateStockNode.markProcessed();
   validateStockNode.markCompleted({ valid: true });
 
-  const decrementNode = processInventoryNode.startChild("DB: Decrement Stock", NodeType.DATABASE);
+  const decrementNode = processInventoryNode.startChild("1.3.1.1.1.2 DB: Decrement Stock", NodeType.DATABASE);
   await delay(15);
   decrementNode.markProcessed();
   decrementNode.markCompleted({ item: "widget", newStock: 14 });
 
   // DEEP NESTING: calculateRestock -> Restock Logic & Kafka Produce
-  const restockCheckNode = processInventoryNode.startChild("calculateRestock()", NodeType.FUNCTION);
+  const restockCheckNode = processInventoryNode.startChild("1.3.1.1.1.3 calculateRestock()", NodeType.FUNCTION);
   await delay(2);
   restockCheckNode.markProcessed();
   
-  const restockDecisionNode = restockCheckNode.startChild("evaluateThreshold()", NodeType.FUNCTION);
+  const restockDecisionNode = restockCheckNode.startChild("1.3.1.1.1.3.1 evaluateThreshold()", NodeType.FUNCTION);
   restockDecisionNode.markProcessed();
   restockDecisionNode.markCompleted({ threshold: 20, current: 14, needsRestock: true });
   
-  const reorderEventNode = restockCheckNode.startChild("Kafka Produce: ReorderItem", NodeType.MESSAGE_PRODUCER);
+  const reorderEventNode = restockCheckNode.startChild("1.3.1.1.1.3.2 Kafka Produce: ReorderItem", NodeType.MESSAGE_PRODUCER);
   await delay(5);
   reorderEventNode.markProcessed();
   reorderEventNode.markCompleted({ topic: "inventory.reorder", quantity: 100 });
@@ -278,29 +284,34 @@ async function runSophisticatedSimulation() {
   console.log(`   [Service D] Polled queue, received batch of ${batchQueuePayloads.length} items.`);
 
   // 6. Fan-out / Batch Processing with extremely deep nesting
-  const batchRootNode = Tracer.startTrace("Cron: Process Nightly Reports", NodeType.BATCH_JOB);
+  const batchRootNode = Tracer.startTrace("4. Cron: Process Nightly Reports", NodeType.BATCH_JOB);
   batchRootNode.markProcessed();
 
   for (const item of batchQueuePayloads) {
-    const itemNode = Tracer.continueTrace(item.traceId, item.parentNodeId, "Process Report Item", NodeType.FUNCTION, item.depthIndex);
-    itemNode.id = item.targetNodeId; 
+    const itemNode = Tracer.continueTrace(
+      item.traceId, item.parentNodeId, 
+      "1.3.2 Process Report Item", NodeType.FUNCTION, 
+      item.depthIndex, undefined, undefined,
+      item.targetNodeId  // overrideId — matches the egress edge destination
+    );
+    // No id mutation needed
     
     await delay(5);
     itemNode.markProcessed();
     
     // DEEP NESTING: generatePdfReport -> render -> sanitize
-    const generatePdfNode = itemNode.startChild("generatePdfReport()", NodeType.FUNCTION);
+    const generatePdfNode = itemNode.startChild("1.3.2.1 generatePdfReport()", NodeType.FUNCTION);
     generatePdfNode.markProcessed();
     
-    const fetchTemplateNode = generatePdfNode.startChild("S3: Fetch Template", NodeType.HTTP_CLIENT);
+    const fetchTemplateNode = generatePdfNode.startChild("1.3.2.1.1 S3: Fetch Template", NodeType.HTTP_CLIENT);
     await delay(15);
     fetchTemplateNode.markProcessed();
     fetchTemplateNode.markCompleted({ bucket: "reports-templates" });
 
-    const renderNode = generatePdfNode.startChild("renderTemplate()", NodeType.FUNCTION);
+    const renderNode = generatePdfNode.startChild("1.3.2.1.2 renderTemplate()", NodeType.FUNCTION);
     renderNode.markProcessed();
     
-    const sanitizeNode = renderNode.startChild("sanitizeData()", NodeType.FUNCTION);
+    const sanitizeNode = renderNode.startChild("1.3.2.1.2.1 sanitizeData()", NodeType.FUNCTION);
     sanitizeNode.markProcessed();
     sanitizeNode.markCompleted({ sanitizedFields: 4 });
     
@@ -308,10 +319,10 @@ async function runSophisticatedSimulation() {
     generatePdfNode.markCompleted({ status: "success", fileSize: "45KB" });
 
     // DEEP NESTING: sendEmail -> SMTP
-    const emailNode = itemNode.startChild("sendEmail()", NodeType.FUNCTION);
+    const emailNode = itemNode.startChild("1.3.2.2 sendEmail()", NodeType.FUNCTION);
     emailNode.markProcessed();
     
-    const smtpNode = emailNode.startChild("SMTP: Deliver", NodeType.HTTP_CLIENT);
+    const smtpNode = emailNode.startChild("1.3.2.2.1 SMTP: Deliver", NodeType.HTTP_CLIENT);
     await delay(10);
     smtpNode.markProcessed();
     smtpNode.markCompleted({ delivered: true, recipient: "admin@example.com" });
@@ -333,3 +344,4 @@ async function runSophisticatedSimulation() {
 }
 
 runSophisticatedSimulation().catch(console.error);
+

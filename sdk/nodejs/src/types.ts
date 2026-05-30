@@ -24,46 +24,50 @@ export enum EdgeType {
   SQS_MESSAGE = 'sqs_message'
 }
 
-export type ContainerInput = {
+export type TraceContainerInput = {
   id: string;
+  traceId: string;
   name: string;
-  containerType: ContainerType | string;
+  type: string;
+  metadata?: any;
   createdAtLocal: Date;
 };
 
-export type NodeInput = {
+export type TraceBlockInput = {
   id: string;
   traceId: string;
   containerId: string;
-  parentNodeId?: string;
   name: string;
-  nodeType: NodeType | string;
-  depthIndex: number;
-  localDepthIndex: number;
-  group?: string;
+  type: string;
   metadata?: any;
-
-  initiatedAtLocal: Date;
-  processedAtLocal: Date;
-  completedAtLocal?: Date;
-  ancestryPath?: string[];
-  scheduledAtLocal?: Date;
-  cpuActiveDurationUs?: number;
-  suspendedAtLocal?: Date[];
-  resumedAtLocal?: Date[];
 };
 
-export type EdgeInput = {
+export type TraceNodeInput = {
   id: string;
   traceId: string;
-  fromContainerId: string;
-  toContainerId: string;
+  blockId: string;
+  name: string;
+  type: string;
+  metadata?: any;
+  eventType: "started" | "ended";
+  eventAtLocal: Date;
+};
+
+export type TraceEdgeInput = {
+  id: string;
+  traceId: string;
   fromNodeId: string;
   toNodeId: string;
-  edgeType: EdgeType | string;
-  dispatchedAtLocal: Date;
-  respondedAtLocal?: Date;
+  type: string;
+  metadata?: any;
+  eventType: "requested" | "responded";
+  eventAtLocal: Date;
 };
+
+// Backward-compatibility aliases
+export type ContainerInput = Omit<TraceContainerInput, "traceId"> & { containerType?: string };
+export type NodeInput = TraceNodeInput;
+export type EdgeInput = TraceEdgeInput;
 
 export interface TracerConfig {
   /**
@@ -83,3 +87,4 @@ export interface TracerConfig {
    */
   flushIntervalMs?: number;
 }
+

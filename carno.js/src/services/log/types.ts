@@ -1,195 +1,176 @@
-export type Container = {
+export type JsonValue = unknown;
+
+export type TraceContainer = {
   id: string;
-  name: string;
-  containerType: string; //The type of the container (e.g. "pod", "deployment", "service")
-
-  createdAtLocal: Date; // The time on the local machine where it was created UTC milisecond
-  createdAtRemote: Date; // The time on the remote machine where it was stored in database UTC milisecond
-};
-
-export type Node = {
-  id: string;
-  traceId: string; // The parent trace group ID
-  containerId: string;
-  parentNodeId: string; // Direct parent node ID (empty string if root)
-  name: string;             // Human readable name (e.g., 'POST /checkout', 'Process Payment')
-  nodeType: string;         // Categorization (e.g., 'http_route', 'db_query', 'function')
-  depthIndex: number;       // The structural nesting level from the trace root. Used heavily for zoom filtering.
-  localDepthIndex?: number;  // The structural nesting level within the specific container.
-  group?: string;            // The custom depth group label
-  metadata: any;            // Custom baggage properties attached to the execution block
-
-
-  initiatedAtLocal: Date;   // When this execution block began
-  processedAtLocal: Date;   // When the logic finished executing
-  completedAtLocal?: Date;  // When all async child blocks finally resolved
-  
-  // Ordered path of parent Node IDs from the root down to this node.
-  // Crucial for instantly collapsing nested function calls into their highest visible parent container.
-  ancestryPath?: string[]; 
-  scheduledAtLocal?: Date;
-  cpuActiveDurationUs?: number;
-  suspendedAtLocal?: Date[];
-  resumedAtLocal?: Date[];
-};
-
-export type Edge = {
-  id: string;
-  traceId: string; // The parent trace group ID
-  fromContainerId: string;
-  toContainerId: string;
-
-  fromNodeId: string;
-  toNodeId: string;
-
-  edgeType: string;
-
-  dispatchedAtLocal: Date; // Timestamp when the cross-boundary call was initiated (e.g. HTTP POST sent)
-  respondedAtLocal?: Date; // Timestamp when the response was received back (for synchronous edges)
-  
-  // Pre-computed array of parent node IDs for the 'fromNodeId'. 
-  // Used by the backend to quickly determine what visible parent to snap to when zooming out.
-  egressAncestryPath?: string[]; 
-};
-
-export type ContainerInput = Omit<Container, "createdAtRemote">;
-
-export type NodeInput = {
-  id: string;
-  traceId: string; // The parent trace group ID
-  containerId: string;
-  parentNodeId?: string; // Optional direct parent ID
-  name: string;
-  nodeType: string;
-  depthIndex: number;
-  localDepthIndex?: number;
-  group?: string;
-  metadata?: any;
-
-
-  initiatedAtLocal: Date;
-  processedAtLocal: Date;
-  completedAtLocal?: Date;
-  ancestryPath?: string[];
-  scheduledAtLocal?: Date;
-  cpuActiveDurationUs?: number;
-  suspendedAtLocal?: Date[];
-  resumedAtLocal?: Date[];
-};
-
-export type EdgeInput = Edge;
-
-export interface PaginationParams {
-  limit?: number;
-  beforeTime?: number;
-  beforeId?: string;
-  afterTime?: number;
-  afterId?: string;
-  depth?: number; // Target visual zoom depth index
-  depthType?: 'global' | 'local'; // Zoom mode
-}
-
-export interface PaginatedResult<T> {
-  data: T[];
-  pagination: {
-    prevTimeCursor: number | null;
-    prevIdCursor: string | null;
-    nextTimeCursor: number | null;
-    nextIdCursor: string | null;
-    hasPrev: boolean;
-    hasNext: boolean;
-  };
-}
-
-export interface VisualWire {
-  id: string; // Composite ID mapping to the raw edge and the visual depth
-
-  // The origin of the network hop, dynamically collapsed to a parent node or container
-  // if the true egress node is hidden by the current zoom depth.
-  fromTarget: { id: string; type: "node" | "container" };
-
-  // The destination of the network hop, dynamically collapsed to a parent node or container
-  // if the true ingress node is hidden by the current zoom depth.
-  toTarget: { id: string; type: "node" | "container" };
-}
-
-export interface PaginatedTraceResult {
-  nodes: Node[];
-  edges: Edge[];
-  visualWires?: VisualWire[]; // Snapped coordinates matching zoom depth
-  isZoomReady: boolean;        // True if read_edges are fully pre-computed
-  maxAvailableDepth?: number;   // Maximum stack depth index in this trace
-  maxAvailableLocalDepth?: number; // Maximum local stack depth in this trace
-  pagination: {
-    prevTimeCursor: number | null;
-    prevIdCursor: string | null;
-    nextTimeCursor: number | null;
-    nextIdCursor: string | null;
-    hasPrev: boolean;
-    hasNext: boolean;
-  };
-}
-
-export interface FullTraceResult {
-  nodes: Node[];
-  edges: Edge[];
-  visualWires?: VisualWire[]; // Snapped coordinates matching zoom depth
-  isZoomReady: boolean;        // True if read_edges are fully pre-computed
-  maxAvailableDepth?: number;   // Maximum stack depth index in this trace
-  maxAvailableLocalDepth?: number; // Maximum local stack depth in this trace
-}
-
-export interface TraceMetadataResult {
-  isZoomReady: boolean;
-  maxAvailableDepth?: number;
-  maxAvailableLocalDepth?: number;
-
-}
-
-export interface TraceSummary {
   traceId: string;
-  rootNodeName: string;
-  startTime: Date;
-  nodeCount: number;
-}
+  name: string;
+  type: string;
+  metadata?: JsonValue;
+  createdAtLocal: Date;
+  createdAtRemote: Date;
+};
 
-export interface TracePaginationParams {
-  limit?: number;
-  beforeTime?: number;
-  afterTime?: number;
-}
-
-export interface NodeMaterializationDTO {
+export type TraceBlock = {
   id: string;
-  parentNodeId: string;
-  depthIndex: number;
-  localDepthIndex?: number;
-}
+  traceId: string;
+  containerId: string;
+  name: string;
+  type: string;
+  metadata?: JsonValue;
+};
 
-export interface EdgeMaterializationDTO {
+export type TraceNode = {
   id: string;
+  traceId: string;
+  blockId: string;
+  name: string;
+  type: string;
+  metadata?: JsonValue;
+  eventType: "started" | "ended";
+  eventAtLocal: Date;
+  ingestedAtRemote: Date;
+};
+
+export type TraceEdge = {
+  id: string;
+  traceId: string;
   fromNodeId: string;
   toNodeId: string;
-  fromContainerId: string;
-  toContainerId: string;
-}
+  type: string;
+  metadata?: JsonValue;
+  eventType: "requested" | "responded";
+  eventAtLocal: Date;
+  ingestedAtRemote: Date;
+};
 
-export interface NodeAncestryRecord {
-  node_id: string;
-  ancestryPath: string[]; // Ordered list of node IDs from root to this node (inclusive)
-  ancestryDepths: number[]; // Parallel array mapping to ancestryPath indices, storing their absolute depthIndex
-  ancestryLocalDepths: number[]; // Parallel array mapping to local depth indexes
-}
+export type TraceContainerInput = Omit<TraceContainer, "createdAtRemote">;
+export type TraceBlockInput = TraceBlock;
+export type TraceNodeInput = Omit<TraceNode, "ingestedAtRemote">;
+export type TraceEdgeInput = Omit<TraceEdge, "ingestedAtRemote">;
 
-export interface EdgeEgressAncestryRecord {
-  edge_id: string;
-  egressAncestryPath: string[]; // Ordered list of node IDs from root to the egress node
-  egressAncestryDepths: number[]; // Parallel array storing the depthIndex of each node
-  egressAncestryLocalDepths: number[]; // Parallel array storing the local depthIndex
-}
+/**
+ * Represents a pre-computed layout Block on the read path.
+ * A Block represents a structural vertical boundary/function scope.
+ */
+export type ReadBlock = {
+  /** Unique identifier of the block (maps to raw TraceBlock.id) */
+  id: string;
+  /** Globally unique trace identifier */
+  traceId: string;
+  /** Containing physical container or service ID */
+  containerId: string;
+  /** ID of the parent block calling this block (empty if root block) */
+  parentBlockId: string;
+  /** Specific calling Node ID inside the parent block that triggered this block */
+  callingNodeId: string;
+  /** Human-readable name of the function call scope (e.g. 'foo()') */
+  name: string;
+  /** Type of scope (e.g. 'function', 'method', 'rpc') */
+  type: string;
+  /** Horizontal coordinate offset (X-depth): 0 = root, 1 = nested child call, etc. */
+  absoluteDepth: number;
+  /** Earliest start timestamp derived from child nodes (in microseconds) */
+  startTimeUs: number;
+  /** Total execution duration of the block (in microseconds), null if never ended */
+  durationUs: number | null;
+  /** Ordered array of ancestor IDs starting from top container down to itself */
+  ancestryPath: string[];
+  /** Custom JSON baggage/metadata properties */
+  metadata?: JsonValue;
+};
 
-export interface TraceMetadataUpdate {
-  max_available_depth?: number;
-  max_available_local_depth?: number;
-  is_zoom_ready?: boolean;
-}
+/**
+ * Represents an operational step or log checkpoint inside a specific Block.
+ * These flow vertically inside a Block card.
+ */
+export type ReadNode = {
+  /** Unique identifier of the node (maps to raw TraceNode.id) */
+  id: string;
+  /** Globally unique trace identifier */
+  traceId: string;
+  /** Containing Block ID */
+  blockId: string;
+  /** Human-readable node name or log description */
+  name: string;
+  /** Type of checkpoint (e.g. 'db', 'http_client', 'step', 'log') */
+  type: string;
+  /** Verbosity/importance zoom level: 0 = critical, 1 = key, 2 = detailed logs */
+  zoomLevel: number;
+  /** Vertical sequence index (Y-coordinate flow) inside the containing block */
+  localSequence: number;
+  /** Time of started event (in microseconds) */
+  startTimeUs: number;
+  /** Elapsed execution time (in microseconds), null for simple point logs */
+  durationUs: number | null;
+  /** Ordered array of ancestor IDs starting from top container down to itself */
+  ancestryPath: string[];
+  /** Custom JSON baggage/metadata properties */
+  metadata?: JsonValue;
+};
+
+/**
+ * Represents a horizontal connecting jump wire (edge) linking two Blocks on the UI.
+ */
+export type ReadEdge = {
+  /** Unique row ID (composed of edgeId + zoomLevel) */
+  id: string;
+  /** Unique identifier of the edge (maps to raw TraceEdge.id) */
+  edgeId: string;
+  /** Globally unique trace identifier */
+  traceId: string;
+  /** Source block ID containing the calling node */
+  fromBlockId: string;
+  /** Exact calling Node ID that dispatched the call */
+  fromNodeId: string;
+  /** Destination block ID receiving the call */
+  toBlockId: string;
+  /** Exact entry Node ID that accepted the call */
+  toNodeId: string;
+};
+
+/**
+ * Metadata caching the zoom capabilities and completion status of a trace.
+ */
+export type TraceMetadata = {
+  /** Globally unique trace identifier */
+  traceId: string;
+  /** Ingress materialization status: 1 = zoom layout is built and ready, 0 = processing */
+  isZoomReady: boolean;
+  /** Maximum structural call-depth resolved (used to size the UI zoom slider dynamically) */
+  maxAvailableDepth: number;
+  /** Tracks completed offset index in materialization broker queue */
+  materializedOffset: number;
+};
+
+/**
+ * Represents the complete read-optimized dynamic layout response structure.
+ */
+export type TraceLayoutResponse = {
+  metadata: {
+    traceId: string;
+    isZoomReady: boolean;
+    maxAvailableDepth: number;
+    currentDepth: number;
+  };
+  blocks: ReadBlock[];
+  nodes: ReadNode[];
+  edges: ReadEdge[];
+};
+
+/**
+ * Represents a node event collapsed by starting/ending lifecycle timestamps.
+ */
+export type TraceNodeCollapsed = {
+  id: string;
+  blockId: string;
+  name: string;
+  type: string;
+  metadata?: JsonValue;
+  startTimeUs: number;
+  endTimeUs: number;
+  durationUs: number | null;
+};
+
+
+
+

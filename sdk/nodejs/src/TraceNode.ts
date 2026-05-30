@@ -9,23 +9,25 @@ export class TraceNode {
   public parentNodeId?: string;
   public name: string;
   public nodeType: NodeType | string;
-  public depthIndex: number;
-  public localDepthIndex: number;
-  public group?: string;
+  public depthIndex: number = 0;
   
   public metadata?: any;
   public initiatedAtLocal: Date;
-  public processedAtLocal?: Date;
   public completedAtLocal?: Date;
-  public scheduledAtLocal?: Date;
-  public cpuActiveDurationUs?: number;
-  public suspendedAtLocal: Date[] = [];
-  public resumedAtLocal: Date[] = [];
   public incomingEdge?: ActiveEdge;
+
+  // Immutable block identity — never changes even when this.id is mutated externally
+  private readonly _blockId: string;
+  // Immutable block ID of the parent node — for correct "Call Finished:" attribution
+  private _parentBlockId: string = "";
+
+  // Block calling structures
+  public parentCallerNodeId?: string;
+  public parentEdgeId?: string;
+  public parentEdgeType?: string;
   
   private isFinished = false;
   private activeEdges: ActiveEdge[] = [];
-  private startCpuUsage: NodeJS.CpuUsage;
 
   constructor(opts: {
     traceId: string;
@@ -33,45 +35,103 @@ export class TraceNode {
     name: string;
     nodeType: NodeType | string;
     parentNodeId?: string;
-    depthIndex: number;
-    localDepthIndex: number;
+    depthIndex?: number;
+    localDepthIndex?: number;
     group?: string;
     scheduledAtLocal?: Date;
+    /** Override the node/block ID (e.g. to match a pre-assigned targetNodeId from the caller). */
+    overrideId?: string;
   }) {
-    this.id = uuidv4();
+    this.id = opts.overrideId || uuidv4();
+    // _blockId is locked here — mutations to this.id won't affect block references
+    this._blockId = this.id;
+
     this.traceId = opts.traceId;
     this.containerId = opts.containerId;
     this.name = opts.name;
     this.nodeType = opts.nodeType;
     this.parentNodeId = opts.parentNodeId;
-    this.depthIndex = opts.depthIndex;
-    this.localDepthIndex = opts.localDepthIndex;
-    this.group = opts.group || `${opts.containerId}_${opts.depthIndex}`;
-    this.scheduledAtLocal = opts.scheduledAtLocal;
+    this.depthIndex = opts.depthIndex || 0;
     this.initiatedAtLocal = new Date();
-    this.startCpuUsage = process.cpuUsage();
+
+    // 1. Export the TraceBlock using the immutable _blockId
+    Tracer.exportBlock({
+      id: this._blockId,
+      traceId: this.traceId,
+      containerId: this.containerId,
+      name: this.name,
+      type: this.nodeType,
+      metadata: this.metadata
+    });
+
+    // 2. Export the "started" node checkpoint — also uses _blockId so it
+    //    stays consistent even if this.id is later mutated by the caller
+    Tracer.exportNode({
+      id: this._blockId,
+      traceId: this.traceId,
+      blockId: this._blockId,
+      name: this.name,
+      type: this.nodeType,
+      eventType: "started",
+      eventAtLocal: this.initiatedAtLocal,
+      metadata: this.metadata
+    });
   }
 
   /**
    * Starts a child node under this node in the current container's call stack.
    */
   public startChild(name: string, nodeType: NodeType | string, group?: string, scheduledAtLocal?: Date): TraceNode {
-    return new TraceNode({
+    const childNode = new TraceNode({
       traceId: this.traceId,
       containerId: this.containerId,
       name,
       nodeType,
-      parentNodeId: this.id,
+      parentNodeId: this._blockId,     // Use immutable parent blockId
       depthIndex: this.depthIndex + 1,
-      localDepthIndex: this.localDepthIndex + 1,
-      group,
-      scheduledAtLocal
     });
+
+    // Wire back the parent's immutable block ID for Call Finished attribution
+    childNode._parentBlockId = this._blockId;
+
+    // callerNodeId is keyed off the child's immutable blockId (not child.id which may be mutated)
+    const callerNodeId = childNode._blockId + "_caller";
+    const edgeId = childNode._blockId + "_edge";
+
+    // Log the "started" calling node event in THIS block (using this._blockId)
+    Tracer.exportNode({
+      id: callerNodeId,
+      traceId: this.traceId,
+      blockId: this._blockId,
+      name: `Call: ${name}`,
+      type: nodeType,
+      eventType: "started",
+      eventAtLocal: childNode.initiatedAtLocal,
+      metadata: null
+    });
+
+    // Log the "requested" edge event — both endpoints use immutable blockIds
+    Tracer.exportEdge({
+      id: edgeId,
+      traceId: this.traceId,
+      fromNodeId: callerNodeId,
+      toNodeId: childNode._blockId,
+      type: "function_call",
+      eventType: "requested",
+      eventAtLocal: childNode.initiatedAtLocal,
+      metadata: null
+    });
+
+    childNode.parentCallerNodeId = callerNodeId;
+    childNode.parentEdgeId = edgeId;
+    childNode.parentEdgeType = "function_call";
+
+    return childNode;
   }
 
   /**
    * Starts a child node in a different logical container, automatically establishing
-   * and tracking the network egress edge transition with zero boilerplate.
+   * and tracking the network egress edge transition.
    */
   public startChildInContainer(opts: {
     containerId: string;
@@ -83,44 +143,63 @@ export class TraceNode {
     group?: string;
     scheduledAtLocal?: Date;
   }): TraceNode {
-    // 1. Auto-register the logical container if details are provided
     if (opts.containerName) {
       Tracer.registerContainer({
         id: opts.containerId,
         name: opts.containerName,
-        containerType: opts.containerType || 'Logical Module'
+        containerType: opts.containerType || "Logical Module"
       });
     }
 
-    // 2. Instantiate child node (resets localDepthIndex back to 0 across boundaries)
+    Tracer.exportContainerForTrace(this.traceId, opts.containerId);
+
     const childNode = new TraceNode({
       traceId: this.traceId,
       containerId: opts.containerId,
       name: opts.name,
       nodeType: opts.nodeType,
-      parentNodeId: this.id,
+      parentNodeId: this._blockId,
       depthIndex: this.depthIndex + 1,
-      localDepthIndex: 0,
-      group: opts.group,
-      scheduledAtLocal: opts.scheduledAtLocal
     });
 
-    // 3. Mark context transition as processed
-    childNode.markProcessed();
+    childNode._parentBlockId = this._blockId;
 
-    // 4. Create and wire the stateful connection edge (egress arrow) from this node to child node
+    const callerNodeId = childNode._blockId + "_caller";
     const edgeType = opts.edgeType || EdgeType.HTTP_REQUEST;
-    const activeEdge = this.recordEgressEdge(opts.containerId, childNode.id, edgeType);
+    const edgeId = childNode._blockId + "_edge";
 
-    // 5. Store a reference to the active edge on child node so it completes automatically!
+    Tracer.exportNode({
+      id: callerNodeId,
+      traceId: this.traceId,
+      blockId: this._blockId,
+      name: `Call Container: ${opts.name}`,
+      type: opts.nodeType,
+      eventType: "started",
+      eventAtLocal: childNode.initiatedAtLocal,
+      metadata: null
+    });
+
+    childNode.parentCallerNodeId = callerNodeId;
+    childNode.parentEdgeId = edgeId;
+    childNode.parentEdgeType = edgeType;
+
+    const activeEdge = new ActiveEdge({
+      id: edgeId,
+      traceId: this.traceId,
+      blockId: this._blockId,
+      fromNodeId: callerNodeId,
+      toNodeId: childNode._blockId,
+      edgeType: edgeType,
+      dispatchedAtLocal: childNode.initiatedAtLocal
+    });
+    this.activeEdges.push(activeEdge);
     childNode.incomingEdge = activeEdge;
 
     return childNode;
   }
 
   /**
-   * Executes a child async operation under this node in the current container, automatically
-   * managing lifecycle processes, error catch logs, and guaranteed completion.
+   * Executes a child async operation under this node in the current container.
    */
   public async traceChild<T>(
     name: string,
@@ -129,7 +208,6 @@ export class TraceNode {
     group?: string
   ): Promise<T> {
     const childNode = this.startChild(name, nodeType, group);
-    childNode.markProcessed();
     try {
       return await fn(childNode);
     } catch (error: any) {
@@ -141,8 +219,7 @@ export class TraceNode {
   }
 
   /**
-   * Executes a child async operation in a different logical container, automatically
-   * establishing edge connections and managing node lifecycles with guaranteed auto-completion.
+   * Executes a child async operation in a different logical container.
    */
   public async traceChildInContainer<T>(
     opts: {
@@ -168,135 +245,167 @@ export class TraceNode {
     }
   }
 
-  /**
-   * Suspend context execution (e.g. paused waiting for async I/O).
-   */
-  public suspend() {
-    this.suspendedAtLocal.push(new Date());
-  }
+  // Backward-compatibility empty helpers
+  public suspend() {}
+  public resume()  {}
+  public markProcessed() {}
 
-  /**
-   * Resume context execution (e.g. back in processing block).
-   */
-  public resume() {
-    this.resumedAtLocal.push(new Date());
-  }
-
-  /**
-   * Marks the node as actively processing (e.g. queue waiting time is over).
-   */
-  public markProcessed() {
-    if (!this.processedAtLocal) {
-      this.processedAtLocal = new Date();
-    }
-  }
-
-  /**
-   * Marks the node as completed and queues it for export to the backend.
-   */
   public markCompleted(metadata?: any) {
     if (this.isFinished) return;
     this.isFinished = true;
     
-    if (!this.processedAtLocal) {
-      this.processedAtLocal = new Date();
-    }
     this.completedAtLocal = new Date();
     this.metadata = metadata;
 
-    const elapsedCpu = process.cpuUsage(this.startCpuUsage);
-    this.cpuActiveDurationUs = elapsedCpu.user + elapsedCpu.system;
-
-    // Auto-complete any active edges that were forgotten/never completed
     for (const edge of this.activeEdges) {
       edge.autoComplete();
     }
-
-    // Auto-complete incoming edge transition if dynamic context helper was used
     if (this.incomingEdge) {
       this.incomingEdge.complete();
     }
 
-    Tracer.exportNode(this);
+    // 1. Export "ended" event using the immutable _blockId
+    Tracer.exportNode({
+      id: this._blockId,
+      traceId: this.traceId,
+      blockId: this._blockId,
+      name: this.name,
+      type: this.nodeType,
+      eventType: "ended",
+      eventAtLocal: this.completedAtLocal,
+      metadata: this.metadata
+    });
+
+    // 2. Export caller node "ended" in the PARENT block using the parent's immutable blockId
+    if (this.parentCallerNodeId) {
+      Tracer.exportNode({
+        id: this.parentCallerNodeId,
+        traceId: this.traceId,
+        blockId: this._parentBlockId,       // ← parent's immutable blockId (not parentNodeId)
+        name: `Call Finished: ${this.name}`,
+        type: this.nodeType,
+        eventType: "ended",
+        eventAtLocal: this.completedAtLocal,
+        metadata: null
+      });
+    }
+
+    // 3. Export parent edge "responded"
+    if (this.parentEdgeId) {
+      Tracer.exportEdge({
+        id: this.parentEdgeId,
+        traceId: this.traceId,
+        fromNodeId: this.parentCallerNodeId || "",
+        toNodeId: this._blockId,             // ← immutable blockId
+        type: this.parentEdgeType || "function_call",
+        eventType: "responded",
+        eventAtLocal: this.completedAtLocal,
+        metadata: null
+      });
+    }
   }
 
   /**
    * Records a network hop to another container/service.
-   * Returns a stateful ActiveEdge handle that can be completed later.
    */
   public recordEgressEdge(toContainerId: string, toNodeId: string, edgeType: EdgeType | string): ActiveEdge {
-    const edge = new ActiveEdge({
+    const callerNodeId = toNodeId + "_caller";
+    const edgeId = toNodeId + "_edge";
+
+    Tracer.exportNode({
+      id: callerNodeId,
       traceId: this.traceId,
-      fromContainerId: this.containerId,
-      toContainerId,
-      fromNodeId: this.id,
-      toNodeId,
-      edgeType
+      blockId: this._blockId,       // ← use immutable blockId
+      name: `Egress Call to Container ${toContainerId}`,
+      type: NodeType.HTTP_CLIENT,
+      eventType: "started",
+      eventAtLocal: new Date(),
+      metadata: null
     });
-    this.activeEdges.push(edge);
-    return edge;
+
+    const activeEdge = new ActiveEdge({
+      id: edgeId,
+      traceId: this.traceId,
+      blockId: this._blockId,       // ← use immutable blockId
+      fromNodeId: callerNodeId,
+      toNodeId: toNodeId,
+      edgeType: edgeType,
+      dispatchedAtLocal: new Date()
+    });
+
+    this.activeEdges.push(activeEdge);
+    return activeEdge;
   }
 }
 
 export class ActiveEdge {
   private id: string;
   private traceId: string;
-  private fromContainerId: string;
-  private toContainerId: string;
+  private blockId: string;
   private fromNodeId: string;
   private toNodeId: string;
   private edgeType: EdgeType | string;
   private dispatchedAtLocal: Date;
-  private respondedAtLocal?: Date;
   private isFinished = false;
 
   constructor(opts: {
+    id: string;
     traceId: string;
-    fromContainerId: string;
-    toContainerId: string;
+    blockId: string;
     fromNodeId: string;
     toNodeId: string;
     edgeType: EdgeType | string;
+    dispatchedAtLocal: Date;
   }) {
-    this.id = uuidv4();
+    this.id = opts.id;
     this.traceId = opts.traceId;
-    this.fromContainerId = opts.fromContainerId;
-    this.toContainerId = opts.toContainerId;
+    this.blockId = opts.blockId;
     this.fromNodeId = opts.fromNodeId;
     this.toNodeId = opts.toNodeId;
     this.edgeType = opts.edgeType;
-    this.dispatchedAtLocal = new Date();
+    this.dispatchedAtLocal = opts.dispatchedAtLocal;
+
+    Tracer.exportEdge({
+      id: this.id,
+      traceId: this.traceId,
+      fromNodeId: this.fromNodeId,
+      toNodeId: this.toNodeId,
+      type: this.edgeType,
+      eventType: "requested",
+      eventAtLocal: this.dispatchedAtLocal,
+      metadata: null
+    });
   }
 
-  public getEdgeId(): string {
-    return this.id;
-  }
+  public getEdgeId(): string { return this.id; }
 
   public complete() {
     if (this.isFinished) return;
     this.isFinished = true;
-    this.respondedAtLocal = new Date();
-    this.export();
-  }
+    const now = new Date();
 
-  public autoComplete() {
-    if (this.isFinished) return;
-    this.isFinished = true;
-    // Keep respondedAtLocal undefined as it was never officially completed
-    this.export();
-  }
-
-  private export() {
     Tracer.exportEdge({
       id: this.id,
       traceId: this.traceId,
-      fromContainerId: this.fromContainerId,
-      toContainerId: this.toContainerId,
       fromNodeId: this.fromNodeId,
       toNodeId: this.toNodeId,
-      edgeType: this.edgeType,
-      dispatchedAtLocal: this.dispatchedAtLocal,
-      respondedAtLocal: this.respondedAtLocal
+      type: this.edgeType,
+      eventType: "responded",
+      eventAtLocal: now,
+      metadata: null
+    });
+
+    Tracer.exportNode({
+      id: this.fromNodeId,
+      traceId: this.traceId,
+      blockId: this.blockId,
+      name: `Egress Call Finished`,
+      type: NodeType.HTTP_CLIENT,
+      eventType: "ended",
+      eventAtLocal: now,
+      metadata: null
     });
   }
+
+  public autoComplete() { this.complete(); }
 }

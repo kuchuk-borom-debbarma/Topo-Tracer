@@ -2,3 +2,8 @@
 
 # Temporary output files
 temp/
+
+# Build artifacts
+node_modules/
+dist/
+*.tsbuildinfo

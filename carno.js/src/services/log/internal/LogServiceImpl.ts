@@ -1,130 +1,125 @@
 import { Service } from "@carno.js/core";
-import { LogService } from "../LogService";
+import { LogService, type TraceListResponse } from "../LogService";
+import type {
+  TraceBlock,
+  TraceBlockInput,
+  TraceContainer,
+  TraceContainerInput,
+  TraceEdge,
+  TraceEdgeInput,
+  TraceNode,
+  TraceNodeInput,
+} from "../types";
 import { LogRepo } from "./LogRepo";
-import type { Container, Node, Edge, ContainerInput, NodeInput, EdgeInput, PaginationParams, PaginatedTraceResult } from "../types";
+import { TraceMaterializationWorker } from "./worker/TraceMaterializationWorker";
 
 @Service()
 export class LogServiceImpl extends LogService {
-  constructor(private logRepo: LogRepo) {
+  constructor(
+    private logRepo: LogRepo,
+    private worker?: TraceMaterializationWorker
+  ) {
     super();
   }
 
-  override async logContainer(container: ContainerInput): Promise<void> {
-    await this.logContainers([container]);
-  }
-
-  override async logContainers(containers: ContainerInput[]): Promise<void> {
-    console.log(`[LogService] Logging ${containers.length} containers`);
-    
-    // Enrich with server-side remote timestamp
-    const enrichedContainers: Container[] = containers.map(c => ({
-      ...c,
-      createdAtRemote: new Date()
+  override async logContainers(containers: TraceContainerInput[]): Promise<void> {
+    const createdAtRemote = new Date();
+    const enriched: TraceContainer[] = containers.map(container => ({
+      ...container,
+      createdAtLocal: typeof container.createdAtLocal === "string" ? new Date(container.createdAtLocal) : container.createdAtLocal,
+      metadata: container.metadata ?? null,
+      createdAtRemote,
     }));
 
-    await this.clickHouseLogRepoOverride(enrichedContainers);
+    await this.logRepo.saveContainers(enriched);
+    this.triggerTraces(containers);
   }
 
-  override async logNode(node: NodeInput): Promise<void> {
-    await this.logNodes([node]);
-  }
-
-  override async logNodes(nodes: NodeInput[]): Promise<void> {
-    console.log(`[LogService] Logging ${nodes.length} nodes`);
-
-    // Enrich optional fields to ensure compatibility
-    const enrichedNodes: Node[] = nodes.map(n => ({
-      ...n,
-      parentNodeId: n.parentNodeId || "",
-      group: n.group || "",
-      metadata: n.metadata ?? null
-
+  override async logBlocks(blocks: TraceBlockInput[]): Promise<void> {
+    const enriched: TraceBlock[] = blocks.map(block => ({
+      ...block,
+      metadata: block.metadata ?? null,
     }));
 
-    await this.logRepo.saveNodes(enrichedNodes);
+    await this.logRepo.saveBlocks(enriched);
+    this.triggerTraces(blocks);
   }
 
-  override async logEdge(edge: EdgeInput): Promise<void> {
-    await this.logEdges([edge]);
-  }
-
-  override async logEdges(edges: EdgeInput[]): Promise<void> {
-    console.log(`[LogService] Logging ${edges.length} edges`);
-    await this.logRepo.saveEdges(edges);
-  }
-
-  // Private helper to wrap and delegate
-  private async clickHouseLogRepoOverride(containers: Container[]): Promise<void> {
-    await this.logRepo.saveContainers(containers);
-  }
-
-  override async updateContainerLocalTimes(containers: ContainerInput[], newTime: Date = new Date()): Promise<ContainerInput[]> {
-    // Note on Columnar Storage: Since ClickHouse is an append-only columnar database, 
-    // database mutations (updates) are extremely slow and should be avoided. 
-    // We shift timestamps in-memory before ingestion to keep the database purely append-only.
-    return containers.map(c => ({
-      ...c,
-      createdAtLocal: newTime
+  override async logNodes(nodes: TraceNodeInput[]): Promise<void> {
+    const ingestedAtRemote = new Date();
+    const enriched: TraceNode[] = nodes.map(node => ({
+      ...node,
+      eventAtLocal: typeof node.eventAtLocal === "string" ? new Date(node.eventAtLocal) : node.eventAtLocal,
+      metadata: node.metadata ?? null,
+      ingestedAtRemote,
     }));
+
+    await this.logRepo.saveNodes(enriched);
+    this.triggerTraces(nodes);
   }
 
-  override async updateNodeLocalTimes(nodes: NodeInput[], newTime: Date = new Date()): Promise<NodeInput[]> {
-    // Note on Columnar Storage: Modifying timestamps inside ClickHouse requires expensive 
-    // I/O part rewrites. Shifting timescales relative to a new base time is done entirely 
-    // in-memory to preserve execution offsets and maintain high ingestion performance.
-    return nodes.map(n => {
-      const baseMs = n.initiatedAtLocal.getTime();
-      const newBaseMs = newTime.getTime();
-      const offsetProcessed = n.processedAtLocal.getTime() - baseMs;
-      const offsetCompleted = n.completedAtLocal 
-        ? n.completedAtLocal.getTime() - baseMs 
-        : null;
+  override async logEdges(edges: TraceEdgeInput[]): Promise<void> {
+    const ingestedAtRemote = new Date();
+    const enriched: TraceEdge[] = edges.map(edge => ({
+      ...edge,
+      eventAtLocal: typeof edge.eventAtLocal === "string" ? new Date(edge.eventAtLocal) : edge.eventAtLocal,
+      metadata: edge.metadata ?? null,
+      ingestedAtRemote,
+    }));
 
-      return {
-        ...n,
-        initiatedAtLocal: newTime,
-        processedAtLocal: new Date(newBaseMs + offsetProcessed),
-        completedAtLocal: offsetCompleted !== null 
-          ? new Date(newBaseMs + offsetCompleted) 
-          : undefined
-      };
-    });
+    await this.logRepo.saveEdges(enriched);
+    this.triggerTraces(edges);
   }
 
-  override async updateEdgeLocalTimes(edges: EdgeInput[], newTime: Date = new Date()): Promise<EdgeInput[]> {
-    // Note on Columnar Storage: Timelines are shifted here in the service layer before 
-    // dispatching to ClickHouse to ensure that latency metrics remain accurate and 
-    // database writes stay immutable and append-only.
-    return edges.map(e => {
-      const baseMs = e.dispatchedAtLocal.getTime();
-      const newBaseMs = newTime.getTime();
-      const offsetResponded = e.respondedAtLocal 
-        ? e.respondedAtLocal.getTime() - baseMs 
-        : null;
+  override async getTraceLayout(traceId: string, zoomLevel?: number): Promise<any> {
+    // 1. Fetch trace metadata
+    const metadata = await this.logRepo.fetchTraceMetadata(traceId);
 
-      return {
-        ...e,
-        dispatchedAtLocal: newTime,
-        respondedAtLocal: offsetResponded !== null 
-          ? new Date(newBaseMs + offsetResponded) 
-          : undefined
-      };
-    });
+    // Default to max structural call depth if no query parameter is provided
+    const activeLevel = zoomLevel !== undefined ? zoomLevel : (metadata?.maxAvailableDepth ?? 2);
+
+    // 2. Fetch blocks, visible nodes, and horizontal wires dynamically
+    const [blocks, nodes, edges] = await Promise.all([
+      this.logRepo.fetchReadBlocks(traceId),
+      this.logRepo.fetchReadNodes(traceId, activeLevel),
+      this.logRepo.fetchReadEdges(traceId),
+    ]);
+
+    return {
+      metadata: {
+        traceId,
+        isZoomReady: metadata ? !!metadata.isZoomReady : false,
+        maxAvailableDepth: metadata ? metadata.maxAvailableDepth : 2,
+        currentDepth: activeLevel,
+      },
+      blocks,
+      nodes,
+      edges,
+    };
   }
 
-  override async logTracePaginated(traceId: string, params: PaginationParams): Promise<PaginatedTraceResult> {
-    return await this.logRepo.fetchTracePaginated(traceId, params);
+  private triggerTraces(items: { traceId: string }[]): void {
+    if (!this.worker) return;
+    const uniqueIds = Array.from(new Set(items.map(item => item.traceId)));
+    for (const traceId of uniqueIds) {
+      this.worker.triggerMaterialization(traceId);
+    }
   }
 
-  override async logTraceFull(traceId: string, depth?: number, depthType: 'global' | 'local' = 'global'): Promise<import("../types").FullTraceResult> {
-    return await this.logRepo.fetchTraceFull(traceId, depth, depthType);
-  }
-
-  override async fetchTraceMetadata(traceId: string): Promise<import("../types").TraceMetadataResult> {
-    return await this.logRepo.fetchTraceMetadata(traceId);
-  }
-
-  override async listTraces(params: import("../types").TracePaginationParams): Promise<import("../types").PaginatedResult<import("../types").TraceSummary>> {
-    return await this.logRepo.listTraces(params);
+  override async listTraces(page: number, limit: number): Promise<TraceListResponse> {
+    const [traces, total] = await Promise.all([
+      this.logRepo.fetchTracesList(page, limit),
+      this.logRepo.fetchTracesCount(),
+    ]);
+    return {
+      traces: traces.map(t => ({
+        ...t,
+        isZoomReady: Boolean(t.isZoomReady),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 }
