@@ -445,8 +445,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               midY = (fy + ty) / 2;
             }
 
-            const isCross = wire.isCrossContainer;
-
             const isCausalHighlighted = causalPath
               ? causalPath.activeEdges.has(`${wire.fromNodeId}->${wire.toId}`)
               : hoveredNodeId
@@ -465,31 +463,23 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
 
             const isDirect = wire.edge.distance === 0;
 
-            let strokeColor = isCross
-              ? "hsl(280, 80%, 72%)"
-              : "var(--accent-primary)";
+            let strokeColor = "var(--accent-primary)";
             if (isCausalHighlighted) strokeColor = "var(--accent-secondary)";
 
-            const strokeWidth = isCausalHighlighted ? 2.5 : isCross ? 2 : 1.5;
-            const opacity = isPlaybackPending ? 0.02 : isCausalHighlighted ? 1 : isCausalDimmedWire ? 0.04 : isCross ? 0.75 : 0.6;
+            const strokeWidth = isCausalHighlighted ? 2.5 : 1.5;
+            const opacity = isPlaybackPending ? 0.02 : isCausalHighlighted ? 1 : isCausalDimmedWire ? 0.04 : 0.6;
 
             const markerEnd = isCausalHighlighted
               ? "url(#arrow-wire-highlight)"
-              : isCross
-              ? "url(#arrow-wire-cross)"
               : "url(#arrow-wire)";
 
             const showBadge = wire.edge.distance > 0;
             const badgeBg = "rgba(10,12,22,0.88)";
             const badgeBorder = isCausalHighlighted
               ? "var(--accent-secondary)"
-              : isCross
-              ? "hsl(280, 80%, 72%)"
               : "hsla(217, 91%, 60%, 0.5)";
             const badgeText = isCausalHighlighted
               ? "var(--accent-secondary)"
-              : isCross
-              ? "hsl(280, 95%, 85%)"
               : "var(--accent-primary)";
 
             return (
