@@ -3,278 +3,149 @@ import { TraceMaterializationWorker } from "./TraceMaterializationWorker";
 import { LogServiceImpl } from "../LogServiceImpl";
 import { LogRepo } from "../LogRepo";
 import type {
-  TraceContainer,
-  TraceNode,
+  TraceSpan,
   TraceEdge,
-  ReadContainer,
-  ReadNode,
+  ReadSpan,
   ReadEdge,
-  TraceMetadata
 } from "../../types";
 
 class MockRepo extends LogRepo {
-  rawContainers: TraceContainer[] = [];
-  rawNodes: TraceNode[] = [];
+  rawSpans: TraceSpan[] = [];
   rawEdges: TraceEdge[] = [];
 
-  readContainers: ReadContainer[] = [];
-  readNodes: ReadNode[] = [];
+  readSpans: ReadSpan[] = [];
   readEdges: ReadEdge[] = [];
-  traceMetadata: TraceMetadata | null = null;
+  traceMetadata: { levelNames: Record<number, string>; layoutJson: string } | null = null;
   readTraces: any[] = [];
 
-  override async saveContainers(containers: TraceContainer[]): Promise<void> {
-    this.rawContainers.push(...containers);
-  }
-  override async saveNodes(nodes: TraceNode[]): Promise<void> {
-    this.rawNodes.push(...nodes);
+  override async saveSpans(spans: TraceSpan[]): Promise<void> {
+    this.rawSpans.push(...spans);
   }
   override async saveEdges(edges: TraceEdge[]): Promise<void> {
     this.rawEdges.push(...edges);
   }
 
-  override async fetchContainers(traceId: string): Promise<TraceContainer[]> {
-    return this.rawContainers.filter(c => c.traceId === traceId);
-  }
-  override async fetchNodes(traceId: string): Promise<TraceNode[]> {
-    return this.rawNodes.filter(n => n.traceId === traceId);
+  override async fetchSpans(traceId: string): Promise<TraceSpan[]> {
+    return this.rawSpans.filter(s => s.traceId === traceId);
   }
   override async fetchRawEdges(traceId: string): Promise<TraceEdge[]> {
     return this.rawEdges.filter(e => e.traceId === traceId);
   }
 
-  override async saveReadContainers(containers: ReadContainer[]): Promise<void> {
-    this.readContainers.push(...containers);
-  }
-  override async saveReadNodes(nodes: ReadNode[]): Promise<void> {
-    this.readNodes.push(...nodes);
+  override async saveReadSpans(spans: ReadSpan[]): Promise<void> {
+    this.readSpans.push(...spans);
   }
   override async saveReadEdges(edges: ReadEdge[]): Promise<void> {
     this.readEdges.push(...edges);
   }
-  override async saveTraceMetadata(metadata: TraceMetadata): Promise<void> {
-    this.traceMetadata = metadata;
-  }
   override async saveReadTrace(trace: any): Promise<void> {
+    this.traceMetadata = { levelNames: trace.levelNames, layoutJson: trace.layoutJson };
     this.readTraces.push(trace);
   }
 
-  override async fetchTraceMetadata(traceId: string): Promise<TraceMetadata | null> {
+  override async fetchReadTraceMeta(traceId: string): Promise<{ levelNames: Record<number, string>; layoutJson: string } | null> {
     return this.traceMetadata;
-  }
-  override async fetchReadContainers(traceId: string): Promise<ReadContainer[]> {
-    return this.readContainers.filter(c => c.traceId === traceId);
-  }
-  override async fetchReadNodes(traceId: string): Promise<ReadNode[]> {
-    return this.readNodes.filter(n => n.traceId === traceId);
-  }
-  override async fetchReadEdges(traceId: string): Promise<ReadEdge[]> {
-    return this.readEdges.filter(e => e.traceId === traceId);
   }
 }
 
-describe("V3 Telemetry compilation and read path integration", () => {
-  it("compiles nested container-node relationships with correct parentage and local sequence", async () => {
+describe("V4 Telemetry compilation and read path integration", () => {
+  it("compiles unified nested Spans and generates pre-calculated layout JSON strings", async () => {
     const repo = new MockRepo();
     const service = new LogServiceImpl(repo);
     const worker = new TraceMaterializationWorker(repo);
 
-    const traceId = "test-trace-id";
+    const traceId = "t4";
 
-    // 1. Ingest container lifecycles via service
-    await service.logContainers([
+    // 1. Ingest spans via service
+    await service.logSpans([
       {
-        id: "container_root",
+        id: "span_service",
         traceId,
-        parentContainerId: null,
-        name: "Order API",
+        parentId: null,
+        name: "OrderService",
+        kind: "boundary",
         type: "service",
-        tags: ["checkout", "web"],
+        tags: { env: "prod" },
         eventType: "started",
         timestamp: 1000,
+        levelNames: { 0: "Service Column", 1: "Major Flows", 2: "Deep Code" },
       },
       {
-        id: "container_child",
+        id: "span_checkout",
         traceId,
-        parentContainerId: "container_root",
-        name: "Payment API",
-        type: "service",
-        tags: ["payment", "internal"],
-        eventType: "started",
-        timestamp: 3000,
-      },
-      {
-        id: "container_child",
-        traceId,
-        parentContainerId: "container_root",
-        name: "Payment API",
-        type: "service",
-        tags: ["payment", "internal"],
-        eventType: "ended",
-        timestamp: 8000,
-      },
-      {
-        id: "container_root",
-        traceId,
-        parentContainerId: null,
-        name: "Order API",
-        type: "service",
-        tags: ["checkout", "web"],
-        eventType: "ended",
-        timestamp: 9000,
-      }
-    ]);
-
-    // 2. Ingest leaf chronological nodes via service
-    await service.logNodes([
-      {
-        id: "node_validate",
-        traceId,
-        containerId: "container_root",
-        name: "Validate Order",
-        type: "step",
-        tags: ["checkout"],
+        parentId: "span_service",
+        name: "ProcessCheckout",
+        kind: "execution",
+        type: "function",
+        tags: { endpoint: "/checkout" },
         eventType: "started",
         timestamp: 1500,
       },
       {
-        id: "node_validate",
+        id: "span_checkout",
         traceId,
-        containerId: "container_root",
-        name: "Validate Order",
-        type: "step",
-        tags: ["checkout"],
+        parentId: "span_service",
+        name: "ProcessCheckout",
+        kind: "execution",
+        type: "function",
+        tags: {},
         eventType: "ended",
-        timestamp: 2500,
+        timestamp: 4500,
       },
       {
-        id: "node_call_payment",
+        id: "span_service",
         traceId,
-        containerId: "container_root",
-        name: "Call Payment Gateway",
-        type: "http_client",
-        tags: ["network"],
-        eventType: "started",
-        timestamp: 2800,
-      },
-      {
-        id: "node_call_payment",
-        traceId,
-        containerId: "container_root",
-        name: "Call Payment Gateway",
-        type: "http_client",
-        tags: ["network"],
+        parentId: null,
+        name: "OrderService",
+        kind: "boundary",
+        type: "service",
+        tags: {},
         eventType: "ended",
-        timestamp: 8200,
+        timestamp: 5000,
       },
-      {
-        id: "node_charge",
-        traceId,
-        containerId: "container_child",
-        name: "Charge Credit Card",
-        type: "database",
-        tags: ["payment", "stripe"],
-        eventType: "started",
-        timestamp: 4000,
-      },
-      {
-        id: "node_charge",
-        traceId,
-        containerId: "container_child",
-        name: "Charge Credit Card",
-        type: "database",
-        tags: ["payment", "stripe"],
-        eventType: "ended",
-        timestamp: 7000,
-      }
     ]);
 
-    // 3. Ingest connection edge representing network crossing
+    // 2. Ingest connection edge representing network crossing
     await service.logEdges([
       {
-        id: "edge_payment_rpc",
+        id: "edge_flow",
         traceId,
-        fromNodeId: "node_call_payment",
-        toId: "container_child",
-        toType: "container",
-        type: "http_request",
-        timestamp: 2900,
-      }
+        fromSpanId: "span_service",
+        toSpanId: "span_checkout",
+        type: "flow",
+        timestamp: 1200,
+      },
     ]);
 
-    // 4. Run the materializer compiler manually
+    // 3. Run the V4 materializer compiler manually
     await worker.materialize(traceId);
 
-    // 5. Query layout using getTraceLayout
-    const layout = await service.getTraceLayout(traceId);
-    expect(layout).not.toBeNull();
+    // Verify raw Spans mapping in repository storage
+    expect(repo.readSpans.length).toBe(2);
+    const readService = repo.readSpans.find(s => s.id === "span_service")!;
+    const readCheckout = repo.readSpans.find(s => s.id === "span_checkout")!;
 
-    // Verify metadata
-    expect(layout!.metadata.traceId).toBe(traceId);
-    expect(layout!.metadata.isZoomReady).toBe(true);
-    expect(layout!.metadata.tags).toContain("checkout");
-    expect(layout!.metadata.tags).toContain("payment");
-    expect(layout!.metadata.tags).toContain("network");
+    expect(readService.name).toBe("OrderService");
+    expect(readService.kind).toBe("boundary");
+    expect(readService.startTimeUs).toBe(1000 * 1000);
+    expect(readService.durationUs).toBe(4000 * 1000); // 5000 - 1000
+    expect(readService.parentage).toEqual(["span_service"]);
+    expect(readService.tags).toEqual({ env: "prod" });
 
-    // Verify Compiled Containers
-    expect(layout!.containers.length).toBe(2);
-    const rootC = layout!.containers.find(c => c.id === "container_root")!;
-    const childC = layout!.containers.find(c => c.id === "container_child")!;
-    expect(rootC.name).toBe("Order API");
-    expect(rootC.parentContainerId).toBeNull();
-    expect(rootC.startTimeUs).toBe(1000 * 1000);
-    expect(rootC.durationUs).toBe(8000 * 1000); // 9000 - 1000
-    
-    // Verify parentage in repository storage
-    const storedRootC = repo.readContainers.find(c => c.id === "container_root")!;
-    expect(storedRootC.parentage).toEqual(["container_root"]);
+    expect(readCheckout.name).toBe("ProcessCheckout");
+    expect(readCheckout.kind).toBe("execution");
+    expect(readCheckout.startTimeUs).toBe(1500 * 1000);
+    expect(readCheckout.durationUs).toBe(3000 * 1000); // 4500 - 1500
+    expect(readCheckout.parentage).toEqual(["span_service", "span_checkout"]);
 
-    expect(childC.name).toBe("Payment API");
-    expect(childC.parentContainerId).toBe("container_root");
-    expect(childC.startTimeUs).toBe(3000 * 1000);
-    expect(childC.durationUs).toBe(5000 * 1000); // 8000 - 3000
-    
-    const storedChildC = repo.readContainers.find(c => c.id === "container_child")!;
-    expect(storedChildC.parentage).toEqual(["container_root", "node_call_payment", "container_child"]);
+    // Verify Compiled cached Layout JSON
+    expect(repo.traceMetadata).not.toBeNull();
+    if (repo.traceMetadata) {
+      expect(repo.traceMetadata.levelNames).toEqual({ 0: "Service Column", 1: "Major Flows", 2: "Deep Code" });
 
-    // Verify Compiled Nodes
-    expect(layout!.nodes.length).toBe(3);
-    const nodeVal = layout!.nodes.find(n => n.id === "node_validate")!;
-    const nodeCall = layout!.nodes.find(n => n.id === "node_call_payment")!;
-    const nodeChg = layout!.nodes.find(n => n.id === "node_charge")!;
-
-    // localSequence indexes chronologically sorted inside containers
-    expect(nodeVal.containerId).toBe("container_root");
-    expect(nodeVal.localSequence).toBe(0);
-    expect(nodeCall.containerId).toBe("container_root");
-    expect(nodeCall.localSequence).toBe(1);
-
-    expect(nodeChg.containerId).toBe("container_child");
-    expect(nodeChg.localSequence).toBe(0);
-
-    // Verify Lineage Ancestry Snapping parentage paths inside repository storage
-    const storedNodeVal = repo.readNodes.find(n => n.id === "node_validate")!;
-    const storedNodeChg = repo.readNodes.find(n => n.id === "node_charge")!;
-    expect(storedNodeVal.parentage).toEqual(["container_root", "node_validate"]);
-    // parentage path includes trigger node "node_call_payment" that connected to child container!
-    expect(storedNodeChg.parentage).toEqual([
-      "container_root",
-      "node_call_payment",
-      "container_child",
-      "node_charge"
-    ]);
-
-    // Verify Compiled Edges in layout (unfiltered has distance = 0)
-    expect(layout!.edges.length).toBe(1);
-    const edge = layout!.edges[0]!;
-    expect(edge.id).toBe("edge_payment_rpc");
-    expect(edge.fromNodeId).toBe("node_call_payment");
-    expect(edge.toId).toBe("container_child");
-    expect(edge.toType).toBe("container");
-    expect(edge.distance).toBe(0);
-
-    // Verify Compiled Edges in database repository (raw pre-compiled distance = 0)
-    const storedEdge = repo.readEdges.find(e => e.id === "edge_payment_rpc")!;
-    expect(storedEdge.distance).toBe(0);
+      const parsedLayout = JSON.parse(repo.traceMetadata.layoutJson);
+      expect(parsedLayout.spans.length).toBe(2);
+      expect(parsedLayout.edges.length).toBe(1);
+    }
   });
 });

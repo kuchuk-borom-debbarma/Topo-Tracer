@@ -1,138 +1,133 @@
 import { BatchExporter } from "./BatchExporter";
-import { TraceContainer } from "./TraceNode";
-import { TraceContainerInput, TraceNodeInput, TraceEdgeInput, TracerConfig, NodeType } from "./types";
+import { Span } from "./Span";
+import { TraceSpanInput, TraceEdgeInput, TracerConfig } from "./types";
 import { v4 as uuidv4 } from "uuid";
 
 export class Tracer {
   private static exporter: BatchExporter | null = null;
-  private static containerId: string | null = null;
+  private static serviceSpanId: string | null = null;
   
-  private static registeredContainers = new Map<string, { name: string; type: string }>();
-  private static loggedContainers = new Set<string>();
+  private static registeredService: { name: string; type: string; levelNames: Record<number, string> } | null = null;
+  private static loggedTraces = new Set<string>();
 
   /**
    * Initialize the global Tracer.
    * @param config - Configuration for the backend connection and batching.
-   * @param containerConfig - Metadata describing the current application/container.
+   * @param serviceConfig - Metadata describing the current service boundary.
    */
   public static init(
     config: TracerConfig, 
-    containerConfig: { id?: string; name: string; containerType?: string; type?: string }
+    serviceConfig: { id?: string; name: string; type?: string; levelNames?: Record<number, string> }
   ) {
     this.exporter = new BatchExporter(config);
     this.exporter.start();
 
-    this.containerId = containerConfig.id || uuidv4();
-    const type = containerConfig.type || containerConfig.containerType || "Logical Module";
-    
-    this.registeredContainers.set(this.containerId, {
-      name: containerConfig.name,
-      type: type
-    });
+    this.serviceSpanId = serviceConfig.id || uuidv4();
+    this.registeredService = {
+      name: serviceConfig.name,
+      type: serviceConfig.type || "Logical Module",
+      levelNames: serviceConfig.levelNames || {},
+    };
   }
 
   /**
-   * Dynamically registers a logical container/service on the fly.
+   * Gets the generated or provided ID for this service instance boundary.
    */
-  public static registerContainer(containerConfig: { id: string; name: string; containerType?: string; type?: string }) {
-    const type = containerConfig.type || containerConfig.containerType || "Logical Module";
-    this.registeredContainers.set(containerConfig.id, {
-      name: containerConfig.name,
-      type: type
-    });
-  }
-
-  /**
-   * Get the generated or provided ID for the current container.
-   */
-  public static getContainerId(): string {
-    if (!this.containerId) {
+  public static getServiceSpanId(): string {
+    if (!this.serviceSpanId) {
       throw new Error("Tracer not initialized. Call Tracer.init() first.");
     }
-    return this.containerId;
+    return this.serviceSpanId;
   }
 
   /**
-   * Dynamically exports a container registration for a given trace ID if it hasn't been logged yet.
+   * Helper to dynamic-register a service trace on start if it hasn't been logged yet.
    */
-  public static exportContainerForTrace(traceId: string, containerId: string, parentContainerId: string | null = null) {
-    if (!this.exporter) return;
-    const key = `${traceId}:${containerId}`;
-    if (!this.loggedContainers.has(key)) {
-      this.loggedContainers.add(key);
-      const config = this.registeredContainers.get(containerId) || {
-        name: "Unknown Container",
-        type: "Logical Module"
+  public static exportServiceSpanForTrace(traceId: string, levelNames?: Record<number, string>) {
+    if (!this.exporter || !this.registeredService) return;
+    const key = `${traceId}:${this.getServiceSpanId()}`;
+    if (!this.loggedTraces.has(key)) {
+      this.loggedTraces.add(key);
+
+      const mergedLevelNames = {
+        ...this.registeredService.levelNames,
+        ...(levelNames || {}),
       };
-      this.exporter.addContainer({
-        id: containerId,
+
+      this.exporter.addSpan({
+        id: this.getServiceSpanId(),
         traceId,
-        parentContainerId: parentContainerId,
-        name: config.name,
-        type: config.type,
-        tags: [],
+        parentId: null,
+        name: this.registeredService.name,
+        kind: "boundary",
+        type: this.registeredService.type,
+        tags: {},
         eventType: "started",
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        levelNames: mergedLevelNames,
       });
     }
   }
 
   /**
-   * Starts a completely new root container (Distributed Trace).
+   * Starts a completely new root boundary span (e.g. at the start of a distributed trace).
    */
-  public static startContainer(name: string, tags?: string[], type?: string): TraceContainer {
+  public static startBoundary(
+    name: string, 
+    opts?: { type?: string; tags?: Record<string, string>; levelNames?: Record<number, string> }
+  ): Span {
     const traceId = uuidv4();
-    const containerId = this.getContainerId();
-    this.exportContainerForTrace(traceId, containerId);
+    const serviceId = this.getServiceSpanId();
+    this.exportServiceSpanForTrace(traceId, opts?.levelNames);
 
-    return new TraceContainer({
-      id: containerId,
+    return new Span({
+      id: serviceId,
       traceId,
-      parentContainerId: null,
+      parentId: null,
       name,
-      type: type || "Logical Module",
-      tags: tags || []
+      kind: "boundary",
+      viewLevel: 0,
+      type: opts?.type,
+      tags: opts?.tags,
+      levelNames: opts?.levelNames,
     });
   }
 
   /**
-   * Continues an existing trace (e.g. from an incoming HTTP request containing trace headers).
+   * Continues an existing trace from incoming request carrier context headers.
    */
   public static continueTrace(
     headers: Record<string, string | undefined>,
     name: string,
-    type?: string
-  ): TraceContainer {
+    opts?: { type?: string; tags?: Record<string, string> }
+  ): Span {
     const traceId = headers["x-trace-id"] || uuidv4();
-    const parentCid = headers["x-parent-container-id"] || undefined;
-    const targetId = headers["x-target-node-id"] || undefined;
+    const parentSpanId = headers["x-parent-span-id"] || null;
+    const incomingViewLevel = headers["x-view-level"] ? parseInt(headers["x-view-level"], 10) : 0;
 
-    this.exportContainerForTrace(traceId, this.getContainerId(), parentCid || null);
-    return new TraceContainer({
-      id: targetId || this.getContainerId(),
+    // Auto-align this boundary's visual level to parentLevel + 1 to nest microservices cleanly
+    const boundaryViewLevel = incomingViewLevel + 1;
+
+    this.exportServiceSpanForTrace(traceId);
+
+    return new Span({
+      id: this.getServiceSpanId(),
       traceId,
-      parentContainerId: this.getContainerId(),
+      parentId: parentSpanId,
       name,
-      type: type || "Logical Module",
-      tags: []
+      kind: "boundary",
+      viewLevel: boundaryViewLevel,
+      type: opts?.type,
+      tags: opts?.tags,
     });
   }
 
   /**
-   * Internal method used to queue a container event for export.
+   * Internal method used to queue a span event for export.
    */
-  public static exportContainer(container: TraceContainerInput) {
+  public static exportSpan(span: TraceSpanInput) {
     if (this.exporter) {
-      this.exporter.addContainer(container);
-    }
-  }
-
-  /**
-   * Internal method used to queue a node event for export.
-   */
-  public static exportNode(node: TraceNodeInput) {
-    if (this.exporter) {
-      this.exporter.addNode(node);
+      this.exporter.addSpan(span);
     }
   }
 
@@ -155,7 +150,7 @@ export class Tracer {
   }
   
   /**
-   * Flush pending telemetry and stop the background timer.
+   * Flush pending telemetry and stop background timers.
    */
   public static async shutdown() {
     if (this.exporter) {
