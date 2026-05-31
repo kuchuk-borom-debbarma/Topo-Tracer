@@ -53,10 +53,15 @@ export type TraceListResponse = {
   totalPages: number;
 };
 
+export type LayoutEdge = ReadEdge & {
+  isGhost?: boolean;
+  ghostCount?: number;
+};
+
 export type TraceLayoutResponse = {
   metadata: {
     traceId: string;
   };
   spans: ReadSpan[];
-  edges: ReadEdge[];
+  edges: LayoutEdge[];
 };

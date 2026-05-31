@@ -105,7 +105,7 @@ export class ClickHouseService {
 
     for (const table of tables) {
       await this.clientInstance.command({
-        query: \`DROP TABLE IF EXISTS toco_tracer.\${table}\`,
+        query: `DROP TABLE IF EXISTS toco_tracer.${table}`,
       });
     }
   }
