@@ -63,24 +63,6 @@ export function TracesListPage() {
           ),
       },
       {
-        id: "tags",
-        header: "Tags",
-        cell: ({ row }) => (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {(row.original.tags || []).slice(0, 3).map((t) => (
-              <span key={t} className="badge badge-depth">
-                {t}
-              </span>
-            ))}
-            {(row.original.tags || []).length > 3 && (
-              <span className="badge badge-depth">
-                +{(row.original.tags || []).length - 3}
-              </span>
-            )}
-          </div>
-        ),
-      },
-      {
         id: "containers",
         header: "Containers",
         cell: ({ row }) => (

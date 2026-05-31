@@ -52,12 +52,9 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
       [forwardedRef]
     );
 
-    // Mapped activeTags to empty set since tag filtering is replaced by viewLevel matching
-    const activeTagsEmpty = useMemo(() => new Set<string>(), []);
-
     const layout = useMemo(
-      () => computeLayout(containers, nodes, edges, activeTagsEmpty, layoutMode),
-      [containers, nodes, edges, activeTagsEmpty, layoutMode]
+      () => computeLayout(containers, nodes, edges, layoutMode),
+      [containers, nodes, edges, layoutMode]
     );
 
     const { containerLayouts, nodePositions, parentArrows, wires, canvasWidth, canvasHeight } =
