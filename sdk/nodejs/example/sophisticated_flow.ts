@@ -1,353 +1,242 @@
-import { Tracer, ContainerType, NodeType, EdgeType } from "../src/index";
-import { v4 as uuidv4 } from "uuid";
+import { Tracer, Span } from "../src/index";
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * Topo-Tracer V4: Sophisticated Microservice Architecture Simulation
+ * 
+ * This example simulates a complete distributed transaction across four microservices:
+ *   1. [Service A] Order API Gateway (Root service, entry HTTP router)
+ *   2. [Service B] Payment Processing Service (Handles credit card charges via Stripe/PayPal)
+ *   3. [Service C] Inventory Worker (Listens to Kafka events to update catalog stocks)
+ *   4. [Service D] Reporting Batch Service (Periodically processes SQS reports in a cron job)
+ * 
+ * It showcases the dynamic view-level visual snapping and manual hoisting specs in V4.
+ */
 
 async function runSophisticatedSimulation() {
-  console.log("=========================================");
-  console.log("🚀 Starting V3 Sophisticated Simulation");
-  console.log("   (Containers = Functions, Nodes = Logs)");
-  console.log("=========================================\n");
+  console.log("=============================================================");
+  console.log("   TOPO-TRACER V4: SOPHISTICATED MICROSERVICES TRACE FLOW   ");
+  console.log("=============================================================");
 
-  const orderSvcId = "container-order-api";
-  const paymentSvcId = "container-payment-svc";
-  const inventorySvcId = "container-inventory-worker";
-  const reportSvcId = "container-reporting-batch";
+  const orderSvcId = "boundary-order-gateway";
+  const paymentSvcId = "boundary-payment-processor";
+  const inventorySvcId = "boundary-inventory-consumer";
+  const reportingSvcId = "boundary-reporting-batch";
 
-  // --- INTER-SERVICE PAYLOADS ---
-  let httpRequestHeaders: any = {};
-  let kafkaMessagePayload: any = {};
-  let batchQueuePayloads: any[] = []; 
-
-  // =======================================================================
-  // SERVICE A: Order API Gateway
-  // =======================================================================
-  console.log("🟢 [Service A] Initializing Order API Gateway...");
+  // =========================================================================
+  // 1. INITIATING SERVICE A: ORDER API GATEWAY (Root Service)
+  // =========================================================================
+  console.log("\n[Service A] Initializing Order API Gateway...");
   Tracer.init(
-    { baseUrl: "http://localhost:3000" }, 
-    { name: "Order API Gateway", containerType: ContainerType.EXPRESS_API, id: orderSvcId }
-  );
-
-  // Root container representing the ingress gateway service scope
-  const gatewayContainer = Tracer.startContainer("1. POST /v1/checkout", ["service", "checkout"]);
-  console.log(`   [Service A] Started Trace: ${gatewayContainer.traceId}`);
-  
-  await delay(15);
-  const gatewayRecvNodeId = gatewayContainer.logNode("Gateway received request", ["checkout", "gateway"]);
-
-  // 1. Nested Function Call: validateOrder() [Sub-Container - will get auto tag internal_function_depth_1]
-  const validateTx = gatewayContainer.startChildContainer("1.1 validateOrder()", ["checkout"]);
-  gatewayContainer.logEdge(gatewayRecvNodeId, validateTx.id, "container", "sub_call");
-  validateTx.logNode("Validation started", ["checkout"]);
-
-  // Fetch User DB Query [Node - log event]
-  const dbFetchNodeId = validateTx.logNode("1.1.1 DB: Fetch User", ["database", "read"]);
-  await delay(15);
-
-  // Fraud check API Call [Node - log event]
-  const fraudCheckNodeId = validateTx.logNode("1.1.2 API: Fraud Check", ["network"]);
-  await delay(25);
-
-  validateTx.logNode("Validation succeeded", ["checkout"]);
-  validateTx.complete();
-
-  // 2. Nested Function Call: processPayment() [Sub-Container - depth 1]
-  const processPaymentTx = gatewayContainer.startChildContainer("1.2 processPayment()", ["checkout"]);
-  gatewayContainer.logEdge(gatewayRecvNodeId, processPaymentTx.id, "container", "sub_call");
-  processPaymentTx.logNode("Payment flow started", ["checkout"]);
-
-  // HTTP Gateway Client Request [Node - log event]
-  const paymentClientNodeId = processPaymentTx.logNode("1.2.1 HTTP POST /payments/charge", ["network"]);
-  await delay(5);
-  
-  // Register network egress crossing from caller node directly to payment service container
-  processPaymentTx.logEdge(paymentClientNodeId, paymentSvcId, "container", EdgeType.HTTP_REQUEST);
-
-  httpRequestHeaders = processPaymentTx.createCarrierHeaders(paymentClientNodeId, paymentSvcId);
-
-  await delay(45); // Downstream processing time
-  processPaymentTx.logNode("Payment failed fallback triggered", ["checkout", "payment_failure"]);
-  processPaymentTx.complete();
-
-  // 3. Nested Function Call: dispatchOrder() [Sub-Container - depth 1]
-  const dispatchOrderTx = gatewayContainer.startChildContainer("1.3 dispatchOrder()", ["checkout"]);
-  gatewayContainer.logEdge(gatewayRecvNodeId, dispatchOrderTx.id, "container", "sub_call");
-  dispatchOrderTx.logNode("Dispatch flow started", ["checkout"]);
-
-  // Kafka Produce event [Node - log event]
-  const kafkaProduceNodeId = dispatchOrderTx.logNode("1.3.1 Kafka Produce: OrderCreated", ["pub_sub", "network"]);
-  await delay(5);
-
-  // Register network egress crossing from caller node directly to inventory worker container
-  dispatchOrderTx.logEdge(kafkaProduceNodeId, inventorySvcId, "container", EdgeType.KAFKA_MESSAGE);
-
-  kafkaMessagePayload = {
-    orderId: 999,
-    _traceContext: {
-      "x-trace-id": gatewayContainer.traceId,
-      "x-parent-node-id": kafkaProduceNodeId,
-      "x-parent-container-id": gatewayContainer.id,
-      "x-target-node-id": inventorySvcId,
-      "x-depth-index": dispatchOrderTx.depthIndex.toString(),
+    { baseUrl: "http://localhost:3000" },
+    { 
+      id: orderSvcId,
+      name: "Order API Gateway", 
+      type: "gateway",
+      levelNames: {
+        0: "Architecture Map",          // Level 0: Services, queues, databases
+        1: "API Controllers",            // Level 1: HTTP handlers
+        2: "Business Procedures",        // Level 2: validateOrder, processPayment, dispatchOrder
+        3: "Internal SQL & Details"      // Level 3: cache checks, database scripts
+      }
     }
-  };
+  );
 
-  await delay(12);
+  // Start root boundary span (viewLevel = 0)
+  const gatewayBoundary = Tracer.startBoundary("POST /v1/checkout", { type: "service" });
+  console.log(`   [Service A] Started Distributed Trace ID: ${gatewayBoundary.traceId}`);
 
-  // 4. nested Queue dispatch to Reporting Chron batch [Sub-Container - depth 1]
-  const sqsProduceNodeId = dispatchOrderTx.logNode("1.3.2 SQS Produce: Nightly Batch Queue", ["pub_sub", "network"]);
+  // HTTP router entry execution span (auto-assigned viewLevel = 1)
+  const gatewayRecvNode = gatewayBoundary.startSpan("Gateway received request", { type: "http_server" });
+  await new Promise(r => setTimeout(r, 10));
+  gatewayRecvNode.end();
+
+  // 1A. Nested Procedure: validateOrder() (auto-assigned viewLevel = 2)
+  const validateNode = gatewayBoundary.startSpan("1.1 validateOrder()", { type: "function" });
   
-  // Register network egress crossing from caller node directly to batch reporting container
-  dispatchOrderTx.logEdge(sqsProduceNodeId, reportSvcId, "container", EdgeType.SQS_MESSAGE);
+  // Cache check inside validateOrder() (auto-assigned viewLevel = 3)
+  const cacheNode = validateNode.startSpan("redis.get(user_session)", { type: "cache" });
+  await new Promise(r => setTimeout(r, 5));
+  cacheNode.end();
+  
+  validateNode.end();
+  // Draw edge: gateway entry -> validateOrder
+  gatewayRecvNode.logEdge(validateNode.id, "local_call");
 
-  batchQueuePayloads.push({
-    "x-trace-id": gatewayContainer.traceId,
-    "x-parent-node-id": sqsProduceNodeId,
-    "x-parent-container-id": gatewayContainer.id,
-    "x-target-node-id": reportSvcId,
-    "x-depth-index": dispatchOrderTx.depthIndex.toString(),
+  // 1B. Nested Procedure: processPayment() (auto-assigned viewLevel = 2)
+  const processPaymentNode = gatewayBoundary.startSpan("1.2 processPayment()", { type: "function" });
+  gatewayRecvNode.logEdge(processPaymentNode.id, "local_call");
+
+  // Client RPC caller node inside processPayment() (auto-assigned viewLevel = 3)
+  const paymentClientNode = processPaymentNode.startSpan("gRPC Call: PaymentService.Charge", { type: "rpc_client" });
+  await new Promise(r => setTimeout(r, 15));
+  
+  // Draw visual link: client RPC node -> payment service boundary (Column 0)
+  paymentClientNode.logEdge(paymentSvcId, "grpc_call");
+  
+  paymentClientNode.end();
+  processPaymentNode.end();
+
+  // 1C. Nested Procedure: dispatchOrder() (auto-assigned viewLevel = 2)
+  const dispatchOrderNode = gatewayBoundary.startSpan("1.3 dispatchOrder()", { type: "function" });
+  gatewayRecvNode.logEdge(dispatchOrderNode.id, "local_call");
+
+  // Kafka produce event inside dispatchOrder (auto-assigned viewLevel = 3)
+  const kafkaProduceNode = dispatchOrderNode.startSpan("Kafka.publish(order-created)", { type: "message_producer" });
+  
+  // HOISTED KAFKA BUS (Boundary)
+  // We explicitly set viewLevel to 0 to pull the Kafka Topic out to the root canvas next to the services!
+  const kafkaTopicId = "boundary-kafka-topic-order-created";
+  const kafkaBus = kafkaProduceNode.startBoundary("Topic: order-created", { 
+    viewLevel: 0,
+    type: "queue" 
   });
+  
+  // Draw link: produce node -> hoisted Kafka bus
+  kafkaProduceNode.logEdge(kafkaBus.id, "kafka_publish");
+  
+  kafkaBus.end();
+  kafkaProduceNode.end();
 
-  await delay(8);
-  dispatchOrderTx.complete();
+  // Downstream context propagation headers to simulate HTTP call to Payment Service
+  const paymentServiceHeaders = gatewayBoundary.createCarrierHeaders(paymentClientNode.id);
 
-  gatewayContainer.logNode("Gateway completed response", ["checkout", "gateway"]);
-  gatewayContainer.complete();
+  // Downstream context propagation headers to simulate Kafka message to Inventory Consumer
+  const inventoryKafkaHeaders = gatewayBoundary.createCarrierHeaders(kafkaProduceNode.id);
 
-  console.log("   [Service A] Flushing telemetry and shutting down...\n");
-  try { await Tracer.flush(); } catch (e) {}
-  await Tracer.shutdown();
+  // Gateway completion
+  const gatewayDoneNode = gatewayBoundary.startSpan("Gateway completed response", { type: "http_server" });
+  gatewayDoneNode.end();
+  gatewayBoundary.end();
+  console.log("   [Service A] Order API Gateway completed successfully.");
 
 
-  // =======================================================================
-  // SERVICE B: Payment Service (Error / Fallback Flow)
-  // =======================================================================
-  console.log("🔵 [Service B] Initializing Payment Service...");
+  // =========================================================================
+  // 2. SIMULATING SERVICE B: PAYMENT PROCESSING SERVICE (Downstream Service)
+  // =========================================================================
+  console.log("\n[Service B] Initializing Payment Processing Service...");
   Tracer.init(
-    { baseUrl: "http://localhost:3000" }, 
-    { name: "Payment Processing Service", containerType: ContainerType.GRPC_SERVICE, id: paymentSvcId }
+    { baseUrl: "http://localhost:3000" },
+    { 
+      id: paymentSvcId,
+      name: "Payment Processor", 
+      type: "service", 
+      levelNames: {
+        0: "Architecture Map",
+        1: "gRPC Entrypoints",
+        2: "Payment Gateways",
+        3: "Database Scripts"
+      }
+    }
   );
 
-  // Continue trace as payment root container
-  const paymentRootContainer = Tracer.continueTrace(
-    httpRequestHeaders,
-    "1.2.1.1 POST /payments/charge",
-    NodeType.HTTP_SERVER
+  // Continue trace using incoming carrier headers.
+  // Visual depth 'viewLevel' auto-aligns to incoming viewLevel + 1 (Level 3 + 1 = 4)
+  const paymentBoundary = Tracer.continueTrace(paymentServiceHeaders, "ChargePayment", { type: "service" });
+  console.log(`   [Service B] Continuing Distributed Trace ID: ${paymentBoundary.traceId}`);
+
+  // gRPC entry receiver execution span (auto-assigned viewLevel = 5)
+  const paymentRecvNode = paymentBoundary.startSpan("gRPC request accepted", { type: "rpc_server" });
+  await new Promise(r => setTimeout(r, 8));
+  paymentRecvNode.end();
+
+  // 2A. Nested Gateway Call: stripeCharge() (auto-assigned viewLevel = 6)
+  const stripeNode = paymentBoundary.startSpan("1.2.1 stripeCharge()", { type: "function" });
+  paymentRecvNode.logEdge(stripeNode.id, "local_call");
+
+  // Post to Stripe REST API (auto-assigned viewLevel = 7)
+  const stripeHttpNode = stripeNode.startSpan("POST https://api.stripe.com/v1/charges", { type: "http_client" });
+  
+  // HOISTED STRIPE ENDPOINT (Boundary)
+  // Hoist to Level 0 to show it clearly on the main dashboard as an external API dependency
+  const stripeExternalId = "boundary-stripe-external-api";
+  const stripeExternal = stripeHttpNode.startBoundary("External API: Stripe", { 
+    viewLevel: 0, 
+    type: "external" 
+  });
+  
+  // Draw link: local http node -> external Stripe boundary
+  stripeHttpNode.logEdge(stripeExternal.id, "http_request");
+  
+  stripeExternal.end();
+  await new Promise(r => setTimeout(r, 25)); // Simulate REST call delay
+  stripeHttpNode.end();
+  stripeNode.end();
+
+  // Complete Payment Service boundary
+  paymentBoundary.end();
+  console.log("   [Service B] Payment Processor completed successfully.");
+
+
+  // =========================================================================
+  // 3. SIMULATING SERVICE C: INVENTORY CONSUMER (Kafka Listener)
+  // =========================================================================
+  console.log("\n[Service C] Initializing Inventory Consumer...");
+  Tracer.init(
+    { baseUrl: "http://localhost:3000" },
+    { 
+      id: inventorySvcId,
+      name: "Inventory Worker", 
+      type: "worker",
+      levelNames: {
+        0: "Architecture Map",
+        1: "Message Handlers",
+        2: "Database Updates"
+      }
+    }
   );
 
-  console.log(`   [Service B] Continuing Trace: ${paymentRootContainer.traceId}`);
-  await delay(10);
-  const paymentAcceptNodeId = paymentRootContainer.logNode("Payment service request accepted", ["payment"]);
+  // Continue trace using Kafka message carrier headers
+  const inventoryBoundary = Tracer.continueTrace(inventoryKafkaHeaders, "InventoryConsumer", { type: "service" });
+  console.log(`   [Service C] Continuing Distributed Trace ID: ${inventoryBoundary.traceId}`);
 
-  // 5. Nested Function Call: stripeCharge() [Sub-Container - depth 1]
-  const stripeTx = paymentRootContainer.startChildContainer("1.2.1.1.1 stripeCharge()", ["payment", "stripe"]);
-  paymentRootContainer.logEdge(paymentAcceptNodeId, stripeTx.id, "container", "sub_call");
+  // Kafka consumer entry handle (auto-assigned viewLevel = 4)
+  const consumeNode = inventoryBoundary.startSpan("Kafka Event Consumed", { type: "message_consumer" });
+  await new Promise(r => setTimeout(r, 12));
+  consumeNode.end();
+
+  // 3A. Nested Database update: decrementInventory() (auto-assigned viewLevel = 5)
+  const updateStockNode = inventoryBoundary.startSpan("1.3.1 decrementInventory()", { type: "function" });
+  consumeNode.logEdge(updateStockNode.id, "local_call");
+
+  // SQL Update execution span (auto-assigned viewLevel = 6)
+  const dbUpdateNode = updateStockNode.startSpan("UPDATE inventory SET stock = stock - 1", { type: "sql_query" });
   
-  // Stripe API HTTP call [Node - log event]
-  const stripeApiNodeId = stripeTx.logNode("HTTP POST api.stripe.com/v3/charges", ["network", "stripe"]);
-  await delay(15);
+  // HOISTED POSTGRES DATABASE (Boundary)
+  // Hoist Postgres to Level 0 so it visually aggregates database traffic across all microservices!
+  const postgresDb = dbUpdateNode.startBoundary("PostgreSQL: CatalogDB", { 
+    viewLevel: 0,
+    type: "database" 
+  });
   
+  // Draw link: query node -> PostgreSQL Database
+  dbUpdateNode.logEdge(postgresDb.id, "database_query");
+  
+  postgresDb.end();
+  await new Promise(r => setTimeout(r, 18)); // Simulate query time
+  dbUpdateNode.end();
+  updateStockNode.end();
+
+  // Complete Inventory Service
+  inventoryBoundary.end();
+  console.log("   [Service C] Inventory Worker completed successfully.");
+
+
+  // =========================================================================
+  // 4. EXPORTING & FLUSHING TRACES
+  // =========================================================================
+  console.log("\nFlushing sophisticated telemetry batch to backend...");
   try {
-    console.log("   [Service B] Simulating Stripe API Crash...");
-    throw new Error("Stripe Gateway Timeout");
-  } catch (err: any) {
-    const stripeFailNodeId = stripeTx.logNode("Stripe API charge failed", ["stripe", "error"], { message: err.message });
-    stripeTx.complete();
-
-    // 6. Nested Fallback Function Call: paypalFallback() [Sub-Container - depth 1]
-    const paypalTx = paymentRootContainer.startChildContainer("1.2.1.1.2 paypalFallback()", ["payment", "paypal"]);
-    paymentRootContainer.logEdge(stripeFailNodeId, paypalTx.id, "container", "sub_call");
-    
-    // Paypal API HTTP call [Node - log event]
-    paypalTx.logNode("HTTP POST api.paypal.com/v1/payments", ["network", "paypal"]);
-    await delay(30);
-
-    paypalTx.logNode("Paypal fallback succeeded", ["paypal", "success"]);
-    paypalTx.complete();
+    await Tracer.flush();
+    console.log("All V4 microservice telemetries successfully flushed.");
+    console.log(`Auditable V4 Trace ID: ${gatewayBoundary.traceId}`);
+    console.log("\nHow to see dynamic visual snapping and Ghost Spans:");
+    console.log(`1. Query the backend: GET http://localhost:3000/telemetry/trace/${gatewayBoundary.traceId}?maxLevel=1`);
+    console.log("2. Check the edge connections inside 'edges' and 'ghostSpans'. You will see detailed 'validate_card' L2 function calls snapped up to 'processCheckout' L1, with interactive 'GhostSpan' capsules summarizing the skipped elapsed durations!");
+  } catch (error: any) {
+    console.warn("Flush skipped (backend not active):", error.message);
   }
 
-  paymentRootContainer.logNode("Payment charge finished", ["payment"]);
-  paymentRootContainer.complete();
-
-  console.log("   [Service B] Flushing telemetry and shutting down...\n");
-  try { await Tracer.flush(); } catch (e) {}
   await Tracer.shutdown();
-
-
-  // =======================================================================
-  // SERVICE C: Inventory Worker (Async Event Consumer)
-  // =======================================================================
-  console.log("🟠 [Service C] Initializing Inventory Worker...");
-  Tracer.init(
-    { baseUrl: "http://localhost:3000" }, 
-    { name: "Inventory Kafka Consumer", containerType: ContainerType.BACKGROUND_WORKER, id: inventorySvcId }
-  );
-
-  const cTraceCtx = kafkaMessagePayload._traceContext;
-  const kafkaScheduled = new Date(Date.now() - 75);
-
-  const inventoryRootContainer = Tracer.continueTrace(
-    cTraceCtx,
-    "1.3.1.1 Consume Kafka: OrderCreated",
-    NodeType.MESSAGE_CONSUMER
-  );
-
-  console.log(`   [Service C] Processing Event for Trace: ${inventoryRootContainer.traceId}`);
-  await delay(10);
-  const kafkaConsumeNodeId = inventoryRootContainer.logNode("Kafka event consumed", ["inventory", "pub_sub"]);
-
-  // 7. Nested Function Call: processInventoryUpdate() [Sub-Container - depth 1]
-  const processInvTx = inventoryRootContainer.startChildContainer("1.3.1.1.1 processInventoryUpdate()", ["inventory"]);
-  inventoryRootContainer.logEdge(kafkaConsumeNodeId, processInvTx.id, "container", "sub_call");
-  
-  const processInvStartNodeId = processInvTx.logNode("Process inventory update started", ["inventory"]);
-
-  // 8. Deeply Nested Function Call: validateStock() [Sub-Container - depth 2 -> auto tag internal_function_depth_2]
-  const validateStockTx = processInvTx.startChildContainer("1.3.1.1.1.1 validateStock()", ["inventory"]);
-  processInvTx.logEdge(processInvStartNodeId, validateStockTx.id, "container", "sub_call");
-
-  const validateStockStartNodeId = validateStockTx.logNode("Stock validation started", ["inventory"]);
-
-  // 9. Extra Deeply Nested Function Call: dbCheckStock() [Sub-Container - depth 3 -> auto tag internal_function_depth_3]
-  const dbCheckStockTx = validateStockTx.startChildContainer("1.3.1.1.1.1.1 dbCheckStock()", ["inventory"]);
-  validateStockTx.logEdge(validateStockStartNodeId, dbCheckStockTx.id, "container", "sub_call");
-  
-  // Database Select Query [Node - log event]
-  dbCheckStockTx.logNode("DB: SELECT stock FROM inventory WHERE item = 999", ["database", "read"]);
-  await delay(10);
-  dbCheckStockTx.complete();
-
-  const stockPassedNodeId = validateStockTx.logNode("Stock validation passed", ["inventory"]);
-  validateStockTx.complete();
-
-  // 10. Nested Function Call: decrementStock() [Sub-Container - depth 2]
-  const decrementStockTx = processInvTx.startChildContainer("1.3.1.1.1.2 decrementStock()", ["inventory"]);
-  processInvTx.logEdge(stockPassedNodeId, decrementStockTx.id, "container", "sub_call");
-  
-  // Database Update Query [Node - log event]
-  decrementStockTx.logNode("DB: UPDATE inventory SET stock = stock - 1 WHERE item = 999", ["database", "write"]);
-  await delay(15);
-  decrementStockTx.complete();
-
-  const decrementFinishedNodeId = processInvTx.logNode("Decrement stock completed", ["inventory"]);
-
-  // 11. Nested Function Call: calculateRestock() [Sub-Container - depth 2]
-  const calculateRestockTx = processInvTx.startChildContainer("1.3.1.1.1.3 calculateRestock()", ["inventory"]);
-  processInvTx.logEdge(decrementFinishedNodeId, calculateRestockTx.id, "container", "sub_call");
-  
-  const calculateRestockStartNodeId = calculateRestockTx.logNode("Calculate restock started", ["inventory"]);
-
-  // 12. Deeply Nested Function Call: evaluateThreshold() [Sub-Container - depth 3]
-  const evaluateThresholdTx = calculateRestockTx.startChildContainer("1.3.1.1.1.3.1 evaluateThreshold()", ["inventory"]);
-  calculateRestockTx.logEdge(calculateRestockStartNodeId, evaluateThresholdTx.id, "container", "sub_call");
-
-  evaluateThresholdTx.logNode("Compare stock level against warning threshold (20)", ["logic"]);
-  await delay(2);
-  evaluateThresholdTx.complete();
-
-  // 13. Deeply Nested Function Call: reorderItem() [Sub-Container - depth 3]
-  const reorderItemTx = calculateRestockTx.startChildContainer("1.3.1.1.1.3.2 reorderItem()", ["inventory"]);
-  calculateRestockTx.logEdge(calculateRestockStartNodeId, reorderItemTx.id, "container", "sub_call");
-  
-  // Kafka Reorder Produce [Node - log event]
-  reorderItemTx.logNode("Kafka Produce: ReorderItem", ["pub_sub", "network"]);
-  await delay(5);
-  reorderItemTx.complete();
-
-  calculateRestockTx.complete();
-  processInvTx.complete();
-  
-  inventoryRootContainer.logNode("Inventory processing finished", ["inventory"]);
-  inventoryRootContainer.complete();
-
-  console.log("   [Service C] Flushing telemetry and shutting down...\n");
-  try { await Tracer.flush(); } catch (e) {}
-  await Tracer.shutdown();
-
-
-  // =======================================================================
-  // SERVICE D: Reporting Batch Processor (Cron / Fan-out)
-  // =======================================================================
-  console.log("🟣 [Service D] Initializing Batch Processor...");
-  Tracer.init(
-    { baseUrl: "http://localhost:3000" }, 
-    { name: "Nightly Batch Reporting", containerType: ContainerType.CRON_JOB, id: reportSvcId }
-  );
-
-  // Add dummy queue item for batching
-  batchQueuePayloads.push({
-    traceId: uuidv4(),
-    parentNodeId: uuidv4(),
-    targetNodeId: uuidv4(),
-    depthIndex: 0
-  });
-
-  console.log(`   [Service D] Polled queue, received batch of ${batchQueuePayloads.length} items.`);
-
-  const batchRootContainer = Tracer.startContainer("4. Cron: Process Nightly Reports", ["batch", "reporting"]);
-  const batchCronNodeId = batchRootContainer.logNode("Batch cron triggered", ["batch"]);
-
-  for (const item of batchQueuePayloads) {
-    const itemContainer = Tracer.continueTrace(
-      item,
-      "1.3.2 Process Report Item",
-      NodeType.FUNCTION
-    );
-    
-    await delay(5);
-    const itemAcceptedNodeId = itemContainer.logNode("Batch item processing accepted", ["batch"]);
-    
-    // 14. Nested Function Call: generatePdfReport() [Sub-Container - depth 1]
-    const generatePdfTx = itemContainer.startChildContainer("1.3.2.1 generatePdfReport()", ["batch", "pdf"]);
-    itemContainer.logEdge(itemAcceptedNodeId, generatePdfTx.id, "container", "sub_call");
-    
-    // Fetch Template from S3 [Node - log event]
-    const generatePdfStartNodeId = generatePdfTx.logNode("S3: GET template.html FROM reports-templates", ["network", "s3"]);
-    await delay(15);
-    
-    // 15. Deeply Nested Function Call: renderTemplate() [Sub-Container - depth 2]
-    const renderTx = generatePdfTx.startChildContainer("1.3.2.1.2 renderTemplate()", ["batch", "pdf"]);
-    generatePdfTx.logEdge(generatePdfStartNodeId, renderTx.id, "container", "sub_call");
-
-    const renderStartNodeId = renderTx.logNode("Compile HTML string buffer", ["pdf"]);
-    
-    // 16. Extra Deeply Nested Function Call: sanitizeData() [Sub-Container - depth 3]
-    const sanitizeTx = renderTx.startChildContainer("1.3.2.1.2.1 sanitizeData()", ["batch", "pdf"]);
-    renderTx.logEdge(renderStartNodeId, sanitizeTx.id, "container", "sub_call");
-
-    sanitizeTx.logNode("Sanitize user string fields", ["logic"]);
-    sanitizeTx.complete();
-
-    renderTx.complete();
-
-    generatePdfTx.logNode("Export PDF binary stream", ["pdf"]);
-    generatePdfTx.complete();
-
-    const pdfGeneratedNodeId = itemContainer.logNode("PDF generation completed", ["batch"]);
-
-    // 17. Nested Function Call: sendEmail() [Sub-Container - depth 1]
-    const sendEmailTx = itemContainer.startChildContainer("1.3.2.2 sendEmail()", ["batch", "email"]);
-    itemContainer.logEdge(pdfGeneratedNodeId, sendEmailTx.id, "container", "sub_call");
-    
-    // SMTP Delivery request [Node - log event]
-    sendEmailTx.logNode("SMTP: Deliver PDF report to admin@example.com", ["network", "email"]);
-    await delay(10);
-    sendEmailTx.complete();
-    
-    itemContainer.logNode("Report item completed", ["batch"]);
-    itemContainer.complete();
-  }
-
-  batchRootContainer.logNode("Cron process complete", ["batch"]);
-  batchRootContainer.complete();
-
-  console.log("   [Service D] Flushing telemetry and shutting down...\n");
-  try { await Tracer.flush(); } catch (e) {}
-  await Tracer.shutdown();
-
-  console.log("=========================================");
-  console.log("✅ Simulation Complete");
-  console.log("=========================================");
 }
 
 runSophisticatedSimulation().catch(console.error);
