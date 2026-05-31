@@ -132,6 +132,7 @@ async function runSophisticatedSimulation() {
   });
   gatewayDoneNode.end();
   gatewayBoundary.end();
+  await Tracer.flush();
   console.log("   [Service A] Order API Gateway completed successfully.");
 
 
@@ -201,6 +202,7 @@ async function runSophisticatedSimulation() {
 
   // Complete Payment Service boundary
   paymentBoundary.end();
+  await Tracer.flush();
   console.log("   [Service B] Payment Processor completed successfully.");
 
 
