@@ -99,14 +99,14 @@ export class Tracer {
   public static continueTrace(
     headers: Record<string, string | undefined>,
     name: string,
-    opts?: { type?: string; tags?: Record<string, string> }
+    opts?: { type?: string; tags?: Record<string, string>; viewLevel?: number }
   ): Span {
     const traceId = headers["x-trace-id"] || uuidv4();
     const parentSpanId = headers["x-parent-span-id"] || null;
     const incomingViewLevel = headers["x-view-level"] ? parseInt(headers["x-view-level"], 10) : 0;
 
-    // Auto-align this boundary's visual level to parentLevel + 1 to nest microservices cleanly
-    const boundaryViewLevel = incomingViewLevel + 1;
+    // Auto-align this boundary's visual level to parentLevel + 1, or use the explicit override
+    const boundaryViewLevel = opts?.viewLevel !== undefined ? opts.viewLevel : incomingViewLevel + 1;
 
     this.exportServiceSpanForTrace(traceId);
 
