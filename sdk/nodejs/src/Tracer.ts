@@ -43,7 +43,7 @@ export class Tracer {
   /**
    * Helper to dynamic-register a service trace on start if it hasn't been logged yet.
    */
-  public static exportServiceSpanForTrace(traceId: string, levelNames?: Record<number, string>) {
+  public static exportServiceSpanForTrace(traceId: string, levelNames?: Record<number, string>, viewLevel: number = 0) {
     if (!this.exporter || !this.registeredService) return;
     const key = `${traceId}:${this.getServiceSpanId()}`;
     if (!this.loggedTraces.has(key)) {
@@ -65,6 +65,7 @@ export class Tracer {
         eventType: "started",
         timestamp: Date.now(),
         levelNames: mergedLevelNames,
+        viewLevel,
       });
     }
   }
@@ -78,7 +79,7 @@ export class Tracer {
   ): Span {
     const traceId = uuidv4();
     const serviceId = this.getServiceSpanId();
-    this.exportServiceSpanForTrace(traceId, opts?.levelNames);
+    this.exportServiceSpanForTrace(traceId, opts?.levelNames, 0);
 
     return new Span({
       id: serviceId,
@@ -108,7 +109,7 @@ export class Tracer {
     // Auto-align this boundary's visual level to parentLevel + 1, or use the explicit override
     const boundaryViewLevel = opts?.viewLevel !== undefined ? opts.viewLevel : incomingViewLevel + 1;
 
-    this.exportServiceSpanForTrace(traceId);
+    this.exportServiceSpanForTrace(traceId, undefined, boundaryViewLevel);
 
     return new Span({
       id: this.getServiceSpanId(),

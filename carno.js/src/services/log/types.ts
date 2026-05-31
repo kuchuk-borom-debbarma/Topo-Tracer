@@ -11,6 +11,7 @@ export type TraceSpan = {
   eventType: "started" | "ended";
   timestamp: Date;
   levelNames?: Record<number, string>;
+  viewLevel?: number;
 };
 
 export type TraceSpanInput = {
@@ -24,6 +25,7 @@ export type TraceSpanInput = {
   eventType: "started" | "ended";
   timestamp: number; // UNIX timestamp in ms
   levelNames?: Record<number, string>;
+  viewLevel?: number;
 };
 
 export type TraceEdge = {

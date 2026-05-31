@@ -29,6 +29,7 @@ export class LogServiceImpl extends LogService {
       ...span,
       timestamp: new Date(span.timestamp),
       levelNames: span.levelNames || {},
+      viewLevel: span.viewLevel !== undefined ? span.viewLevel : 0,
     }));
 
     console.log(`[LogServiceImpl] Ingesting ${enriched.length} raw spans into ClickHouse...`);

@@ -31,6 +31,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
         event_type: s.eventType,
         timestamp: s.timestamp.getTime(),
         level_names: s.levelNames || {},
+        view_level: s.viewLevel ?? 0,
       })),
       format: "JSONEachRow",
     });
@@ -55,7 +56,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
 
   override async fetchSpans(traceId: string): Promise<TraceSpan[]> {
     const result = await this.clickHouse.client.query({
-      query: `SELECT id, trace_id as traceId, parent_id as parentId, name, kind, type, tags, event_type as eventType, timestamp, level_names as levelNames FROM toco_tracer.raw_spans WHERE trace_id = {traceId: String}`,
+      query: `SELECT id, trace_id as traceId, parent_id as parentId, name, kind, type, tags, event_type as eventType, timestamp, level_names as levelNames, view_level as viewLevel FROM toco_tracer.raw_spans WHERE trace_id = {traceId: String}`,
       query_params: { traceId },
       format: "JSONEachRow",
     });
@@ -65,6 +66,7 @@ export class LogRepoClickHouseImpl extends LogRepo {
       timestamp: new Date(Number(r.timestamp)),
       parentId: r.parentId || null,
       levelNames: parseNumberMap(r.levelNames),
+      viewLevel: Number(r.viewLevel ?? 0),
     }));
   }
 
