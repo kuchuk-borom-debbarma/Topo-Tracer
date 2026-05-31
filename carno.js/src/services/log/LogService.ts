@@ -180,8 +180,46 @@ export class LogService {
   }
 
   async listTraces(page: number, limit: number): Promise<TraceListResponse> {
-    // TODO: Implement listing traces
-    return { traces: [], total: 0, page, limit, totalPages: 0 };
+    const offset = (page - 1) * limit;
+
+    const tracesQuery = `
+      SELECT 
+        trace_id as traceId, 
+        MIN(start_time_us) as createdAt, 
+        count() as spanCount 
+      FROM toco_tracer.read_spans 
+      GROUP BY trace_id 
+      ORDER BY createdAt DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    const totalQuery = `
+      SELECT count() as total FROM (
+        SELECT trace_id FROM toco_tracer.read_spans GROUP BY trace_id
+      )
+    `;
+
+    const [tracesResult, totalResult] = await Promise.all([
+      this.clickhouse.client.query({ query: tracesQuery, format: 'JSONEachRow' }),
+      this.clickhouse.client.query({ query: totalQuery, format: 'JSONEachRow' })
+    ]);
+
+    const traces = await tracesResult.json<any>();
+    const totalData = await totalResult.json<any>();
+    const total = totalData.length > 0 ? Number(totalData[0].total) : 0;
+    const totalPages = Math.ceil(total / limit);
+
+    return { 
+      traces: traces.map((t: any) => ({
+        traceId: t.traceId,
+        createdAt: Number(t.createdAt) / 1000, // convert us to ms for the frontend
+        spanCount: Number(t.spanCount)
+      })), 
+      total, 
+      page, 
+      limit, 
+      totalPages 
+    };
   }
 }
 
