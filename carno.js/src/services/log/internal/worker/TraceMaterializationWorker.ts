@@ -43,14 +43,18 @@ export class TraceMaterializationWorker {
   }
 
   public async materialize(traceId: string): Promise<void> {
+    console.log(`[TraceMaterializationWorker] [${traceId}] Starting V4 trace materialization pipeline...`);
+    
     // 1. Bulk fetch raw trace facts
     const [rawSpans, rawEdges] = await Promise.all([
       this.logRepo.fetchSpans(traceId),
       this.logRepo.fetchRawEdges(traceId),
     ]);
 
+    console.log(`[TraceMaterializationWorker] [${traceId}] Fetched raw facts: ${rawSpans.length} spans, ${rawEdges.length} edges`);
+
     if (!rawSpans.length) {
-      console.warn(`[TraceMaterializationWorker] No spans found for trace ${traceId}. Skipping.`);
+      console.warn(`[TraceMaterializationWorker] [${traceId}] No spans found for trace. Skipping.`);
       return;
     }
 
@@ -67,6 +71,7 @@ export class TraceMaterializationWorker {
         Object.assign(levelNames, s.levelNames);
       }
     }
+    console.log(`[TraceMaterializationWorker] [${traceId}] Resolved visual level name mappings:`, levelNames);
 
     // 4. Group started/ended raw spans to resolve timings (startTimeUs, durationUs)
     type CollapsedSpan = {
@@ -106,6 +111,7 @@ export class TraceMaterializationWorker {
         existing.tags = { ...existing.tags, ...(s.tags || {}) };
       }
     }
+    console.log(`[TraceMaterializationWorker] [${traceId}] Collapsed ${rawSpans.length} raw span events into ${collapsedSpansMap.size} logical spans`);
 
     // 5. Resolve recursive parentage path [root_id, parent_id, ..., current_id]
     const parentageMap = new Map<string, string[]>();
@@ -190,6 +196,7 @@ export class TraceMaterializationWorker {
     };
 
     compileTree(rootSpans);
+    console.log(`[TraceMaterializationWorker] [${traceId}] Resolved parentages and local Y-sequence order for ${readSpansToInsert.length} read-optimized spans`);
 
     // 7. Compile read edges with chronological distance metrics
     const readEdgesToInsert: ReadEdge[] = [];
@@ -229,6 +236,7 @@ export class TraceMaterializationWorker {
         metadata: null,
       });
     }
+    console.log(`[TraceMaterializationWorker] [${traceId}] Compiled ${readEdgesToInsert.length} read edges with sequential chronological distance metrics`);
 
     // 8. Pre-compile full layout JSON cache
     const layoutCache = {
@@ -239,8 +247,11 @@ export class TraceMaterializationWorker {
     const layoutJsonString = JSON.stringify(layoutCache);
 
     const minCreatedAt = Math.min(...readSpansToInsert.map(s => s.startTimeUs)) / 1000 || Date.now();
+    console.log(`[TraceMaterializationWorker] [${traceId}] Serialized layout cache JSON length: ${layoutJsonString.length} bytes`);
 
     // 9. Batch insert all pre-computed read path structures
+    console.log(`[TraceMaterializationWorker] [${traceId}] Batch inserting materialized read path data structures into ClickHouse...`);
+    const startSave = Date.now();
     await Promise.all([
       this.logRepo.saveReadSpans(readSpansToInsert),
       this.logRepo.saveReadEdges(readEdgesToInsert),
@@ -253,5 +264,6 @@ export class TraceMaterializationWorker {
         createdAt: minCreatedAt,
       }),
     ]);
+    console.log(`[TraceMaterializationWorker] [${traceId}] Materialized structure insert complete (Time taken: ${Date.now() - startSave}ms)`);
   }
 }

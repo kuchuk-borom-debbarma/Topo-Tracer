@@ -31,7 +31,9 @@ export class LogServiceImpl extends LogService {
       levelNames: span.levelNames || {},
     }));
 
+    console.log(`[LogServiceImpl] Ingesting ${enriched.length} raw spans into ClickHouse...`);
     await this.logRepo.saveSpans(enriched);
+    console.log(`[LogServiceImpl] Successfully saved ${enriched.length} raw spans to toco_tracer.raw_spans`);
     this.triggerTraces(spans);
   }
 
@@ -41,12 +43,15 @@ export class LogServiceImpl extends LogService {
       timestamp: new Date(edge.timestamp),
     }));
 
+    console.log(`[LogServiceImpl] Ingesting ${enriched.length} raw edges into ClickHouse...`);
     await this.logRepo.saveEdges(enriched);
+    console.log(`[LogServiceImpl] Successfully saved ${enriched.length} raw edges to toco_tracer.raw_edges`);
     this.triggerTraces(edges);
   }
 
   override async getTraceLayout(traceId: string, maxLevel?: number): Promise<TraceLayoutResponse | null> {
     // 1. Fetch pre-calculated visual layout JSON metadata
+    console.log(`[LogServiceImpl] Fetching pre-calculated trace layout for traceId: ${traceId}`);
     const meta = await this.logRepo.fetchReadTraceMeta(traceId);
     let levelNames: Record<number, string> = {};
     let spans: ReadSpan[] = [];
@@ -54,26 +59,33 @@ export class LogServiceImpl extends LogService {
 
     if (meta) {
       levelNames = meta.levelNames || {};
+      console.log(`[LogServiceImpl] Found trace layout cache in read_traces (Level Names: ${JSON.stringify(levelNames)})`);
       try {
         const layout = JSON.parse(meta.layoutJson);
         spans = layout.spans || [];
         edges = layout.edges || [];
+        console.log(`[LogServiceImpl] Parsed cached layout: ${spans.length} spans, ${edges.length} edges`);
       } catch (err) {
         console.error("[LogServiceImpl] Failed to parse layout JSON string, falling back to direct query:", err);
       }
+    } else {
+      console.log(`[LogServiceImpl] No layout cache found in read_traces table for traceId: ${traceId}`);
     }
 
     // Fallback: If cache is somehow empty, query read tables directly to remain robust
     if (spans.length === 0) {
+      console.log(`[LogServiceImpl] Falling back to direct query from read_spans and read_edges tables for traceId: ${traceId}`);
       const [dbSpans, dbEdges] = await Promise.all([
         this.logRepo.fetchReadSpans(traceId),
         this.logRepo.fetchReadEdges(traceId),
       ]);
       spans = dbSpans;
       edges = dbEdges;
+      console.log(`[LogServiceImpl] Fallback query loaded: ${spans.length} spans, ${edges.length} edges`);
     }
 
     if (spans.length === 0) {
+      console.log(`[LogServiceImpl] Trace layout for traceId: ${traceId} is completely empty. Returning null.`);
       return null;
     }
 
@@ -83,9 +95,11 @@ export class LogServiceImpl extends LogService {
     const ghostSpans: GhostSpan[] = [];
 
     if (maxLevel !== undefined) {
+      console.log(`[LogServiceImpl] Filtering traceId ${traceId} dynamically using maxLevel = ${maxLevel}`);
       // Keep only spans that fit in the selected view Level
       finalSpans = spans.filter(s => s.viewLevel <= maxLevel);
       const visibleSpanIds = new Set(finalSpans.map(s => s.id));
+      console.log(`[LogServiceImpl] Spans kept: ${finalSpans.length}/${spans.length} (Excluded: ${spans.length - finalSpans.length})`);
 
       const resolveAnchor = (spanId: string): ReadSpan | null => {
         const cs = spans.find(x => x.id === spanId);
@@ -170,6 +184,7 @@ export class LogServiceImpl extends LogService {
         }
       }
       finalEdges = snappedEdges;
+      console.log(`[LogServiceImpl] Edges computed: ${finalEdges.length} visible connections (Created ${ghostSpans.length} Ghost Span(s))`);
     }
 
     return {
@@ -184,18 +199,24 @@ export class LogServiceImpl extends LogService {
   }
 
   private triggerTraces(items: { traceId: string }[]): void {
-    if (!this.worker) return;
+    if (!this.worker) {
+      console.warn(`[LogServiceImpl] TraceMaterializationWorker is not configured! Skipping compilation.`);
+      return;
+    }
     const uniqueIds = Array.from(new Set(items.map(item => item.traceId)));
+    console.log(`[LogServiceImpl] Telemetry received. Triggering compilation/materialization for traceIds: [${uniqueIds.join(", ")}]`);
     for (const traceId of uniqueIds) {
       this.worker.triggerMaterialization(traceId);
     }
   }
 
   override async listTraces(page: number, limit: number): Promise<TraceListResponse> {
+    console.log(`[LogServiceImpl] Listing traces (page: ${page}, limit: ${limit})`);
     const [traces, total] = await Promise.all([
       this.logRepo.fetchTracesList(page, limit),
       this.logRepo.fetchTracesCount(),
     ]);
+    console.log(`[LogServiceImpl] Found ${traces.length} traces in database. Total trace count: ${total}`);
     return {
       traces,
       total,
