@@ -6,8 +6,6 @@ import { NodeCard, NodeInspector } from "./NodeRow";
 type Props = {
   data: TraceLayoutResponse;
   activeTags: Set<string>;
-  playbackStep: number | null;
-  chronoItems: Array<{ id: string; name: string; type: "node" | "container"; startTimeUs: number }>;
   layoutMode: "nested" | "dag" | "graph";
 };
 
@@ -29,7 +27,7 @@ function getContainerIcon(type: string): string {
 const ARROW_SIZE = 8;
 
 export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
-  ({ data, activeTags, playbackStep, chronoItems, layoutMode }, forwardedRef) => {
+  ({ data, activeTags, layoutMode }, forwardedRef) => {
     const { containers, nodes, edges } = data;
 
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -126,30 +124,7 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
       return { upstream, downstream, activeEdges };
     }, [edges, hoveredNodeId]);
 
-    // ── Pre-compute playback active and current focus sets ──
-    const activePlaybackIds = useMemo(() => {
-      const activeIds = new Set<string>();
-      if (playbackStep === null) return activeIds;
 
-      for (let i = 0; i <= playbackStep; i++) {
-        const item = chronoItems[i];
-        if (item) {
-          activeIds.add(item.id);
-          if (item.type === "node") {
-            const node = nodePositions.get(item.id)?.node;
-            if (node) {
-              activeIds.add(node.containerId);
-            }
-          }
-        }
-      }
-      return activeIds;
-    }, [chronoItems, playbackStep, nodePositions]);
-
-    const currentPlaybackId = useMemo(() => {
-      if (playbackStep === null) return null;
-      return chronoItems[playbackStep]?.id ?? null;
-    }, [chronoItems, playbackStep]);
 
     if (containerLayouts.length === 0) {
       return (
@@ -185,12 +160,10 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             ? !isCausalHighlighted
             : hasActiveHover && !isCausalHighlighted && hoveredContainerId !== null;
 
-          const isPlaybackPending = playbackStep !== null && !activePlaybackIds.has(cl.containerId);
-
           return (
             <div
               key={cl.containerId}
-              className={`container-card${isCausalHighlighted ? " container-card--highlighted" : ""}${isPlaybackPending ? " playback-pending" : ""}`}
+              className={`container-card${isCausalHighlighted ? " container-card--highlighted" : ""}`}
               style={{
                 position: "absolute",
                 top: cl.top + PAD,
@@ -254,13 +227,9 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             ? !isCausalHighlighted
             : hasActiveHover && !isCausalHighlighted;
 
-          const isPlaybackPending = playbackStep !== null && !activePlaybackIds.has(node.id);
-          const isActivePlaybackNode = playbackStep !== null && node.id === currentPlaybackId;
-
           return (
             <div
               key={node.id}
-              className={isPlaybackPending ? "playback-pending" : ""}
               style={{
                 position: "absolute",
                 top: top + PAD,
@@ -282,13 +251,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                   const subContainer = containers.find((c) => c.id === node.containerId);
                   return subContainer && subContainer.id !== container?.containerId ? subContainer.name : undefined;
                 })()}
-                style={isActivePlaybackNode ? {
-                  boxShadow: "0 0 14px var(--accent-primary-glow), 0 0 0 1px var(--accent-primary)",
-                  borderColor: "var(--accent-primary)",
-                  background: "var(--accent-primary-bg)",
-                  animation: "node-pulse-glow 1.5s ease-in-out infinite",
-                  filter: "drop-shadow(0 0 8px var(--accent-primary-glow))",
-                } : undefined}
               />
             </div>
           );
@@ -455,19 +417,13 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               ? !isCausalHighlighted
               : hasActiveHover && !isCausalHighlighted;
 
-            const isPlaybackPending = playbackStep !== null && 
-              (!activePlaybackIds.has(wire.fromNodeId) || !activePlaybackIds.has(wire.toId));
-
-            const isWireActiveFlow = isCausalHighlighted || 
-              (playbackStep !== null && (wire.fromNodeId === currentPlaybackId || wire.toId === currentPlaybackId));
-
             const isDirect = wire.edge.distance === 0;
 
             let strokeColor = "var(--accent-primary)";
             if (isCausalHighlighted) strokeColor = "var(--accent-secondary)";
 
             const strokeWidth = isCausalHighlighted ? 2.5 : 1.5;
-            const opacity = isPlaybackPending ? 0.02 : isCausalHighlighted ? 1 : isCausalDimmedWire ? 0.04 : 0.6;
+            const opacity = isCausalHighlighted ? 1 : isCausalDimmedWire ? 0.04 : 0.6;
 
             const markerEnd = isCausalHighlighted
               ? "url(#arrow-wire-highlight)"
@@ -493,13 +449,13 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                 <path
                   d={d}
                   fill="none"
-                  className={isWireActiveFlow ? "wire-active-flow" : ""}
+                  className={isCausalHighlighted ? "wire-active-flow" : ""}
                   stroke={strokeColor}
                   strokeWidth={strokeWidth}
-                  strokeDasharray={isWireActiveFlow ? undefined : isDirect ? undefined : "6 4"}
+                  strokeDasharray={isCausalHighlighted ? undefined : isDirect ? undefined : "6 4"}
                   markerEnd={markerEnd}
                   style={{
-                    filter: isWireActiveFlow
+                    filter: isCausalHighlighted
                       ? "drop-shadow(0 0 5px var(--accent-primary))"
                       : isCausalHighlighted
                       ? "drop-shadow(0 0 4px var(--accent-secondary))"
@@ -508,7 +464,7 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                   }}
                 />
                 {showBadge && (
-                  <g style={{ opacity: isPlaybackPending ? 0 : 1, transition: "opacity 180ms ease" }}>
+                  <g>
                     <rect
                       x={midX - 24}
                       y={midY - 8}
