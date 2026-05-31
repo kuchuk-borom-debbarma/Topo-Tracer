@@ -1,40 +1,14 @@
 export type JsonValue = unknown;
 
-export type TraceSpan = {
-  id: string;
-  traceId: string;
-  parentId: string | null;
-  name: string;
-  kind: "boundary" | "execution";
-  type: string;
-  tags: Record<string, string>;
-  eventType: "started" | "ended";
-  timestamp: Date;
-  levelNames?: Record<number, string>;
-  viewLevel?: number;
-};
-
 export type TraceSpanInput = {
   id: string;
   traceId: string;
-  parentId: string | null;
   name: string;
-  kind: "boundary" | "execution";
-  type: string;
+  groupName: string;
+  level: number;
   tags: Record<string, string>;
   eventType: "started" | "ended";
   timestamp: number; // UNIX timestamp in ms
-  levelNames?: Record<number, string>;
-  viewLevel?: number;
-};
-
-export type TraceEdge = {
-  id: string;
-  traceId: string;
-  fromSpanId: string;
-  toSpanId: string;
-  type: string;
-  timestamp: Date;
 };
 
 export type TraceEdgeInput = {
@@ -42,24 +16,20 @@ export type TraceEdgeInput = {
   traceId: string;
   fromSpanId: string;
   toSpanId: string;
-  type: string;
   timestamp: number; // UNIX timestamp in ms
 };
 
 export type ReadSpan = {
   id: string;
   traceId: string;
-  parentId: string | null;
   name: string;
-  kind: "boundary" | "execution";
-  type: string;
+  groupName: string;
+  level: number;
   tags: Record<string, string>;
-  parentage: string[];
-  viewLevel: number;
-  localSequence: number;
   startTimeUs: number;
+  endTimeUs: number | null;
   durationUs: number | null;
-  metadata?: any;
+  ancestryPath: string[];
 };
 
 export type ReadEdge = {
@@ -67,27 +37,12 @@ export type ReadEdge = {
   traceId: string;
   fromSpanId: string;
   toSpanId: string;
-  type: string;
-  distance: number;
-  metadata?: any;
-};
-
-export type GhostSpan = {
-  id: string;
-  fromSpanId: string;
-  toSpanId: string;
-  hiddenCount: number;
-  truncatedLineage: string[];
-  durationUs: number;
-  startTimeUs: number;
-  endTimeUs: number;
 };
 
 export type TraceListItem = {
   traceId: string;
   createdAt: number;
-  containerNames: string[];
-  tags: string[];
+  spanCount: number;
 };
 
 export type TraceListResponse = {
@@ -101,10 +56,7 @@ export type TraceListResponse = {
 export type TraceLayoutResponse = {
   metadata: {
     traceId: string;
-    levelNames: Record<number, string>;
-    maxLevel: number;
   };
   spans: ReadSpan[];
   edges: ReadEdge[];
-  ghostSpans: GhostSpan[];
 };

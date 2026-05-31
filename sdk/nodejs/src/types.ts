@@ -1,15 +1,20 @@
+export const Level = {
+  TRACE: 10,
+  DEBUG: 20,
+  INFO: 30,
+  WARN: 40,
+  ERROR: 50,
+} as const;
+
 export type TraceSpanInput = {
   id: string;
   traceId: string;
-  parentId: string | null;
   name: string;
-  kind: "boundary" | "execution";
-  type: string;
+  groupName: string;
+  level: number;
   tags: Record<string, string>;
   eventType: "started" | "ended";
   timestamp: number; // UNIX timestamp in ms
-  levelNames?: Record<number, string>;
-  viewLevel?: number;
 };
 
 export type TraceEdgeInput = {
@@ -17,7 +22,6 @@ export type TraceEdgeInput = {
   traceId: string;
   fromSpanId: string;
   toSpanId: string;
-  type: string;
   timestamp: number; // UNIX timestamp in ms
 };
 
