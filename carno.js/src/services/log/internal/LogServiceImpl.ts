@@ -188,10 +188,13 @@ export class LogServiceImpl extends LogService {
       console.log(`[LogServiceImpl] Edges computed: ${finalEdges.length} visible connections (Created ${ghostSpans.length} Ghost Span(s))`);
     }
 
+    const absoluteMaxLevel = spans.length > 0 ? Math.max(...spans.map(s => s.viewLevel)) : 0;
+
     return {
       metadata: {
         traceId,
         levelNames,
+        maxLevel: absoluteMaxLevel,
       },
       spans: finalSpans,
       edges: finalEdges,
