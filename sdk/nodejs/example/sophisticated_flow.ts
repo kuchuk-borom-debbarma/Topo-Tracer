@@ -8,13 +8,13 @@ import { Tracer, Span } from "../src/index";
  *   2. [Service B] Payment Processing Service (Handles credit card charges via Stripe/PayPal)
  *   3. [Service C] Inventory Worker (Listens to Kafka events to update catalog stocks)
  * 
- * It showcases how visual detail levels (viewLevel) are explicitly set by developers
- * to align with human-readable visual levels, and how the snapping engine handles these.
+ * This version uses deep parentage nesting where sub-functions run structurally inside
+ * the request entrypoint nodes, exactly matching production trace instrumentations.
  */
 
 async function runSophisticatedSimulation() {
   console.log("=============================================================");
-  console.log("   TOPO-TRACER V4: SOPHISTICATED MICROSERVICES TRACE FLOW   ");
+  console.log("   TOPO-TRACER V4: DEEP NESTED MICROSERVICES TRACE FLOW      ");
   console.log("=============================================================");
 
   const orderSvcId = "boundary-order-gateway";
@@ -48,66 +48,66 @@ async function runSophisticatedSimulation() {
   console.log(`   [Service A] Started Distributed Trace ID: ${gatewayBoundary.traceId}`);
 
   // HTTP router entry execution span (viewLevel = 1: API Controllers)
+  // ⚠️ REMAINS OPEN until all gateway operations complete!
   const gatewayRecvNode = gatewayBoundary.startSpan("Gateway received request", { 
     type: "http_server",
     viewLevel: 1
   });
-  await new Promise(r => setTimeout(r, 10));
-  gatewayRecvNode.end();
+  await new Promise(r => setTimeout(r, 5));
 
-  // 1A. Nested Procedure: validateOrder() (viewLevel = 2: Business Procedures)
-  const validateNode = gatewayBoundary.startSpan("1.1 validateOrder()", { 
+  // 1A. Nested Procedure inside gatewayRecvNode: validateOrder() (viewLevel = 2)
+  const validateNode = gatewayRecvNode.startSpan("1.1 validateOrder()", { 
     type: "function",
     viewLevel: 2 
   });
   
-  // Cache check inside validateOrder() (viewLevel = 3: Internal SQL & Details)
+  // Cache check inside validateOrder() (viewLevel = 3)
   const cacheNode = validateNode.startSpan("redis.get(user_session)", { 
     type: "cache",
     viewLevel: 3 
   });
   await new Promise(r => setTimeout(r, 5));
   cacheNode.end();
-  
   validateNode.end();
-  // Draw edge: gateway entry -> validateOrder
+
+  // Draw edge: gateway controller -> validateOrder nested procedure
   gatewayRecvNode.logEdge(validateNode.id, "local_call");
 
-  // 1B. Nested Procedure: processPayment() (viewLevel = 2: Business Procedures)
-  const processPaymentNode = gatewayBoundary.startSpan("1.2 processPayment()", { 
+  // 1B. Nested Procedure inside gatewayRecvNode: processPayment() (viewLevel = 2)
+  const processPaymentNode = gatewayRecvNode.startSpan("1.2 processPayment()", { 
     type: "function",
     viewLevel: 2 
   });
-  gatewayRecvNode.logEdge(processPaymentNode.id, "local_call");
-
-  // Client RPC caller node inside processPayment() (viewLevel = 3: Internal SQL & Details)
+  
+  // Client RPC caller node inside processPayment() (viewLevel = 3)
   const paymentClientNode = processPaymentNode.startSpan("gRPC Call: PaymentService.Charge", { 
     type: "rpc_client",
     viewLevel: 3 
   });
   await new Promise(r => setTimeout(r, 15));
   
-  // Draw visual link: client RPC node -> payment service boundary (Column 0)
+  // Draw link: client RPC node -> Payment Service boundary container (Level 0)
   paymentClientNode.logEdge(paymentSvcId, "grpc_call");
   
   paymentClientNode.end();
   processPaymentNode.end();
 
-  // 1C. Nested Procedure: dispatchOrder() (viewLevel = 2: Business Procedures)
-  const dispatchOrderNode = gatewayBoundary.startSpan("1.3 dispatchOrder()", { 
+  // Draw edge: gateway controller -> processPayment nested procedure
+  gatewayRecvNode.logEdge(processPaymentNode.id, "local_call");
+
+  // 1C. Nested Procedure inside gatewayRecvNode: dispatchOrder() (viewLevel = 2)
+  const dispatchOrderNode = gatewayRecvNode.startSpan("1.3 dispatchOrder()", { 
     type: "function",
     viewLevel: 2 
   });
-  gatewayRecvNode.logEdge(dispatchOrderNode.id, "local_call");
 
-  // Kafka produce event inside dispatchOrder (viewLevel = 3: Internal SQL & Details)
+  // Kafka produce event inside dispatchOrder (viewLevel = 3)
   const kafkaProduceNode = dispatchOrderNode.startSpan("Kafka.publish(order-created)", { 
     type: "message_producer",
     viewLevel: 3 
   });
   
   // HOISTED KAFKA BUS (Boundary)
-  // We explicitly set viewLevel to 0 to pull the Kafka Topic out to the root canvas next to the services!
   const kafkaBus = kafkaProduceNode.startBoundary("Topic: order-created", { 
     viewLevel: 0,
     type: "queue" 
@@ -118,6 +118,10 @@ async function runSophisticatedSimulation() {
   
   kafkaBus.end();
   kafkaProduceNode.end();
+  dispatchOrderNode.end();
+
+  // Draw edge: gateway controller -> dispatchOrder nested procedure
+  gatewayRecvNode.logEdge(dispatchOrderNode.id, "local_call");
 
   // Downstream context propagation headers to simulate HTTP call to Payment Service
   const paymentServiceHeaders = gatewayBoundary.createCarrierHeaders(paymentClientNode.id);
@@ -125,15 +129,14 @@ async function runSophisticatedSimulation() {
   // Downstream context propagation headers to simulate Kafka message to Inventory Consumer
   const inventoryKafkaHeaders = gatewayBoundary.createCarrierHeaders(kafkaProduceNode.id);
 
-  // Gateway completion (viewLevel = 1: API Controllers)
-  const gatewayDoneNode = gatewayBoundary.startSpan("Gateway completed response", { 
-    type: "http_server",
-    viewLevel: 1 
-  });
-  gatewayDoneNode.end();
+  // End gateway controller and root service boundary
+  await new Promise(r => setTimeout(r, 5));
+  gatewayRecvNode.end();
   gatewayBoundary.end();
+
+  // Commit and flush Service A telemetry
   await Tracer.flush();
-  console.log("   [Service A] Order API Gateway completed successfully.");
+  console.log("   [Service A] Order API Gateway completed and flushed successfully.");
 
 
   // =========================================================================
@@ -155,38 +158,35 @@ async function runSophisticatedSimulation() {
     }
   );
 
-  // Continue trace using incoming carrier headers.
-  // We explicitly override the viewLevel of the continued service boundary to 0!
-  // This keeps the service boundary cleanly positioned on the high-level Architecture Map.
+  // Continue trace using incoming carrier headers
   const paymentBoundary = Tracer.continueTrace(paymentServiceHeaders, "ChargePayment", { 
     type: "service",
     viewLevel: 0 
   });
   console.log(`   [Service B] Continuing Distributed Trace ID: ${paymentBoundary.traceId}`);
 
-  // gRPC entry receiver execution span (viewLevel = 1: gRPC Entrypoints)
+  // gRPC entry receiver execution span (viewLevel = 1)
+  // ⚠️ REMAINS OPEN!
   const paymentRecvNode = paymentBoundary.startSpan("gRPC request accepted", { 
     type: "rpc_server",
     viewLevel: 1 
   });
-  await new Promise(r => setTimeout(r, 8));
-  paymentRecvNode.end();
+  await new Promise(r => setTimeout(r, 5));
 
-  // 2A. Nested Gateway Call: stripeCharge() (viewLevel = 2: Payment Gateways)
-  const stripeNode = paymentBoundary.startSpan("1.2.1 stripeCharge()", { 
+  // 2A. Nested Gateway Call inside paymentRecvNode: stripeCharge() (viewLevel = 2)
+  const stripeNode = paymentRecvNode.startSpan("1.2.1 stripeCharge()", { 
     type: "function",
     viewLevel: 2 
   });
   paymentRecvNode.logEdge(stripeNode.id, "local_call");
 
-  // Post to Stripe REST API (viewLevel = 3: Database Scripts / Client details)
+  // Post to Stripe REST API inside stripeCharge() (viewLevel = 3)
   const stripeHttpNode = stripeNode.startSpan("POST https://api.stripe.com/v1/charges", { 
     type: "http_client",
     viewLevel: 3 
   });
   
   // HOISTED STRIPE ENDPOINT (Boundary - viewLevel = 0)
-  // Hoist to Level 0 to show it clearly on the main dashboard as an external API dependency
   const stripeExternal = stripeHttpNode.startBoundary("External API: Stripe", { 
     viewLevel: 0, 
     type: "external" 
@@ -196,14 +196,17 @@ async function runSophisticatedSimulation() {
   stripeHttpNode.logEdge(stripeExternal.id, "http_request");
   
   stripeExternal.end();
-  await new Promise(r => setTimeout(r, 25)); // Simulate REST call delay
+  await new Promise(r => setTimeout(r, 20)); // Simulate REST call delay
   stripeHttpNode.end();
   stripeNode.end();
 
-  // Complete Payment Service boundary
+  // Complete Payment Service receiver and boundary
+  paymentRecvNode.end();
   paymentBoundary.end();
+
+  // Commit and flush Service B telemetry
   await Tracer.flush();
-  console.log("   [Service B] Payment Processor completed successfully.");
+  console.log("   [Service B] Payment Processor completed and flushed successfully.");
 
 
   // =========================================================================
@@ -225,36 +228,34 @@ async function runSophisticatedSimulation() {
   );
 
   // Continue trace using Kafka message carrier headers
-  // Explicitly override service boundary viewLevel to 0 to align on the Architecture Map
   const inventoryBoundary = Tracer.continueTrace(inventoryKafkaHeaders, "InventoryConsumer", { 
     type: "service",
     viewLevel: 0 
   });
   console.log(`   [Service C] Continuing Distributed Trace ID: ${inventoryBoundary.traceId}`);
 
-  // Kafka consumer entry handle (viewLevel = 1: Message Handlers)
+  // Kafka consumer entry handle (viewLevel = 1)
+  // ⚠️ REMAINS OPEN!
   const consumeNode = inventoryBoundary.startSpan("Kafka Event Consumed", { 
     type: "message_consumer",
     viewLevel: 1 
   });
-  await new Promise(r => setTimeout(r, 12));
-  consumeNode.end();
+  await new Promise(r => setTimeout(r, 8));
 
-  // 3A. Nested Database update: decrementInventory() (viewLevel = 2: Database Updates)
-  const updateStockNode = inventoryBoundary.startSpan("1.3.1 decrementInventory()", { 
+  // 3A. Nested Database update inside consumeNode: decrementInventory() (viewLevel = 2)
+  const updateStockNode = consumeNode.startSpan("1.3.1 decrementInventory()", { 
     type: "function",
     viewLevel: 2 
   });
   consumeNode.logEdge(updateStockNode.id, "local_call");
 
-  // SQL Update execution span (viewLevel = 3)
+  // SQL Update execution span inside decrementInventory (viewLevel = 3)
   const dbUpdateNode = updateStockNode.startSpan("UPDATE inventory SET stock = stock - 1", { 
     type: "sql_query",
     viewLevel: 3 
   });
   
   // HOISTED POSTGRES DATABASE (Boundary - viewLevel = 0)
-  // Hoist Postgres to Level 0 so it visually aggregates database traffic across all microservices!
   const postgresDb = dbUpdateNode.startBoundary("PostgreSQL: CatalogDB", { 
     viewLevel: 0,
     type: "database" 
@@ -264,29 +265,25 @@ async function runSophisticatedSimulation() {
   dbUpdateNode.logEdge(postgresDb.id, "database_query");
   
   postgresDb.end();
-  await new Promise(r => setTimeout(r, 18)); // Simulate query time
+  await new Promise(r => setTimeout(r, 15)); // Simulate query time
   dbUpdateNode.end();
   updateStockNode.end();
 
   // Complete Inventory Service
+  consumeNode.end();
   inventoryBoundary.end();
-  console.log("   [Service C] Inventory Worker completed successfully.");
+
+  // Commit and flush Service C telemetry
+  await Tracer.flush();
+  console.log("   [Service C] Inventory Worker completed and flushed successfully.");
 
 
   // =========================================================================
-  // 4. EXPORTING & FLUSHING TRACES
+  // 4. EXPORTING COMPLETE ARCHITECTURE FLOW
   // =========================================================================
-  console.log("\nFlushing sophisticated telemetry batch to backend...");
-  try {
-    await Tracer.flush();
-    console.log("All V4 microservice telemetries successfully flushed.");
-    console.log(`Auditable V4 Trace ID: ${gatewayBoundary.traceId}`);
-    console.log("\nHow to see dynamic visual snapping and Ghost Spans:");
-    console.log(`1. Query the backend: GET http://localhost:3000/telemetry/trace/${gatewayBoundary.traceId}?maxLevel=1`);
-    console.log("2. Check the edge connections inside 'edges' and 'ghostSpans'. You will see detailed 'validate_card' L2 function calls snapped up to 'processCheckout' L1, with interactive 'GhostSpan' capsules summarizing the skipped elapsed durations!");
-  } catch (error: any) {
-    console.warn("Flush skipped (backend not active):", error.message);
-  }
+  console.log("\nComplete deep nested transaction flow successfully published!");
+  console.log(`Auditable V4 Trace ID: ${gatewayBoundary.traceId}`);
+  console.log(`Visual URL: http://localhost:5173/trace/${gatewayBoundary.traceId}`);
 
   await Tracer.shutdown();
 }
