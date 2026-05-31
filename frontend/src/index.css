@@ -606,23 +606,80 @@ body {
 
 /* ── Diagram Legend ─────────────────────────────────────────── */
 .diagram-legend {
-  position: sticky;
-  bottom: 16px;
-  left: calc(100% - 224px);
-  width: 208px;
-  z-index: 50;
-  background: rgba(9, 11, 20, 0.93);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 10px 12px 11px;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 216px;
+  z-index: 120;
+  background: rgba(10, 13, 20, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  pointer-events: auto;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.legend-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+}
+
+.legend-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.legend-toggle-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 120;
+  background: rgba(10, 13, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
-  float: right;
-  margin-right: 16px;
-  margin-top: -48px;
+  color: var(--text-secondary);
+  font-size: 18px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+.legend-toggle-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: scale(1.06);
+  background: rgba(15, 20, 30, 0.95);
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.65),
+    0 0 16px rgba(217, 91, 60, 0.12);
+}
+
 
 .diagram-legend-title {
   font-size: 9px;

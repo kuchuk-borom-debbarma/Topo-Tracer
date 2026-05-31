@@ -17,6 +17,7 @@ export function TraceDetailPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackStep, setPlaybackStep] = useState<number | null>(null);
   const [layoutMode, setLayoutMode] = useState<"graph" | "dag" | "nested">("graph");
+  const [showLegend, setShowLegend] = useState(true);
 
   const activeTagsArray = Array.from(activeTags);
 
@@ -343,24 +344,6 @@ export function TraceDetailPage() {
 
       {/* Canvas */}
       <div className="flow-canvas-wrapper" style={{ position: "relative" }}>
-        {/* Legend — always visible, bottom-right of the wrapper */}
-        <div className="diagram-legend">
-          <div className="diagram-legend-title">Legend</div>
-          <div className="diagram-legend-item">
-            <svg width="36" height="12" className="diagram-legend-svg">
-              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" />
-              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
-            </svg>
-            <span>Direct call</span>
-          </div>
-          <div className="diagram-legend-item">
-            <svg width="36" height="12" className="diagram-legend-svg">
-              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" strokeDasharray="5 3" />
-              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
-            </svg>
-            <span>Indirect call (+N steps)</span>
-          </div>
-        </div>
 
         {isLoading ? (
           <div
@@ -472,6 +455,44 @@ export function TraceDetailPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Floating Legend / Show Legend Toggle Button */}
+      {showLegend ? (
+        <div className="diagram-legend">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <div className="diagram-legend-title" style={{ margin: 0 }}>Legend</div>
+            <button
+              className="legend-close-btn"
+              onClick={() => setShowLegend(false)}
+              title="Hide Legend"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="diagram-legend-item">
+            <svg width="36" height="12" className="diagram-legend-svg">
+              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" />
+              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
+            </svg>
+            <span>Direct call</span>
+          </div>
+          <div className="diagram-legend-item">
+            <svg width="36" height="12" className="diagram-legend-svg">
+              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" strokeDasharray="5 3" />
+              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
+            </svg>
+            <span>Indirect call (+N steps)</span>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="legend-toggle-btn"
+          onClick={() => setShowLegend(true)}
+          title="Show Legend"
+        >
+          ℹ️
+        </button>
       )}
     </div>
   );

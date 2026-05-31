@@ -222,16 +222,77 @@ export function computeLayout(
       effectiveParentMap.set(c.id, pid ?? null);
     }
 
-    // Group containers by rank (nesting depth)
-    const containerRanks = new Map<string, number>();
-    for (const c of hosts) {
-      let depth = 0;
-      let pid = effectiveParentMap.get(c.id);
-      while (pid) {
-        depth++;
-        pid = effectiveParentMap.get(pid);
+    // Resolve parentage dynamically by examining incoming trigger edges
+    const getContainerOfTarget = (id: string, type: "node" | "container"): string | null => {
+      if (type === "container") {
+        return visibleContainerIds.has(id) ? id : null;
+      } else {
+        const node = nodes.find((n) => n.id === id);
+        return node && visibleContainerIds.has(node.containerId) ? node.containerId : null;
       }
-      containerRanks.set(c.id, depth);
+    };
+
+    const incomingParents = new Map<string, Set<string>>();
+    for (const c of hosts) {
+      incomingParents.set(c.id, new Set<string>());
+    }
+
+    for (const edge of edges) {
+      const fromNode = nodes.find((n) => n.id === edge.fromNodeId);
+      if (!fromNode) continue;
+      const fromContainerId = fromNode.containerId;
+      if (!visibleContainerIds.has(fromContainerId)) continue;
+
+      const toContainerId = getContainerOfTarget(edge.toId, edge.toType);
+      if (!toContainerId) continue;
+
+      if (fromContainerId !== toContainerId) {
+        incomingParents.get(toContainerId)!.add(fromContainerId);
+      }
+    }
+
+    // Group containers by rank (nesting depth / telemetry trigger depth)
+    const containerRanks = new Map<string, number>();
+    const visited = new Set<string>();
+
+    const computeContainerDepth = (cid: string): number => {
+      if (containerRanks.has(cid)) return containerRanks.get(cid)!;
+      if (visited.has(cid)) {
+        return 0; // Break cycles gracefully
+      }
+      visited.add(cid);
+
+      const parents = incomingParents.get(cid);
+      if (!parents || parents.size === 0) {
+        // Fallback to static parent nesting if no incoming trigger edges
+        const staticPid = effectiveParentMap.get(cid);
+        if (staticPid) {
+          const d = computeContainerDepth(staticPid) + 1;
+          containerRanks.set(cid, d);
+          visited.delete(cid);
+          return d;
+        }
+        containerRanks.set(cid, 0);
+        visited.delete(cid);
+        return 0;
+      }
+
+      let maxParentDepth = -1;
+      for (const parentId of parents) {
+        const parentDepth = computeContainerDepth(parentId);
+        if (parentDepth > maxParentDepth) {
+          maxParentDepth = parentDepth;
+        }
+      }
+
+      const depth = maxParentDepth + 1;
+      containerRanks.set(cid, depth);
+      visited.delete(cid);
+      return depth;
+    };
+
+    for (const c of hosts) {
+      computeContainerDepth(c.id);
     }
 
     // Group service containers by rank
