@@ -1,11 +1,12 @@
 import { useMemo, forwardRef, useState, useRef, useCallback } from "react";
 import type { TraceLayoutResponse, ReadNode } from "../api/client";
-import { computeLayout, getDepthColor, getDepthColorDim, LAYOUT } from "../utils/layout";
+import { computeLayout, getDepthColor, getDepthColorDim, LAYOUT, formatDuration } from "../utils/layout";
 import { NodeCard, NodeInspector } from "./NodeRow";
 
 type Props = {
   data: TraceLayoutResponse;
-  activeTags: Set<string>;
+  activeLevel: number;
+  onSelectLevel?: (level: number) => void;
   layoutMode: "nested" | "dag" | "graph";
 };
 
@@ -27,12 +28,15 @@ function getContainerIcon(type: string): string {
 const ARROW_SIZE = 8;
 
 export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
-  ({ data, activeTags, layoutMode }, forwardedRef) => {
-    const { containers, nodes, edges } = data;
+  ({ data, activeLevel, onSelectLevel, layoutMode }, forwardedRef) => {
+    const { containers, nodes, edges, ghostSpans } = data;
 
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const [hoveredContainerId, setHoveredContainerId] = useState<string | null>(null);
     const [selectedNode, setSelectedNode] = useState<ReadNode | null>(null);
+    
+    // V4 hovered Ghost Span tooltip state
+    const [hoveredGhost, setHoveredGhost] = useState<{ ghost: any; x: number; y: number } | null>(null);
 
     const localRef = useRef<HTMLDivElement | null>(null);
 
@@ -48,9 +52,12 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
       [forwardedRef]
     );
 
+    // Mapped activeTags to empty set since tag filtering is replaced by viewLevel matching
+    const activeTagsEmpty = useMemo(() => new Set<string>(), []);
+
     const layout = useMemo(
-      () => computeLayout(containers, nodes, edges, activeTags, layoutMode),
-      [containers, nodes, edges, activeTags, layoutMode]
+      () => computeLayout(containers, nodes, edges, activeTagsEmpty, layoutMode),
+      [containers, nodes, edges, activeTagsEmpty, layoutMode]
     );
 
     const { containerLayouts, nodePositions, parentArrows, wires, canvasWidth, canvasHeight } =
@@ -80,7 +87,7 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
         adjBackward.set(edge.toId, bList);
       }
 
-      // Within-container flows: Containers map forward to their nodes, and nodes map backward to their parent container
+      // Within-container flows
       for (const node of nodes) {
         const fList = adjForward.get(node.containerId) || [];
         fList.push(node.id);
@@ -124,19 +131,29 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
       return { upstream, downstream, activeEdges };
     }, [edges, hoveredNodeId]);
 
-
-
     if (containerLayouts.length === 0) {
       return (
         <div className="empty-state" style={{ marginTop: 80 }}>
           <div className="empty-state-icon">🔍</div>
           <div className="empty-state-title">No matching elements</div>
           <div className="empty-state-desc">
-            Try adjusting your active tag filters to discover execution paths.
+            Try adjusting your visual detail zoom levels to discover execution paths.
           </div>
         </div>
       );
     }
+
+    const handleGhostClick = (ghost: any) => {
+      // Dynamically extract the maximum visual level hidden inside the Ghost Span
+      let maxLevel = activeLevel;
+      ghost.truncatedLineage.forEach((line: string) => {
+        const match = line.match(/\(L(\d+)\)/);
+        if (match) {
+          maxLevel = Math.max(maxLevel, parseInt(match[1], 10));
+        }
+      });
+      onSelectLevel?.(maxLevel);
+    };
 
     const hasActiveHover = hoveredNodeId !== null || hoveredContainerId !== null;
 
@@ -146,7 +163,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
         className="flow-canvas"
         style={{ width: canvasWidth + PAD, height: canvasHeight + PAD }}
       >
-
         {/* ── Container Cards ── */}
         {containerLayouts.map((cl) => {
           const depthColor = getDepthColor(cl.depth);
@@ -181,12 +197,10 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               onMouseEnter={() => setHoveredContainerId(cl.containerId)}
               onMouseLeave={() => setHoveredContainerId(null)}
             >
-              {/* 2-row header: title row + meta row */}
               <div
                 className="container-card-header"
                 style={{ background: depthColorDim }}
               >
-                {/* Row 1: icon + name */}
                 <div className="container-card-title">
                   <span className="container-card-icon" style={{ color: depthColor }}>
                     {getContainerIcon(cl.type)}
@@ -195,7 +209,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                     {cl.name}
                   </span>
                 </div>
-                {/* Row 2: depth chip + type pill */}
                 <div className="container-card-pills">
                   <span
                     className="container-depth-chip"
@@ -264,7 +277,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
           style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", overflow: "visible", zIndex: 2 }}
         >
           <defs>
-            {/* Arrowhead for node wires */}
             <marker
               id="arrow-wire"
               markerWidth={ARROW_SIZE}
@@ -280,7 +292,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               />
             </marker>
 
-            {/* Arrowhead for cross-container wires */}
             <marker
               id="arrow-wire-cross"
               markerWidth={ARROW_SIZE}
@@ -296,7 +307,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               />
             </marker>
 
-            {/* Arrowhead for highlighted wires */}
             <marker
               id="arrow-wire-highlight"
               markerWidth={ARROW_SIZE}
@@ -312,7 +322,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               />
             </marker>
 
-            {/* Arrowhead for parent arrows (per depth color, reuse a generic gray) */}
             <marker
               id="arrow-parent"
               markerWidth={6}
@@ -329,14 +338,13 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             </marker>
           </defs>
 
-          {/* ── Parent arrows: horizontal S-curves, right-center → left-center ── */}
+          {/* Parent arrows */}
           {parentArrows.map((pa, i) => {
             const fx = pa.fromX + PAD;
             const fy = pa.fromY + PAD;
             const tx = pa.toX + PAD;
             const ty = pa.toY + PAD;
             const dx = tx - fx;
-            // S-curve: pull control points horizontally to create smooth horizontal arc
             const curve = Math.max(24, Math.abs(dx) * 0.5);
             const d = `M ${fx} ${fy} C ${fx + curve} ${fy}, ${tx - curve} ${ty}, ${tx} ${ty}`;
 
@@ -358,7 +366,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
             );
           })}
 
-          {/* Arrowheads for parent arrows (one per, so color matches) */}
           {parentArrows.map((pa, i) => (
             <defs key={`pad-${i}`}>
               <marker
@@ -402,7 +409,6 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               const cx1 = fx + offset;
               const cx2 = tx - offset;
               d = `M ${fx} ${fy} C ${cx1} ${fy}, ${cx2} ${ty}, ${tx} ${ty}`;
-              // Mid-point approximation for cubic bezier at t=0.5
               midX = 0.125 * fx + 0.375 * cx1 + 0.375 * cx2 + 0.125 * tx;
               midY = (fy + ty) / 2;
             }
@@ -429,11 +435,16 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
               ? "url(#arrow-wire-highlight)"
               : "url(#arrow-wire)";
 
-            const showBadge = wire.edge.distance > 0;
-            const badgeBg = "rgba(10,12,22,0.88)";
+            // ── V4 Ghost Spans Injection ──
+            const ghost = ghostSpans?.find(
+              (g) => g.fromSpanId === wire.fromNodeId && g.toSpanId === wire.toId
+            );
+
+            const showGhost = !!ghost;
+            const badgeBg = "rgba(10,12,22,0.92)";
             const badgeBorder = isCausalHighlighted
               ? "var(--accent-secondary)"
-              : "hsla(217, 91%, 60%, 0.5)";
+              : "hsla(217, 91%, 60%, 0.4)";
             const badgeText = isCausalHighlighted
               ? "var(--accent-secondary)"
               : "var(--accent-primary)";
@@ -457,34 +468,49 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
                   style={{
                     filter: isCausalHighlighted
                       ? "drop-shadow(0 0 5px var(--accent-primary))"
-                      : isCausalHighlighted
-                      ? "drop-shadow(0 0 4px var(--accent-secondary))"
                       : undefined,
                     transition: "stroke-dashoffset 100ms linear",
                   }}
                 />
-                {showBadge && (
-                  <g>
+                
+                {/* Visual Ghost Span Badge */}
+                {showGhost && (
+                  <g
+                    style={{ cursor: "pointer", pointerEvents: "auto" }}
+                    onClick={() => handleGhostClick(ghost)}
+                    onMouseEnter={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setHoveredGhost({
+                        ghost,
+                        x: rect.left + window.scrollX + rect.width / 2,
+                        y: rect.top + window.scrollY - 8,
+                      });
+                    }}
+                    onMouseLeave={() => setHoveredGhost(null)}
+                  >
                     <rect
-                      x={midX - 24}
-                      y={midY - 8}
-                      width={48}
-                      height={16}
-                      rx={8}
+                      x={midX - 45}
+                      y={midY - 9}
+                      width={90}
+                      height={18}
+                      rx={9}
                       fill={badgeBg}
                       stroke={badgeBorder}
-                      strokeWidth={0.8}
+                      strokeWidth={1}
+                      style={{
+                        transition: "stroke 180ms ease, fill 180ms ease",
+                      }}
                     />
                     <text
                       x={midX}
-                      y={midY + 4}
+                      y={midY + 3.5}
                       textAnchor="middle"
                       fill={badgeText}
                       fontSize={8.5}
                       fontWeight="700"
                       fontFamily="'JetBrains Mono', monospace"
                     >
-                      +{wire.edge.distance} step{wire.edge.distance > 1 ? "s" : ""}
+                      👻 +{ghost.hiddenCount} ({formatDuration(ghost.durationUs)})
                     </text>
                   </g>
                 )}
@@ -493,9 +519,51 @@ export const TraceFlowCanvas = forwardRef<HTMLDivElement, Props>(
           })}
         </svg>
 
-        {/* ── Floating node inspector (portal) ── */}
+        {/* ── Floating node inspector ── */}
         {selectedNode && (
           <NodeInspector node={selectedNode} onClose={() => setSelectedNode(null)} />
+        )}
+
+        {/* ── Floating Ghost Tooltip ── */}
+        {hoveredGhost && (
+          <div
+            className="ghost-inspector-tooltip"
+            style={{
+              position: "absolute",
+              left: hoveredGhost.x,
+              top: hoveredGhost.y,
+              transform: "translate(-50%, -100%)",
+              background: "rgba(10, 12, 22, 0.95)",
+              border: "1px solid var(--accent-primary)",
+              borderRadius: 8,
+              padding: "10px 14px",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.8), 0 0 16px rgba(139, 92, 246, 0.2)",
+              backdropFilter: "blur(12px)",
+              color: "var(--text-primary)",
+              zIndex: 9999,
+              pointerEvents: "none",
+              width: 260,
+              fontFamily: "var(--font-sans)",
+            }}
+          >
+            <div style={{ fontWeight: "700", color: "var(--accent-primary)", fontSize: 12, marginBottom: 6 }}>
+              👻 Phantom Detail Capsule (+{hoveredGhost.ghost.hiddenCount} hidden)
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+              Bypassed execution paths taking <strong>{formatDuration(hoveredGhost.ghost.durationUs)}</strong>:
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {hoveredGhost.ghost.truncatedLineage.map((name: string, idx: number) => (
+                <div key={idx} style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ color: "var(--accent-secondary)", fontSize: 14 }}>•</span>
+                  <span>{name}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 9.5, color: "var(--text-muted)", borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: 8, paddingTop: 6 }}>
+              Click this capsule to expand and reveal details.
+            </div>
+          </div>
         )}
       </div>
     );

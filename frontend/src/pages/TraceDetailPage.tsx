@@ -9,20 +9,17 @@ import { formatDuration } from "../utils/layout";
 export function TraceDetailPage() {
   const { traceId } = useParams({ strict: false }) as { traceId: string };
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
-  const [tagInput, setTagInput] = useState("");
-  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
+  
+  // V4 visual detail zoom level state (default to Level 3)
+  const [activeLevel, setActiveLevel] = useState<number>(3);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
-
   const [layoutMode, setLayoutMode] = useState<"graph" | "dag" | "nested">("graph");
   const [showLegend, setShowLegend] = useState(true);
 
-  const activeTagsArray = Array.from(activeTags);
-
-  // Fetch the V3 trace layout containing all containers, nodes, and edges
+  // Fetch the pre-filtered V4 layout from the backend
   const layoutQuery = useQuery({
-    queryKey: queryKeys.traceLayout(traceId, activeTagsArray),
-    queryFn: () => fetchTraceLayout(traceId, activeTagsArray),
+    queryKey: queryKeys.traceLayout(traceId, activeLevel),
+    queryFn: () => fetchTraceLayout(traceId, activeLevel),
     staleTime: 30_000,
   });
 
@@ -31,8 +28,6 @@ export function TraceDetailPage() {
   const isError = layoutQuery.isError;
   const error = layoutQuery.error;
   const isFetching = layoutQuery.isFetching && !layoutQuery.isLoading;
-
-
 
   async function handleDownloadPDF() {
     if (!canvasRef.current) return;
@@ -45,6 +40,12 @@ export function TraceDetailPage() {
   }
 
   const metadata = data?.metadata;
+  const levelNames = metadata?.levelNames || {};
+  const levelKeys = Object.keys(levelNames);
+  
+  // Calculate maximum level dynamically defined by the trace instrumentation
+  const maxLevelAvailable = levelKeys.length > 0 ? Math.max(...levelKeys.map(Number)) : 3;
+
   const containerCount = data?.containers.length ?? 0;
   const nodeCount = data?.nodes.length ?? 0;
   const edgeCount = data?.edges.length ?? 0;
@@ -55,32 +56,6 @@ export function TraceDetailPage() {
       ? Math.max(...data.containers.map((c) => c.startTimeUs + (c.durationUs ?? 0))) -
         Math.min(...data.containers.map((c) => c.startTimeUs))
       : null;
-
-  // Autocomplete tags: filter trace tags based on input and exclude already selected ones
-  const availableTags = metadata?.tags || [];
-  const autocompleteSuggestions = availableTags.filter(
-    (tag) =>
-      tag.toLowerCase().includes(tagInput.toLowerCase()) &&
-      !activeTags.has(tag)
-  );
-
-  const handleAddTag = (tag: string) => {
-    const next = new Set(activeTags);
-    next.add(tag);
-    setActiveTags(next);
-    setTagInput("");
-    setIsAutocompleteOpen(false);
-  };
-
-  const handleRemoveTag = (tag: string) => {
-    const next = new Set(activeTags);
-    next.delete(tag);
-    setActiveTags(next);
-  };
-
-  const handleClearTags = () => {
-    setActiveTags(new Set());
-  };
 
   return (
     <div className="flow-page">
@@ -93,11 +68,9 @@ export function TraceDetailPage() {
           <div className="flow-trace-id" title={traceId}>
             {traceId}
           </div>
-          {metadata && (
-            <span
-              className={`badge ${metadata.isZoomReady ? "badge-ready" : "badge-pending"}`}
-            >
-              {metadata.isZoomReady ? "✓ Materialized" : "⏳ Compiling"}
+          {data && (
+            <span className="badge badge-ready">
+              ✓ Materialized
             </span>
           )}
           {isFetching && (
@@ -120,73 +93,41 @@ export function TraceDetailPage() {
         </div>
 
         <div className="flow-topbar-right">
-          {/* Dynamic V3 Tag Filtering Bar */}
-          {metadata && (
-            <div className="tag-filter-bar">
-              <span className="tag-filter-label">Filter Tags:</span>
-              <div className="tag-pills-list">
-                {Array.from(activeTags).map((tag) => (
-                  <span key={tag} className="tag-pill-active">
-                    {tag}
-                    <button
-                      className="tag-pill-close-btn"
-                      onClick={() => handleRemoveTag(tag)}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-
-              <div className="tag-input-container">
+          {/* Dynamic V4 Level-of-Detail (LOD) Zoom Slider */}
+          {data && (
+            <div className="tag-filter-bar" style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <span className="tag-filter-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                🔍 Zoom Level:
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <input
-                  type="text"
-                  placeholder="Add tag (AND logic)..."
-                  className="tag-filter-input"
-                  value={tagInput}
-                  onChange={(e) => {
-                    setTagInput(e.target.value);
-                    setIsAutocompleteOpen(true);
-                  }}
-                  onFocus={() => setIsAutocompleteOpen(true)}
-                  onBlur={() => {
-                    // Slight delay to allow clicking suggestions
-                    setTimeout(() => setIsAutocompleteOpen(false), 200);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && tagInput.trim()) {
-                      const matched = availableTags.find(
-                        (t) => t.toLowerCase() === tagInput.trim().toLowerCase()
-                      );
-                      if (matched) {
-                        handleAddTag(matched);
-                      } else {
-                        handleAddTag(tagInput.trim());
-                      }
-                    }
+                  type="range"
+                  min={0}
+                  max={maxLevelAvailable}
+                  value={activeLevel > maxLevelAvailable ? maxLevelAvailable : activeLevel}
+                  onChange={(e) => setActiveLevel(parseInt(e.target.value, 10))}
+                  style={{
+                    width: 130,
+                    accentColor: "var(--accent-primary)",
+                    cursor: "pointer",
                   }}
                 />
-
-                {isAutocompleteOpen && autocompleteSuggestions.length > 0 && (
-                  <div className="tag-autocomplete-dropdown">
-                    {autocompleteSuggestions.map((tag) => (
-                      <div
-                        key={tag}
-                        className="tag-autocomplete-item"
-                        onMouseDown={() => handleAddTag(tag)}
-                      >
-                        {tag}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <span
+                  className="badge badge-ready"
+                  style={{
+                    fontSize: 11,
+                    background: "rgba(10,12,22,0.85)",
+                    borderColor: "var(--accent-primary)",
+                    color: "var(--accent-primary)",
+                    padding: "4px 8px",
+                    fontWeight: "600",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {levelNames[activeLevel > maxLevelAvailable ? maxLevelAvailable : activeLevel] || `Level ${activeLevel}`}
+                </span>
               </div>
-
-              {activeTags.size > 0 && (
-                <button className="tag-clear-btn" onClick={handleClearTags}>
-                  Clear Filters
-                </button>
-              )}
             </div>
           )}
 
@@ -256,20 +197,17 @@ export function TraceDetailPage() {
               </span>
             </div>
           )}
-          {activeTags.size > 0 && (
-            <div className="trace-stat">
-              Active Filters:{" "}
-              <span className="trace-stat-value" style={{ color: "var(--accent-secondary)" }}>
-                {activeTags.size} tags (AND logic)
-              </span>
-            </div>
-          )}
+          <div className="trace-stat">
+            Active Detail:{" "}
+            <span className="trace-stat-value" style={{ color: "var(--accent-primary)" }}>
+              {levelNames[activeLevel > maxLevelAvailable ? maxLevelAvailable : activeLevel] || `Level ${activeLevel}`}
+            </span>
+          </div>
         </div>
       )}
 
       {/* Canvas */}
       <div className="flow-canvas-wrapper" style={{ position: "relative" }}>
-
         {isLoading ? (
           <div
             className="loading-overlay"
@@ -295,13 +233,14 @@ export function TraceDetailPage() {
           <TraceFlowCanvas
             ref={canvasRef}
             data={data}
-            activeTags={activeTags}
+            activeLevel={activeLevel}
+            onSelectLevel={setActiveLevel}
             layoutMode={layoutMode}
           />
         ) : null}
       </div>
 
-      {/* Floating Legend / Show Legend Toggle Button */}
+      {/* Floating Legend */}
       {showLegend ? (
         <div className="diagram-legend">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -316,17 +255,17 @@ export function TraceDetailPage() {
           </div>
           <div className="diagram-legend-item">
             <svg width="36" height="12" className="diagram-legend-svg">
-              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" />
-              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
+              <line x1="0" y1="6" x2="28" y2="6" stroke="var(--accent-primary)" strokeWidth="1.5" />
+              <polygon points="26,3 34,6 26,9" fill="var(--accent-primary)" opacity="0.8" />
             </svg>
             <span>Direct call</span>
           </div>
           <div className="diagram-legend-item">
             <svg width="36" height="12" className="diagram-legend-svg">
-              <line x1="0" y1="6" x2="28" y2="6" stroke="hsl(217,91%,62%)" strokeWidth="1.5" strokeDasharray="5 3" />
-              <polygon points="26,3 34,6 26,9" fill="hsl(217,91%,62%)" opacity="0.8" />
+              <line x1="0" y1="6" x2="28" y2="6" stroke="var(--accent-primary)" strokeWidth="1.5" strokeDasharray="5 3" />
+              <polygon points="26,3 34,6 26,9" fill="var(--accent-primary)" opacity="0.8" />
             </svg>
-            <span>Indirect call (+N steps)</span>
+            <span>Indirect snapped call</span>
           </div>
         </div>
       ) : (
