@@ -130,31 +130,20 @@ export function computeLayout(
   const isContainerVisible = (cid: string): boolean => {
     if (containerVisCache.has(cid)) return containerVisCache.get(cid)!;
 
-    // Filter out completely empty containers (no nodes and no child sub-containers in telemetry)
-    const hasContent =
-      nodes.some((n) => n.containerId === cid) ||
-      containers.some((c) => c.parentContainerId === cid && c.id !== cid);
-
-    if (!hasContent) {
-      containerVisCache.set(cid, false);
-      return false;
+    // A container is visible only if it has at least one visible node inside it
+    const hasVisibleNode = nodes.some((n) => n.containerId === cid && isNodeVisible(n));
+    if (hasVisibleNode) {
+      containerVisCache.set(cid, true);
+      return true;
     }
 
-    const tagMatched =
-      activeTags.size === 0 ||
-      (() => {
-        const c = containers.find((x) => x.id === cid);
-        return !!(c && Array.from(activeTags).every((tag) => c.tags && c.tags.includes(tag)));
-      })();
-
-    if (tagMatched) { containerVisCache.set(cid, true); return true; }
-
-    if (nodes.some((n) => n.containerId === cid && isNodeVisible(n))) {
-      containerVisCache.set(cid, true); return true;
-    }
-
-    if (containers.some((c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id))) {
-      containerVisCache.set(cid, true); return true;
+    // Or if it contains at least one visible child sub-container (recursive support)
+    const hasVisibleChildContainer = containers.some(
+      (c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id)
+    );
+    if (hasVisibleChildContainer) {
+      containerVisCache.set(cid, true);
+      return true;
     }
 
     containerVisCache.set(cid, false);
