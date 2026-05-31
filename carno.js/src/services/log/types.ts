@@ -102,6 +102,7 @@ export type TraceLayoutResponse = {
   metadata: {
     traceId: string;
     levelNames: Record<number, string>;
+    maxLevel: number;
   };
   spans: ReadSpan[];
   edges: ReadEdge[];

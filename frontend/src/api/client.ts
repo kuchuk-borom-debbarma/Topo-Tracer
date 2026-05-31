@@ -91,6 +91,7 @@ export type TraceLayoutResponse = {
   metadata: {
     traceId: string;
     levelNames: Record<number, string>;
+    maxLevel: number;
   };
   containers: ReadContainer[];
   nodes: ReadNode[];
@@ -214,6 +215,7 @@ export async function fetchTraceLayout(
     metadata: {
       traceId: res.metadata.traceId,
       levelNames: res.metadata.levelNames || {},
+      maxLevel: Number(res.metadata.maxLevel ?? 0),
     },
     containers,
     nodes,

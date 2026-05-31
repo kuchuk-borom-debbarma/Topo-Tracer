@@ -10,8 +10,8 @@ export function TraceDetailPage() {
   const { traceId } = useParams({ strict: false }) as { traceId: string };
   const canvasRef = useRef<HTMLDivElement>(null);
   
-  // V4 visual detail zoom level state (default to Level 3)
-  const [activeLevel, setActiveLevel] = useState<number>(3);
+  // V4 visual detail zoom level state (default to undefined for full initial load)
+  const [activeLevel, setActiveLevel] = useState<number | undefined>(undefined);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
   const [layoutMode, setLayoutMode] = useState<"graph" | "dag" | "nested">("graph");
   const [showLegend, setShowLegend] = useState(true);
@@ -41,10 +41,12 @@ export function TraceDetailPage() {
 
   const metadata = data?.metadata;
   const levelNames = metadata?.levelNames || {};
-  const levelKeys = Object.keys(levelNames);
   
-  // Calculate maximum level dynamically defined by the trace instrumentation
-  const maxLevelAvailable = levelKeys.length > 0 ? Math.max(...levelKeys.map(Number)) : 3;
+  // Dynamic maximum level actually present in the trace spans
+  const maxLevelAvailable = metadata?.maxLevel ?? 3;
+
+  // Active level defaults to absolute maximum level available
+  const currentActiveLevel = activeLevel !== undefined ? activeLevel : maxLevelAvailable;
 
   const containerCount = data?.containers.length ?? 0;
   const nodeCount = data?.nodes.length ?? 0;
@@ -104,7 +106,7 @@ export function TraceDetailPage() {
                   type="range"
                   min={0}
                   max={maxLevelAvailable}
-                  value={activeLevel > maxLevelAvailable ? maxLevelAvailable : activeLevel}
+                  value={currentActiveLevel}
                   onChange={(e) => setActiveLevel(parseInt(e.target.value, 10))}
                   style={{
                     width: 130,
@@ -125,7 +127,7 @@ export function TraceDetailPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {levelNames[activeLevel > maxLevelAvailable ? maxLevelAvailable : activeLevel] || `Level ${activeLevel}`}
+                  {levelNames[currentActiveLevel] || `Level ${currentActiveLevel}`}
                 </span>
               </div>
             </div>
@@ -200,7 +202,7 @@ export function TraceDetailPage() {
           <div className="trace-stat">
             Active Detail:{" "}
             <span className="trace-stat-value" style={{ color: "var(--accent-primary)" }}>
-              {levelNames[activeLevel > maxLevelAvailable ? maxLevelAvailable : activeLevel] || `Level ${activeLevel}`}
+              {levelNames[currentActiveLevel] || `Level ${currentActiveLevel}`}
             </span>
           </div>
         </div>
@@ -233,7 +235,7 @@ export function TraceDetailPage() {
           <TraceFlowCanvas
             ref={canvasRef}
             data={data}
-            activeLevel={activeLevel}
+            activeLevel={currentActiveLevel}
             onSelectLevel={setActiveLevel}
             layoutMode={layoutMode}
           />
