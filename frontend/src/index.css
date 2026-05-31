@@ -1,0 +1,303 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Premium Dark Theme Palette */
+  --bg-primary: #0a0a0b;
+  --bg-secondary: #121214;
+  --bg-tertiary: #18181b;
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  
+  --border-color: #27272a;
+  --border-highlight: #3f3f46;
+  
+  /* Accent Colors (Neon style for specific levels) */
+  --color-level-trace: #8b5cf6; /* Purple */
+  --color-level-debug: #3b82f6; /* Blue */
+  --color-level-info: #10b981;  /* Emerald */
+  --color-level-warn: #f59e0b;  /* Amber */
+  --color-level-error: #ef4444; /* Red */
+  
+  --glass-bg: rgba(18, 18, 20, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  
+  --font-primary: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-primary);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Base Layout Elements */
+.app-header {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-title {
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.025em;
+  background: linear-gradient(to right, #fff, #a1a1aa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.main-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+/* Glassmorphism Panel */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 12px;
+}
+
+/* Dashboard Table */
+.trace-table-container {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.trace-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 1.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.trace-table th {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+  padding: 1rem;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.trace-table td {
+  padding: 1rem;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.trace-table tr:last-child td {
+  border-bottom: none;
+}
+
+.trace-table tr:hover td {
+  background-color: #27272a;
+  cursor: pointer;
+}
+
+/* Trace Visualization Layout */
+.trace-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.trace-toolbar {
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  z-index: 10;
+}
+
+.trace-graph-area {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  background-color: #0d0d0f; /* Slightly lighter than pure black for depth */
+}
+
+/* Zoom Slider */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-secondary);
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-color);
+}
+
+.slider-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.slider-value {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--border-color);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+}
+
+input[type=range] {
+  -webkit-appearance: none;
+  width: 150px;
+  background: transparent;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+  margin-top: -6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: var(--border-color);
+  border-radius: 2px;
+}
+
+/* Gantt Chart Elements */
+.gantt-container {
+  position: relative;
+  min-width: 100%;
+  padding: 2rem 0;
+}
+
+.gantt-row {
+  position: relative;
+  height: 40px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px dashed rgba(255,255,255,0.05);
+}
+
+.gantt-row:hover {
+  background-color: rgba(255,255,255,0.02);
+}
+
+.gantt-bar-wrapper {
+  position: absolute;
+  height: 24px;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.gantt-bar {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  transition: filter 0.2s;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.gantt-bar:hover {
+  filter: brightness(1.2);
+  z-index: 6;
+}
+
+.gantt-bar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Level Specific Colors */
+.level-10 { background: linear-gradient(90deg, #6d28d9, #8b5cf6); } /* Trace */
+.level-20 { background: linear-gradient(90deg, #1d4ed8, #3b82f6); } /* Debug */
+.level-30 { background: linear-gradient(90deg, #047857, #10b981); } /* Info */
+.level-40 { background: linear-gradient(90deg, #b45309, #f59e0b); } /* Warn */
+.level-50 { background: linear-gradient(90deg, #be123c, #e11d48); } /* Error */
+
+/* SVG Overlay for Edges */
+.edges-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.edge-path {
+  fill: none;
+  stroke: var(--text-tertiary);
+  stroke-width: 2;
+}
+
+.edge-path.ghost {
+  stroke-dasharray: 4 4;
+  stroke: rgba(255, 255, 255, 0.4);
+}
+
+.ghost-badge {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-highlight);
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
