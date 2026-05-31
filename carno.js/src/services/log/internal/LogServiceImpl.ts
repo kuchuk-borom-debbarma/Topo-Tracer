@@ -1,17 +1,19 @@
 import { Service } from "@carno.js/core";
 import { LogService } from "../LogService";
 import type {
-  TraceContainer,
-  TraceContainerInput,
+  TraceSpan,
+  TraceSpanInput,
   TraceEdge,
   TraceEdgeInput,
-  TraceNode,
-  TraceNodeInput,
   TraceLayoutResponse,
   TraceListResponse,
+  ReadSpan,
+  ReadEdge,
+  GhostSpan,
 } from "../types";
 import { LogRepo } from "./LogRepo";
 import { TraceMaterializationWorker } from "./worker/TraceMaterializationWorker";
+import { v4 as uuidv4 } from "uuid";
 
 @Service()
 export class LogServiceImpl extends LogService {
@@ -22,27 +24,15 @@ export class LogServiceImpl extends LogService {
     super();
   }
 
-  override async logContainers(containers: TraceContainerInput[]): Promise<void> {
-    const enriched: TraceContainer[] = containers.map(container => ({
-      ...container,
-      timestamp: new Date(container.timestamp),
-      createdAtRemote: new Date(),
+  override async logSpans(spans: TraceSpanInput[]): Promise<void> {
+    const enriched: TraceSpan[] = spans.map(span => ({
+      ...span,
+      timestamp: new Date(span.timestamp),
+      levelNames: span.levelNames || {},
     }));
 
-    await this.logRepo.saveContainers(enriched);
-    this.triggerTraces(containers);
-  }
-
-  override async logNodes(nodes: TraceNodeInput[]): Promise<void> {
-    const enriched: TraceNode[] = nodes.map(node => ({
-      ...node,
-      timestamp: new Date(node.timestamp),
-      metadata: node.metadata ?? null,
-      ingestedAtRemote: new Date(),
-    }));
-
-    await this.logRepo.saveNodes(enriched);
-    this.triggerTraces(nodes);
+    await this.logRepo.saveSpans(enriched);
+    this.triggerTraces(spans);
   }
 
   override async logEdges(edges: TraceEdgeInput[]): Promise<void> {
@@ -55,159 +45,141 @@ export class LogServiceImpl extends LogService {
     this.triggerTraces(edges);
   }
 
-  override async getTraceLayout(traceId: string, tags?: string[]): Promise<TraceLayoutResponse | null> {
-    // 1. Fetch trace metadata
-    const metadata = await this.logRepo.fetchTraceMetadata(traceId);
+  override async getTraceLayout(traceId: string, maxLevel?: number): Promise<TraceLayoutResponse | null> {
+    // 1. Fetch pre-calculated visual layout JSON metadata
+    const meta = await this.logRepo.fetchReadTraceMeta(traceId);
+    let levelNames: Record<number, string> = {};
+    let spans: ReadSpan[] = [];
+    let edges: ReadEdge[] = [];
 
-    // 2. Fetch read-optimized containers, nodes, and edges
-    const [containers, nodes, edges] = await Promise.all([
-      this.logRepo.fetchReadContainers(traceId),
-      this.logRepo.fetchReadNodes(traceId),
-      this.logRepo.fetchReadEdges(traceId),
-    ]);
-
-    // 3. Extract unique tags present in this trace for UI autocomplete (from unfiltered list!)
-    const tagsSet = new Set<string>();
-    for (const c of containers) {
-      if (c.tags) c.tags.forEach(t => tagsSet.add(t));
-    }
-    for (const n of nodes) {
-      if (n.tags) n.tags.forEach(t => tagsSet.add(t));
+    if (meta) {
+      levelNames = meta.levelNames || {};
+      try {
+        const layout = JSON.parse(meta.layoutJson);
+        spans = layout.spans || [];
+        edges = layout.edges || [];
+      } catch (err) {
+        console.error("[LogServiceImpl] Failed to parse layout JSON string, falling back to direct query:", err);
+      }
     }
 
-    // 4. Perform dynamic AND-logic filtering and ancestry snapping on the backend
-    let finalContainers = containers;
-    let finalNodes = nodes;
+    // Fallback: If cache is somehow empty, query read tables directly to remain robust
+    if (spans.length === 0) {
+      const [dbSpans, dbEdges] = await Promise.all([
+        this.logRepo.fetchReadSpans(traceId),
+        this.logRepo.fetchReadEdges(traceId),
+      ]);
+      spans = dbSpans;
+      edges = dbEdges;
+    }
+
+    if (spans.length === 0) {
+      return null;
+    }
+
+    // 2. Perform Dynamic View-Level Filtering & Snappy Link Tunneling
+    let finalSpans = spans;
     let finalEdges = edges;
+    const ghostSpans: GhostSpan[] = [];
 
-    if (tags && tags.length > 0) {
-      const activeTags = new Set(tags);
+    if (maxLevel !== undefined) {
+      // Keep only spans that fit in the selected view Level
+      finalSpans = spans.filter(s => s.viewLevel <= maxLevel);
+      const visibleSpanIds = new Set(finalSpans.map(s => s.id));
 
-      const isNodeVisible = (n: typeof nodes[0]): boolean => {
-        return tags.every((tag) => n.tags && n.tags.includes(tag));
-      };
+      const resolveAnchor = (spanId: string): ReadSpan | null => {
+        const cs = spans.find(x => x.id === spanId);
+        if (!cs) return null;
 
-      const containerVisCache = new Map<string, boolean>();
-      const isContainerVisible = (cid: string): boolean => {
-        if (containerVisCache.has(cid)) return containerVisCache.get(cid)!;
-
-        const hasContent =
-          nodes.some((n) => n.containerId === cid) ||
-          containers.some((c) => c.parentContainerId === cid && c.id !== cid);
-
-        if (!hasContent) {
-          containerVisCache.set(cid, false);
-          return false;
-        }
-
-        const tagMatched = tags.every((tag) => {
-          const c = containers.find((x) => x.id === cid);
-          return !!(c && c.tags && c.tags.includes(tag));
-        });
-
-        if (tagMatched) {
-          containerVisCache.set(cid, true);
-          return true;
-        }
-
-        if (nodes.some((n) => n.containerId === cid && isNodeVisible(n))) {
-          containerVisCache.set(cid, true);
-          return true;
-        }
-
-        if (
-          containers.some(
-            (c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id)
-          )
-        ) {
-          containerVisCache.set(cid, true);
-          return true;
-        }
-
-        containerVisCache.set(cid, false);
-        return false;
-      };
-
-      finalContainers = containers.filter((c) => isContainerVisible(c.id));
-      finalNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
-
-      const visibleContainerIds = new Set(finalContainers.map((c) => c.id));
-      const visibleNodeIds = new Set(finalNodes.map((n) => n.id));
-
-      const resolveAnchorId = (nodeId: string): string | null => {
-        if (visibleNodeIds.has(nodeId) || visibleContainerIds.has(nodeId)) {
-          return nodeId;
-        }
-        const asNode = nodes.find((n) => n.id === nodeId);
-        if (asNode) {
-          const parentage = asNode.parentage || [];
-          for (const ancestorId of [...parentage].reverse()) {
-            if (visibleNodeIds.has(ancestorId) || visibleContainerIds.has(ancestorId)) {
-              return ancestorId;
-            }
-          }
-        }
-        const asContainer = containers.find((c) => c.id === nodeId);
-        if (asContainer) {
-          let pid = asContainer.parentContainerId;
-          while (pid) {
-            if (visibleContainerIds.has(pid)) {
-              return pid;
-            }
-            const p = containers.find((c) => c.id === pid);
-            pid = p ? p.parentContainerId : null;
+        // Walk backwards along parentage to find the closest visible ancestor span
+        for (const ancestorId of [...cs.parentage].reverse()) {
+          if (visibleSpanIds.has(ancestorId)) {
+            const found = spans.find(x => x.id === ancestorId);
+            if (found) return found;
           }
         }
         return null;
       };
 
-      const snappedEdges: typeof edges = [];
+      const snappedEdges: ReadEdge[] = [];
       const seenConnections = new Set<string>();
 
       for (const edge of edges) {
-        const fromId = resolveAnchorId(edge.fromNodeId);
-        const toId = resolveAnchorId(edge.toId);
-        if (fromId && toId && fromId !== toId) {
-          const isSnapped = fromId !== edge.fromNodeId || toId !== edge.toId;
-          const connKey = `${fromId}->${toId}`;
+        const fromAnchor = resolveAnchor(edge.fromSpanId);
+        const toAnchor = resolveAnchor(edge.toSpanId);
 
-          let distance = 0;
-          if (isSnapped) {
-            distance = Math.max(1, edge.distance);
-          }
-
-          const resolvedToType = visibleContainerIds.has(toId) ? "container" : "node";
+        if (fromAnchor && toAnchor && fromAnchor.id !== toAnchor.id) {
+          const isSnapped = fromAnchor.id !== edge.fromSpanId || toAnchor.id !== edge.toSpanId;
+          const connKey = `${fromAnchor.id}->${toAnchor.id}`;
 
           if (!seenConnections.has(connKey)) {
             seenConnections.add(connKey);
+
+            let distance = edge.distance;
+            
+            // If the connection is snapped/tunneled, calculate and inject a visual Ghost Span
+            if (isSnapped) {
+              const origFrom = spans.find(x => x.id === edge.fromSpanId);
+              const origTo = spans.find(x => x.id === edge.toSpanId);
+
+              // Gather skipped/hidden intermediate spans along the original lineages
+              const unionLineage = new Set<string>();
+              if (origFrom) origFrom.parentage.forEach(id => unionLineage.add(id));
+              if (origTo) origTo.parentage.forEach(id => unionLineage.add(id));
+
+              // Exclude snapped visible endpoints from the hidden set
+              unionLineage.delete(fromAnchor.id);
+              unionLineage.delete(toAnchor.id);
+
+              const hiddenSpans = spans.filter(s => unionLineage.has(s.id) && !visibleSpanIds.has(s.id));
+
+              if (hiddenSpans.length > 0) {
+                const hiddenCount = hiddenSpans.length;
+                const truncatedLineage = hiddenSpans.map(h => `${h.name} (L${h.viewLevel})`);
+
+                const startTimes = hiddenSpans.map(h => h.startTimeUs);
+                const endTimes = hiddenSpans.map(h => h.startTimeUs + (h.durationUs || 0));
+
+                const startTimeUs = Math.min(...startTimes);
+                const endTimeUs = Math.max(...endTimes);
+                const durationUs = endTimeUs > startTimeUs ? endTimeUs - startTimeUs : 0;
+
+                const ghostId = `ghost-${fromAnchor.id}-${toAnchor.id}`;
+                ghostSpans.push({
+                  id: ghostId,
+                  fromSpanId: fromAnchor.id,
+                  toSpanId: toAnchor.id,
+                  hiddenCount,
+                  truncatedLineage,
+                  durationUs,
+                  startTimeUs,
+                  endTimeUs,
+                });
+
+                distance = Math.max(1, edge.distance);
+              }
+            }
+
             snappedEdges.push({
               ...edge,
-              fromNodeId: fromId,
-              toId,
-              toType: resolvedToType,
+              fromSpanId: fromAnchor.id,
+              toSpanId: toAnchor.id,
               distance,
             });
           }
         }
       }
       finalEdges = snappedEdges;
-    } else {
-      // Unfiltered view: all raw edges represent direct transitions (distance = 0)
-      finalEdges = edges.map(edge => ({
-        ...edge,
-        distance: 0,
-      }));
     }
 
     return {
       metadata: {
         traceId,
-        isZoomReady: metadata ? !!metadata.isZoomReady : false,
-        tags: Array.from(tagsSet),
+        levelNames,
       },
-      containers: finalContainers.map(({ parentage, ...c }) => c),
-      nodes: finalNodes.map(({ parentage, ...n }) => n),
+      spans: finalSpans,
       edges: finalEdges,
+      ghostSpans,
     };
   }
 

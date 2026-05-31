@@ -1,12 +1,11 @@
-import { TraceContainerInput, TraceNodeInput, TraceEdgeInput, TracerConfig } from "./types";
+import { TraceSpanInput, TraceEdgeInput, TracerConfig } from "./types";
 
 export class BatchExporter {
   private baseUrl: string;
   private batchSize: number;
   private flushIntervalMs: number;
 
-  private containers: TraceContainerInput[] = [];
-  private nodes: TraceNodeInput[] = [];
+  private spans: TraceSpanInput[] = [];
   private edges: TraceEdgeInput[] = [];
 
   private timer: NodeJS.Timeout | null = null;
@@ -31,17 +30,11 @@ export class BatchExporter {
       clearInterval(this.timer);
       this.timer = null;
     }
-    // Attempt one last flush
     return this.flush();
   }
 
-  public addContainer(container: TraceContainerInput) {
-    this.containers.push(container);
-    this.checkBatchSize();
-  }
-
-  public addNode(node: TraceNodeInput) {
-    this.nodes.push(node);
+  public addSpan(span: TraceSpanInput) {
+    this.spans.push(span);
     this.checkBatchSize();
   }
 
@@ -52,11 +45,9 @@ export class BatchExporter {
 
   private checkBatchSize() {
     if (
-      this.containers.length >= this.batchSize ||
-      this.nodes.length >= this.batchSize ||
+      this.spans.length >= this.batchSize ||
       this.edges.length >= this.batchSize
     ) {
-      // Use setImmediate to avoid blocking the current execution stack
       setImmediate(() => {
         this.flush().catch(err => console.error("[TopoTracer] Batch size flush failed:", err));
       });
@@ -66,13 +57,11 @@ export class BatchExporter {
   public async flush(): Promise<void> {
     if (this.isFlushing) return;
     
-    const containersToFlush = this.containers.splice(0, this.containers.length);
-    const nodesToFlush = this.nodes.splice(0, this.nodes.length);
+    const spansToFlush = this.spans.splice(0, this.spans.length);
     const edgesToFlush = this.edges.splice(0, this.edges.length);
 
     if (
-      containersToFlush.length === 0 &&
-      nodesToFlush.length === 0 &&
+      spansToFlush.length === 0 &&
       edgesToFlush.length === 0
     ) {
       return;
@@ -81,17 +70,13 @@ export class BatchExporter {
     this.isFlushing = true;
 
     try {
-      if (containersToFlush.length > 0) {
-        await this.post("/telemetry/containers", containersToFlush);
-      }
-      if (nodesToFlush.length > 0) {
-        await this.post("/telemetry/nodes", nodesToFlush);
+      if (spansToFlush.length > 0) {
+        await this.post("/telemetry/spans", spansToFlush);
       }
       if (edgesToFlush.length > 0) {
         await this.post("/telemetry/edges", edgesToFlush);
       }
     } catch (error) {
-      // On failure, we drop to avoid memory leaks.
       console.warn("[TopoTracer] Failed to flush telemetry batch. Data dropped.", error);
     } finally {
       this.isFlushing = false;

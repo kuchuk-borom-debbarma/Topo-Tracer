@@ -1,121 +1,88 @@
 export type JsonValue = unknown;
 
-export type TraceContainer = {
+export type TraceSpan = {
   id: string;
   traceId: string;
-  parentContainerId: string | null;
+  parentId: string | null;
   name: string;
+  kind: "boundary" | "execution";
   type: string;
-  tags: string[];
+  tags: Record<string, string>;
   eventType: "started" | "ended";
   timestamp: Date;
-  createdAtRemote?: Date;
+  levelNames?: Record<number, string>;
 };
 
-export type TraceNode = {
+export type TraceSpanInput = {
   id: string;
   traceId: string;
-  containerId: string;
+  parentId: string | null;
   name: string;
+  kind: "boundary" | "execution";
   type: string;
-  tags: string[];
+  tags: Record<string, string>;
   eventType: "started" | "ended";
-  timestamp: Date;
-  metadata?: JsonValue;
-  ingestedAtRemote?: Date;
+  timestamp: number; // UNIX timestamp in ms
+  levelNames?: Record<number, string>;
 };
 
 export type TraceEdge = {
   id: string;
   traceId: string;
-  fromNodeId: string;
-  toId: string;
-  toType: "node" | "container";
+  fromSpanId: string;
+  toSpanId: string;
   type: string;
   timestamp: Date;
-};
-
-export type TraceContainerInput = {
-  id: string;
-  traceId: string;
-  parentContainerId: string | null;
-  name: string;
-  type: string;
-  tags: string[];
-  eventType: "started" | "ended";
-  timestamp: number; // UNIX timestamp in ms
-};
-
-export type TraceNodeInput = {
-  id: string;
-  traceId: string;
-  containerId: string;
-  name: string;
-  type: string;
-  tags: string[];
-  eventType: "started" | "ended";
-  timestamp: number; // UNIX timestamp in ms
-  metadata?: JsonValue;
 };
 
 export type TraceEdgeInput = {
   id: string;
   traceId: string;
-  fromNodeId: string;
-  toId: string;
-  toType: "node" | "container";
+  fromSpanId: string;
+  toSpanId: string;
   type: string;
   timestamp: number; // UNIX timestamp in ms
 };
 
-export type ReadContainer = {
+export type ReadSpan = {
   id: string;
   traceId: string;
-  parentContainerId: string | null;
+  parentId: string | null;
   name: string;
+  kind: "boundary" | "execution";
   type: string;
-  tags: string[];
+  tags: Record<string, string>;
   parentage: string[];
+  viewLevel: number;
+  localSequence: number;
   startTimeUs: number;
   durationUs: number | null;
-  metadata?: JsonValue;
-};
-
-export type ReadNode = {
-  id: string;
-  traceId: string;
-  containerId: string;
-  name: string;
-  type: string;
-  tags: string[];
-  parentage: string[]; // Hierarchical lineage: [parent_container_ids..., parent_node_id]
-  localSequence: number; // Chronological sequence index inside the container
-  startTimeUs: number;
-  durationUs: number | null;
-  metadata?: JsonValue;
+  metadata?: any;
 };
 
 export type ReadEdge = {
   id: string;
   traceId: string;
-  fromNodeId: string;
-  toId: string;
-  toType: "node" | "container";
+  fromSpanId: string;
+  toSpanId: string;
   type: string;
   distance: number;
-  metadata?: JsonValue;
+  metadata?: any;
 };
 
-export type TraceMetadata = {
-  traceId: string;
-  isZoomReady: boolean;
-  maxAvailableDepth: number;
-  materializedOffset: number;
+export type GhostSpan = {
+  id: string;
+  fromSpanId: string;
+  toSpanId: string;
+  hiddenCount: number;
+  truncatedLineage: string[];
+  durationUs: number;
+  startTimeUs: number;
+  endTimeUs: number;
 };
 
 export type TraceListItem = {
   traceId: string;
-  isZoomReady: boolean;
   createdAt: number;
   containerNames: string[];
   tags: string[];
@@ -132,10 +99,9 @@ export type TraceListResponse = {
 export type TraceLayoutResponse = {
   metadata: {
     traceId: string;
-    isZoomReady: boolean;
-    tags: string[];
+    levelNames: Record<number, string>;
   };
-  containers: Omit<ReadContainer, "parentage">[];
-  nodes: Omit<ReadNode, "parentage">[];
+  spans: ReadSpan[];
   edges: ReadEdge[];
+  ghostSpans: GhostSpan[];
 };

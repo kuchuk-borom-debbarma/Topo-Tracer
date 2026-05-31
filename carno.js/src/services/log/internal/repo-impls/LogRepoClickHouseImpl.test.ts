@@ -12,89 +12,64 @@ class MockClickHouseClient {
   }
 }
 
-describe("LogRepoClickHouseImpl", () => {
-  it("writes containers to ClickHouse", async () => {
+describe("LogRepoClickHouseImpl V4 Spans", () => {
+  it("writes raw spans to ClickHouse raw_spans table", async () => {
     const client = new MockClickHouseClient();
     const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
 
-    await repo.saveContainers([
+    await repo.saveSpans([
       {
-        id: "container_a",
-        traceId: "trace",
-        parentContainerId: null,
-        name: "service-a",
+        id: "span_a",
+        traceId: "trace_id_x",
+        parentId: "span_parent",
+        name: "test-span",
+        kind: "boundary",
         type: "service",
-        tags: ["api"],
+        tags: { env: "prod", version: "1.0.0" },
         eventType: "started",
-        timestamp: new Date(10),
+        timestamp: new Date(100),
+        levelNames: { 0: "L0", 1: "L1" },
       },
     ]);
 
-    expect(client.insertedTable).toBe("toco_tracer.raw_containers");
+    expect(client.insertedTable).toBe("toco_tracer.raw_spans");
     expect(client.insertedValues[0]).toMatchObject({
-      trace_id: "trace",
-      parent_container_id: "",
-      name: "service-a",
-      tags: ["api"],
+      id: "span_a",
+      trace_id: "trace_id_x",
+      parent_id: "span_parent",
+      name: "test-span",
+      kind: "boundary",
+      type: "service",
+      tags: { env: "prod", version: "1.0.0" },
       event_type: "started",
-      timestamp: 10,
+      timestamp: 100,
+      level_names: { 0: "L0", 1: "L1" },
     });
   });
 
-  it("writes nodes to ClickHouse", async () => {
-    const client = new MockClickHouseClient();
-    const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
-
-    await repo.saveNodes([
-      {
-        id: "node_a",
-        traceId: "trace",
-        containerId: "container_a",
-        name: "step-a",
-        type: "step",
-        tags: ["validation"],
-        eventType: "started",
-        timestamp: new Date(20),
-        metadata: { key: "val" },
-      },
-    ]);
-
-    expect(client.insertedTable).toBe("toco_tracer.raw_nodes");
-    expect(client.insertedValues[0]).toMatchObject({
-      trace_id: "trace",
-      container_id: "container_a",
-      name: "step-a",
-      tags: ["validation"],
-      event_type: "started",
-      timestamp: 20,
-      metadata: JSON.stringify({ key: "val" }),
-    });
-  });
-
-  it("writes edges to ClickHouse", async () => {
+  it("writes raw edges to ClickHouse raw_edges table", async () => {
     const client = new MockClickHouseClient();
     const repo = new LogRepoClickHouseImpl({ client } as unknown as ClickHouseService);
 
     await repo.saveEdges([
       {
         id: "edge_a",
-        traceId: "trace",
-        fromNodeId: "node_a",
-        toId: "node_b",
-        toType: "node",
-        type: "call",
-        timestamp: new Date(30),
+        traceId: "trace_id_x",
+        fromSpanId: "span_source",
+        toSpanId: "span_target",
+        type: "rpc_call",
+        timestamp: new Date(200),
       },
     ]);
 
     expect(client.insertedTable).toBe("toco_tracer.raw_edges");
     expect(client.insertedValues[0]).toMatchObject({
-      trace_id: "trace",
-      from_node_id: "node_a",
-      to_id: "node_b",
-      to_type: "node",
-      type: "call",
-      timestamp: 30,
+      id: "edge_a",
+      trace_id: "trace_id_x",
+      from_span_id: "span_source",
+      to_span_id: "span_target",
+      type: "rpc_call",
+      timestamp: 200,
     });
   });
 });

@@ -1,21 +1,15 @@
 import { Body, Controller, Get, Param, Post, Query } from "@carno.js/core";
 import { LogService } from "../services/log/LogService";
-import type { TraceContainerInput, TraceEdgeInput, TraceNodeInput } from "../services/log/types";
+import type { TraceEdgeInput, TraceSpanInput } from "../services/log/types";
 
 @Controller("/telemetry")
 export class LogController {
   constructor(private logService: LogService) {}
 
-  @Post("/containers")
-  async logContainers(@Body() containers: TraceContainerInput[]) {
-    await this.logService.logContainers(containers);
-    return { ok: true, count: containers.length };
-  }
-
-  @Post("/nodes")
-  async logNodes(@Body() nodes: TraceNodeInput[]) {
-    await this.logService.logNodes(nodes);
-    return { ok: true, count: nodes.length };
+  @Post("/spans")
+  async logSpans(@Body() spans: TraceSpanInput[]) {
+    await this.logService.logSpans(spans);
+    return { ok: true, count: spans.length };
   }
 
   @Post("/edges")
@@ -27,10 +21,10 @@ export class LogController {
   @Get("/trace/:traceId")
   async getTraceLayout(
     @Param("traceId") traceId: string,
-    @Query("tags") tags?: string
+    @Query("maxLevel") maxLevel?: string
   ) {
-    const tagsList = tags ? tags.split(",") : undefined;
-    return await this.logService.getTraceLayout(traceId, tagsList);
+    const maxLevelNum = maxLevel !== undefined ? parseInt(maxLevel, 10) : undefined;
+    return await this.logService.getTraceLayout(traceId, maxLevelNum);
   }
 
   @Get("/traces")
