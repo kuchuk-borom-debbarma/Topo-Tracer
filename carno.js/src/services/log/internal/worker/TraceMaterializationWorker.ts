@@ -98,13 +98,16 @@ export class TraceMaterializationWorker {
           kind: s.kind,
           type: s.type,
           tags: s.tags || {},
-          viewLevel: s.viewLevel,
+          viewLevel: s.viewLevel !== undefined ? s.viewLevel : 0,
           startTimeUs: tUs,
           endTimeUs: s.eventType === "ended" ? tUs : undefined,
         });
       } else {
         if (s.eventType === "started") {
           existing.startTimeUs = Math.min(existing.startTimeUs, tUs);
+          if (s.viewLevel !== undefined) {
+            existing.viewLevel = s.viewLevel;
+          }
         } else {
           existing.endTimeUs = existing.endTimeUs ? Math.max(existing.endTimeUs, tUs) : tUs;
         }

@@ -40,7 +40,8 @@ export class ClickHouseService {
           tags Map(String, String),
           event_type Enum8('started' = 1, 'ended' = 2),
           timestamp Int64,
-          level_names Map(UInt16, String)
+          level_names Map(UInt16, String),
+          view_level UInt16
         ) ENGINE = MergeTree()
         ORDER BY (trace_id, timestamp);
       `,

@@ -50,6 +50,7 @@ export class Span {
       eventType: "started",
       timestamp: Date.now(),
       levelNames: opts.levelNames || {},
+      viewLevel: this.viewLevel,
     });
   }
 
@@ -136,6 +137,7 @@ export class Span {
       tags: this.tags,
       eventType: "ended",
       timestamp: Date.now(),
+      viewLevel: this.viewLevel,
     });
   }
 }
