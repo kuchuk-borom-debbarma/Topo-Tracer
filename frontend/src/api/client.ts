@@ -7,7 +7,6 @@ export type TraceListItem = {
   isZoomReady: boolean;
   createdAt: number;
   containerNames: string[];
-  tags: string[];
 };
 
 export type TraceListResponse = {
@@ -25,7 +24,6 @@ export type ReadSpan = {
   name: string;
   kind: "boundary" | "execution";
   type: string;
-  tags: Record<string, string>;
   parentage: string[];
   viewLevel: number;
   localSequence: number;
@@ -55,14 +53,12 @@ export type GhostSpan = {
   endTimeUs: number;
 };
 
-// Mapped client representations for 100% rendering layout compatibility
 export type ReadContainer = {
   id: string;
   traceId: string;
   parentContainerId: string | null;
   name: string;
   type: string;
-  tags: string[];
   startTimeUs: number;
   durationUs: number | null;
   metadata?: any;
@@ -74,7 +70,6 @@ export type ReadNode = {
   containerId: string;
   name: string;
   type: string;
-  tags: string[];
   localSequence: number;
   startTimeUs: number;
   durationUs: number | null;
@@ -181,7 +176,6 @@ export async function fetchTraceLayout(
       parentContainerId: s.parentId,
       name: s.name,
       type: s.type,
-      tags: Object.keys(s.tags || {}).map(k => `${k}:${s.tags[k]}`),
       startTimeUs: s.startTimeUs,
       durationUs: s.durationUs,
       metadata: s.metadata
@@ -195,7 +189,6 @@ export async function fetchTraceLayout(
       containerId: getEnclosingContainerId(s),
       name: s.name,
       type: s.type,
-      tags: Object.keys(s.tags || {}).map(k => `${k}:${s.tags[k]}`),
       localSequence: s.localSequence,
       startTimeUs: s.startTimeUs,
       durationUs: s.durationUs,

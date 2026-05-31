@@ -87,7 +87,6 @@ export function NodeInspector({ node, onClose }: InspectorProps) {
   const duration = formatDuration(node.durationUs);
   const meta = node.metadata as Record<string, unknown> | null | undefined;
   const hasMetadata = meta && typeof meta === "object" && Object.keys(meta).length > 0;
-  const tags = node.tags || [];
 
   return createPortal(
     <div className="node-inspector-backdrop" onClick={onClose}>
@@ -136,19 +135,7 @@ export function NodeInspector({ node, onClose }: InspectorProps) {
           )}
         </div>
 
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="node-inspector-section">
-            <div className="node-inspector-section-label">Tags</div>
-            <div className="node-inspector-tags">
-              {tags.map((tag) => (
-                <span key={tag} className="node-inspector-tag">
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+
 
         {/* Metadata */}
         {hasMetadata && (

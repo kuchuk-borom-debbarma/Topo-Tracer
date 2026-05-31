@@ -51,7 +51,6 @@ export type ContainerLayout = {
   containerId: string;
   name: string;
   type: string;
-  tags: string[];
   depth: number;
   top: number;
   left: number;
@@ -112,7 +111,6 @@ export function computeLayout(
   containers: ReadContainer[],
   nodes: ReadNode[],
   edges: ReadEdge[],
-  activeTags: Set<string>,
   layoutMode: "nested" | "dag" | "graph" = "graph"
 ): LayoutResult {
   const {
@@ -120,48 +118,8 @@ export function computeLayout(
     HEADER_H, COL_W, INDENT, CANVAS_PAD
   } = LAYOUT;
 
-  // ── 1. Visibility filter (AND logic on tags) ───────────────
-  const isNodeVisible = (n: ReadNode): boolean => {
-    if (activeTags.size === 0) return true;
-    return Array.from(activeTags).every((tag) => n.tags && n.tags.includes(tag));
-  };
-
-  const containerVisCache = new Map<string, boolean>();
-  const isContainerVisible = (cid: string): boolean => {
-    if (containerVisCache.has(cid)) return containerVisCache.get(cid)!;
-
-    // 1. If no tag filters are active in the UI, show all containers in the layout
-    if (activeTags.size === 0) {
-      containerVisCache.set(cid, true);
-      return true;
-    }
-
-    // 2. A container is visible if it has at least one visible node matching active tags
-    const hasVisibleNode = nodes.some((n) => n.containerId === cid && isNodeVisible(n));
-    if (hasVisibleNode) {
-      containerVisCache.set(cid, true);
-      return true;
-    }
-
-    // 3. Or if it contains at least one visible child sub-container
-    const hasVisibleChildContainer = containers.some(
-      (c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id)
-    );
-    if (hasVisibleChildContainer) {
-      containerVisCache.set(cid, true);
-      return true;
-    }
-
-    // 4. Or if it is a leaf/external resource (like DB, Queue) with 0 nodes in the trace
-    const totalNodesInContainer = nodes.filter((n) => n.containerId === cid).length;
-    if (totalNodesInContainer === 0) {
-      containerVisCache.set(cid, true);
-      return true;
-    }
-
-    containerVisCache.set(cid, false);
-    return false;
-  };
+  const visibleContainerIds = new Set(containers.map((c) => c.id));
+  const visibleNodeIds = new Set(nodes.map((n) => n.id));
 
   // ── 1A. Clustered 2D Graph layout algorithm ──
   if (layoutMode === "graph") {
@@ -171,10 +129,8 @@ export function computeLayout(
     const PAD_X = 48;
     const PAD_Y = 48;
 
-    const visibleContainers = containers.filter((c) => isContainerVisible(c.id));
-    const visibleNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
-    const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
-    const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+    const visibleContainers = containers;
+    const visibleNodes = nodes;
 
     const hosts = visibleContainers;
 
@@ -342,7 +298,6 @@ export function computeLayout(
           containerId: c.id,
           name: c.name,
           type: c.type,
-          tags: c.tags || [],
           depth: r,
           top: currentY,
           left: x,
@@ -467,10 +422,8 @@ export function computeLayout(
     const PAD_X = 36;
     const PAD_Y = 24;
 
-    const visibleContainers = containers.filter((c) => isContainerVisible(c.id));
-    const visibleNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
-    const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
-    const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+    const visibleContainers = containers;
+    const visibleNodes = nodes;
 
     // Sort containers by their earliest node's start time to assign horizontal lanes
     const containerEarliestTime = new Map<string, number>();
@@ -539,7 +492,6 @@ export function computeLayout(
         containerId: c.id,
         name: c.name,
         type: c.type,
-        tags: c.tags || [],
         depth: idx,
         top,
         left: PAD_X,
@@ -645,10 +597,8 @@ export function computeLayout(
 
   // ── 1C. Nesting Swimlane layout code (Default fallback) ──
 
-  const visibleContainers = containers.filter((c) => isContainerVisible(c.id));
-  const visibleNodes = nodes.filter((n) => isNodeVisible(n) && isContainerVisible(n.containerId));
-  const visibleContainerIds = new Set(visibleContainers.map((c) => c.id));
-  const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+  const visibleContainers = containers;
+  const visibleNodes = nodes;
 
   // ── 2. Effective parent map (skip invisible containers + resolve Node IDs) ──
   const effectiveParentMap = new Map<string, string | null>();
@@ -774,7 +724,6 @@ export function computeLayout(
       containerId: cid,
       name: c.name,
       type: c.type,
-      tags: c.tags || [],
       depth,
       top,
       left,
