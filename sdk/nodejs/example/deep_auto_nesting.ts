@@ -1,28 +1,16 @@
-import { Tracer } from "../src/index";
+import { Tracer, Level } from "../src/index";
 
 async function main() {
   console.log("=============================================================");
-  console.log("   TOPO-TRACER V4: RUNNING DEEP AUTO-INCREMENT LEVEL TEST    ");
+  console.log("   TOPO-TRACER V2: RUNNING DEEP AUTO-INCREMENT LEVEL TEST    ");
   console.log("=============================================================");
 
-  // Initialize the Tracer with names for levels 0, 1, 2, 3 ONLY
-  Tracer.init(
-    { baseUrl: "http://localhost:3000" },
-    { 
-      id: "boundary-gateway-deep-10",
-      name: "Super Deep Service Gateway", 
-      type: "gateway",
-      levelNames: {
-        0: "Architecture Map",
-        1: "API Controllers",
-        2: "Business Procedures",
-        3: "Internal SQL & Details"
-      }
-    }
-  );
+  Tracer.init({ baseUrl: "http://localhost:3000" });
 
-  // 1. Level 0: Start boundary
-  const root = Tracer.startBoundary("POST /api/v1/deep-process-depth-10");
+  // 1. Level 10: Start trace
+  const root = Tracer.startTrace("POST /api/v1/deep-process-depth-10", {
+    level: Level.INFO
+  });
   console.log("   Distributed Trace ID:", root.traceId);
 
   // Nest spans programmatically up to Level 10
@@ -31,9 +19,11 @@ async function main() {
 
   console.log("   Nesting 10 levels automatically in a loop...");
   for (let level = 1; level <= 10; level++) {
-    const isNamed = level <= 3;
-    const labelSuffix = isNamed ? "" : " (Unnamed)";
-    currentParent = currentParent.startSpan(`Auto-Nested Level ${level}${labelSuffix}`);
+    // Increase numeric level (less important stuff gets a higher number/lower severity)
+    const spanLevel = 30 + (level * 2); 
+    currentParent = currentParent.startSpan(`Auto-Nested Depth ${level}`, {
+      level: spanLevel
+    });
     activeSpans.push(currentParent);
   }
 

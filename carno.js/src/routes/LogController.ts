@@ -29,7 +29,7 @@ export class LogController {
     console.log(`[HTTP GET] /telemetry/trace/${traceId} - Fetching layout (maxLevel: ${maxLevelNum ?? "default"})`);
     const layout = await this.logService.getTraceLayout(traceId, maxLevelNum);
     if (layout) {
-      console.log(`[HTTP GET] /telemetry/trace/${traceId} - Found cached layout with ${layout.spans.length} span(s), ${layout.edges.length} edge(s), and ${layout.ghostSpans.length} ghost span(s)`);
+      console.log(`[HTTP GET] /telemetry/trace/${traceId} - Found cached layout with ${layout.spans.length} span(s), and ${layout.edges.length} edge(s)`);
     } else {
       console.log(`[HTTP GET] /telemetry/trace/${traceId} - Layout not found`);
     }
