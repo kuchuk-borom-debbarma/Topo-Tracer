@@ -127,7 +127,7 @@ export function TraceDetailPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {levelNames[currentActiveLevel] || `Level ${currentActiveLevel}`}
+                  [{currentActiveLevel}/{maxLevelAvailable}] {levelNames[currentActiveLevel] || "Detail View"}
                 </span>
               </div>
             </div>
@@ -202,7 +202,7 @@ export function TraceDetailPage() {
           <div className="trace-stat">
             Active Detail:{" "}
             <span className="trace-stat-value" style={{ color: "var(--accent-primary)" }}>
-              {levelNames[currentActiveLevel] || `Level ${currentActiveLevel}`}
+              [{currentActiveLevel}/{maxLevelAvailable}] {levelNames[currentActiveLevel] || "Detail View"}
             </span>
           </div>
         </div>
