@@ -75,9 +75,8 @@ export class TraceMaterializationWorker {
         });
       }
       const span = spanMap.get(s.id)!;
-      // 1 = started, 2 = ended
-      if (s.event_type === 1) span.start_time_us = s.timestamp;
-      else if (s.event_type === 2) span.end_time_us = s.timestamp;
+      if (s.event_type === "started" || s.event_type === 1) span.start_time_us = Number(s.timestamp);
+      else if (s.event_type === "ended" || s.event_type === 2) span.end_time_us = Number(s.timestamp);
     }
 
     // Graph building (Adjacency List: Parent -> Children)
