@@ -130,18 +130,31 @@ export function computeLayout(
   const isContainerVisible = (cid: string): boolean => {
     if (containerVisCache.has(cid)) return containerVisCache.get(cid)!;
 
-    // A container is visible only if it has at least one visible node inside it
+    // 1. If no tag filters are active in the UI, show all containers in the layout
+    if (activeTags.size === 0) {
+      containerVisCache.set(cid, true);
+      return true;
+    }
+
+    // 2. A container is visible if it has at least one visible node matching active tags
     const hasVisibleNode = nodes.some((n) => n.containerId === cid && isNodeVisible(n));
     if (hasVisibleNode) {
       containerVisCache.set(cid, true);
       return true;
     }
 
-    // Or if it contains at least one visible child sub-container (recursive support)
+    // 3. Or if it contains at least one visible child sub-container
     const hasVisibleChildContainer = containers.some(
       (c) => c.parentContainerId === cid && c.id !== cid && isContainerVisible(c.id)
     );
     if (hasVisibleChildContainer) {
+      containerVisCache.set(cid, true);
+      return true;
+    }
+
+    // 4. Or if it is a leaf/external resource (like DB, Queue) with 0 nodes in the trace
+    const totalNodesInContainer = nodes.filter((n) => n.containerId === cid).length;
+    if (totalNodesInContainer === 0) {
       containerVisCache.set(cid, true);
       return true;
     }
