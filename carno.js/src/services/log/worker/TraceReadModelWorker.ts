@@ -47,9 +47,9 @@ export class TraceReadModelWorker {
     await this.readModels.saveTraceReadModel(readModel);
     console.log(
       `[TraceReadModelWorker] Materialized ${traceId}: ` +
-      `${readModel.summary.containerCount} containers, ` +
       `${readModel.summary.nodeCount} nodes, ` +
-      `${readModel.summary.edgeCount} edges`
+      `${readModel.summary.edgeCount} edges, ` +
+      `max depth ${readModel.summary.maxDepth}`
     );
   }
 }

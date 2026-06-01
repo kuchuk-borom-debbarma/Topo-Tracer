@@ -2,105 +2,87 @@ import { Service } from "@carno.js/core";
 import type {
   DiagnosticCode,
   JsonObject,
-  ReadContainer,
   ReadEdge,
   ReadNode,
   TraceEventRecord,
   TraceSummary,
 } from "./types";
 
-type EntityDraft = {
+type NodeDraft = {
   id: string;
   traceId: string;
   parentId: string | null;
-  containerId: string | null;
-  fromId: string | null;
-  toId: string | null;
   name: string;
-  kind: string;
+  depth: number | null;
   status: string;
   startedAtUnixMs: number | null;
   endedAtUnixMs: number | null;
-  metadata: JsonObject;
+  data: JsonObject;
+  diagnostics: Set<DiagnosticCode>;
+};
+
+type EdgeDraft = {
+  id: string;
+  traceId: string;
+  fromNodeId: string | null;
+  toNodeId: string | null;
+  label: string;
+  status: string;
+  startedAtUnixMs: number | null;
+  endedAtUnixMs: number | null;
+  data: JsonObject;
   diagnostics: Set<DiagnosticCode>;
 };
 
 @Service()
 export class TraceReadModelBuilder {
   build(traceId: string, events: TraceEventRecord[]): {
-    containers: ReadContainer[];
     nodes: ReadNode[];
     edges: ReadEdge[];
     summary: TraceSummary;
   } | null {
     if (!events.length) return null;
 
-    const containers = new Map<string, EntityDraft>();
-    const nodes = new Map<string, EntityDraft>();
-    const edges = new Map<string, EntityDraft>();
+    const nodeDrafts = new Map<string, NodeDraft>();
+    const edgeDrafts = new Map<string, EdgeDraft>();
 
     for (const event of events) {
-      if (event.entityType === "container") {
-        applyLifecycle(containers, event);
-      } else if (event.entityType === "node") {
-        applyLifecycle(nodes, event);
-      } else if (event.entityType === "edge") {
-        applyLifecycle(edges, event);
-      }
+      if (event.entityType === "node") applyNodeEvent(nodeDrafts, event);
+      else applyEdgeEvent(edgeDrafts, event);
     }
 
-    const containerAncestry = computeAncestry(containers, null);
-    const nodeAncestry = computeAncestry(nodes, "orphanNode");
-    const flowOrder = computeFlowOrder(nodes, edges);
+    const ancestry = computeAncestry(nodeDrafts);
+    const flowOrder = computeFlowOrder(nodeDrafts, edgeDrafts);
 
-    const readContainers = Array.from(containers.values()).map<ReadContainer>((draft) => {
+    const nodes = Array.from(nodeDrafts.values()).map<ReadNode>((draft) => {
       finalizeLifecycle(draft);
+      const ancestryPath = ancestry.get(draft.id) ?? [];
+      const depth = draft.depth ?? ancestryPath.length;
       return {
         id: draft.id,
         traceId: draft.traceId,
         parentId: draft.parentId,
         name: draft.name,
-        kind: draft.kind,
+        depth,
         status: draft.status,
         startedAtUnixMs: draft.startedAtUnixMs,
         endedAtUnixMs: draft.endedAtUnixMs,
         durationMs: durationOf(draft),
-        ancestryIds: containerAncestry.get(draft.id)?.ancestry ?? [],
-        diagnostics: Array.from(draft.diagnostics),
-        metadata: draft.metadata,
-      };
-    });
-
-    const readNodes = Array.from(nodes.values()).map<ReadNode>((draft) => {
-      finalizeLifecycle(draft);
-      if (draft.containerId && !containers.has(draft.containerId)) {
-        draft.diagnostics.add("orphanNode");
-      }
-      return {
-        id: draft.id,
-        traceId: draft.traceId,
-        containerId: draft.containerId,
-        parentId: draft.parentId,
-        name: draft.name,
-        kind: draft.kind,
-        status: draft.status,
-        startedAtUnixMs: draft.startedAtUnixMs,
-        endedAtUnixMs: draft.endedAtUnixMs,
-        durationMs: durationOf(draft),
-        ancestryIds: nodeAncestry.get(draft.id)?.ancestry ?? [],
+        ancestryPath,
         flowOrder: flowOrder.get(draft.id) ?? Number.MAX_SAFE_INTEGER,
         diagnostics: Array.from(draft.diagnostics),
-        metadata: draft.metadata,
+        data: draft.data,
       };
-    }).sort((a, b) => a.flowOrder - b.flowOrder || (a.startedAtUnixMs ?? 0) - (b.startedAtUnixMs ?? 0));
+    }).sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
 
-    const readEdges = Array.from(edges.values()).map<ReadEdge>((draft) => {
+    const edges = Array.from(edgeDrafts.values()).map<ReadEdge>((draft) => {
       finalizeLifecycle(draft);
-      if (!draft.fromId || !draft.toId || !nodes.has(draft.fromId) || !nodes.has(draft.toId)) {
+      if (!draft.fromNodeId || !draft.toNodeId || !nodeDrafts.has(draft.fromNodeId) || !nodeDrafts.has(draft.toNodeId)) {
         draft.diagnostics.add("orphanEdge");
       }
-      const from = draft.fromId ? nodes.get(draft.fromId) : null;
-      const to = draft.toId ? nodes.get(draft.toId) : null;
+
+      const from = draft.fromNodeId ? nodeDrafts.get(draft.fromNodeId) : null;
+      const to = draft.toNodeId ? nodeDrafts.get(draft.toNodeId) : null;
       if (from?.startedAtUnixMs && to?.startedAtUnixMs && from.startedAtUnixMs > to.startedAtUnixMs) {
         draft.diagnostics.add("clockSkewSuspected");
       }
@@ -108,74 +90,88 @@ export class TraceReadModelBuilder {
       return {
         id: draft.id,
         traceId: draft.traceId,
-        fromId: draft.fromId ?? "",
-        toId: draft.toId ?? "",
-        kind: draft.kind,
+        fromNodeId: draft.fromNodeId ?? "",
+        toNodeId: draft.toNodeId ?? "",
+        label: draft.label,
         status: draft.status,
         startedAtUnixMs: draft.startedAtUnixMs,
         endedAtUnixMs: draft.endedAtUnixMs,
         durationMs: durationOf(draft),
         diagnostics: Array.from(draft.diagnostics),
-        metadata: draft.metadata,
+        data: draft.data,
       };
     });
 
-    const allDiagnostics = [
-      ...readContainers.flatMap((item) => item.diagnostics),
-      ...readNodes.flatMap((item) => item.diagnostics),
-      ...readEdges.flatMap((item) => item.diagnostics),
+    const diagnostics = [
+      ...nodes.flatMap((node) => node.diagnostics),
+      ...edges.flatMap((edge) => edge.diagnostics),
     ];
-
     const times = events.map((event) => event.occurredAtUnixMs);
-    const summary: TraceSummary = {
-      traceId,
-      createdAtUnixMs: Math.min(...times),
-      updatedAtUnixMs: Math.max(...times),
-      containerCount: readContainers.length,
-      nodeCount: readNodes.length,
-      edgeCount: readEdges.length,
-      errorCount: countErrors(readContainers, readNodes, readEdges),
-      diagnosticCount: allDiagnostics.length,
-      materializedAtUnixMs: Date.now(),
-    };
 
     return {
-      containers: readContainers,
-      nodes: readNodes,
-      edges: readEdges,
-      summary,
+      nodes,
+      edges,
+      summary: {
+        traceId,
+        createdAtUnixMs: Math.min(...times),
+        updatedAtUnixMs: Math.max(...times),
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        errorCount: [...nodes, ...edges].filter((item) => item.status === "error").length,
+        diagnosticCount: diagnostics.length,
+        maxDepth: nodes.reduce((max, node) => Math.max(max, node.depth), 0),
+        materializedAtUnixMs: Date.now(),
+      },
     };
   }
 }
 
-function applyLifecycle(map: Map<string, EntityDraft>, event: TraceEventRecord): void {
+function applyNodeEvent(map: Map<string, NodeDraft>, event: TraceEventRecord): void {
   const draft = map.get(event.entityId) ?? {
     id: event.entityId,
     traceId: event.traceId,
     parentId: null,
-    containerId: null,
-    fromId: null,
-    toId: null,
     name: event.entityId,
-    kind: event.entityType,
+    depth: null,
     status: "open",
     startedAtUnixMs: null,
     endedAtUnixMs: null,
-    metadata: {},
+    data: {},
     diagnostics: new Set<DiagnosticCode>(),
   };
 
   draft.parentId = event.parentId ?? draft.parentId;
-  draft.containerId = event.containerId ?? draft.containerId;
-  draft.fromId = event.fromId ?? draft.fromId;
-  draft.toId = event.toId ?? draft.toId;
   draft.name = event.name ?? draft.name;
-  draft.kind = event.kind ?? draft.kind;
-  if (event.status && (draft.status === "open" || event.status !== "open")) {
-    draft.status = event.status;
-  }
-  draft.metadata = { ...draft.metadata, ...event.metadata };
+  draft.depth = event.depth ?? draft.depth;
+  draft.data = { ...draft.data, ...event.data };
+  applyStatusAndTime(draft, event);
+  map.set(event.entityId, draft);
+}
 
+function applyEdgeEvent(map: Map<string, EdgeDraft>, event: TraceEventRecord): void {
+  const draft = map.get(event.entityId) ?? {
+    id: event.entityId,
+    traceId: event.traceId,
+    fromNodeId: null,
+    toNodeId: null,
+    label: "connects",
+    status: "open",
+    startedAtUnixMs: null,
+    endedAtUnixMs: null,
+    data: {},
+    diagnostics: new Set<DiagnosticCode>(),
+  };
+
+  draft.fromNodeId = event.fromNodeId ?? draft.fromNodeId;
+  draft.toNodeId = event.toNodeId ?? draft.toNodeId;
+  draft.label = event.label ?? draft.label;
+  draft.data = { ...draft.data, ...event.data };
+  applyStatusAndTime(draft, event);
+  map.set(event.entityId, draft);
+}
+
+function applyStatusAndTime(draft: NodeDraft | EdgeDraft, event: TraceEventRecord): void {
+  if (event.status && (draft.status === "open" || event.status !== "open")) draft.status = event.status;
   if (event.eventType.endsWith(".started")) {
     draft.startedAtUnixMs = draft.startedAtUnixMs === null
       ? event.occurredAtUnixMs
@@ -187,68 +183,55 @@ function applyLifecycle(map: Map<string, EntityDraft>, event: TraceEventRecord):
       : Math.max(draft.endedAtUnixMs, event.occurredAtUnixMs);
     if (draft.status === "open") draft.status = "ok";
   }
-
-  map.set(event.entityId, draft);
 }
 
-function finalizeLifecycle(draft: EntityDraft): void {
+function finalizeLifecycle(draft: NodeDraft | EdgeDraft): void {
   if (draft.startedAtUnixMs === null) draft.diagnostics.add("missingStart");
   if (draft.endedAtUnixMs === null) draft.diagnostics.add("missingEnd");
-  if (
-    draft.startedAtUnixMs !== null &&
-    draft.endedAtUnixMs !== null &&
-    draft.endedAtUnixMs < draft.startedAtUnixMs
-  ) {
+  if (draft.startedAtUnixMs !== null && draft.endedAtUnixMs !== null && draft.endedAtUnixMs < draft.startedAtUnixMs) {
     draft.diagnostics.add("negativeDuration");
   }
 }
 
-function durationOf(draft: EntityDraft): number | null {
+function durationOf(draft: NodeDraft | EdgeDraft): number | null {
   if (draft.startedAtUnixMs === null || draft.endedAtUnixMs === null) return null;
   return draft.endedAtUnixMs - draft.startedAtUnixMs;
 }
 
-function computeAncestry(
-  map: Map<string, EntityDraft>,
-  orphanDiagnostic: DiagnosticCode | null,
-): Map<string, { ancestry: string[] }> {
-  const result = new Map<string, { ancestry: string[] }>();
+function computeAncestry(nodes: Map<string, NodeDraft>): Map<string, string[]> {
+  const result = new Map<string, string[]>();
 
   const visit = (id: string, seen: Set<string>): string[] => {
     const cached = result.get(id);
-    if (cached) return cached.ancestry;
-
-    const item = map.get(id);
-    if (!item?.parentId) {
-      result.set(id, { ancestry: [] });
+    if (cached) return cached;
+    const node = nodes.get(id);
+    if (!node?.parentId) {
+      result.set(id, []);
       return [];
     }
-
     if (seen.has(id)) {
-      item.diagnostics.add("cycleDetected");
-      result.set(id, { ancestry: [] });
+      node.diagnostics.add("cycleDetected");
+      result.set(id, []);
       return [];
     }
-
-    const parent = map.get(item.parentId);
+    const parent = nodes.get(node.parentId);
     if (!parent) {
-      if (orphanDiagnostic) item.diagnostics.add(orphanDiagnostic);
-      result.set(id, { ancestry: [] });
+      node.diagnostics.add("orphanNode");
+      result.set(id, []);
       return [];
     }
-
     const nextSeen = new Set(seen);
     nextSeen.add(id);
     const ancestry = [...visit(parent.id, nextSeen), parent.id];
-    result.set(id, { ancestry });
+    result.set(id, ancestry);
     return ancestry;
   };
 
-  for (const id of map.keys()) visit(id, new Set());
+  for (const id of nodes.keys()) visit(id, new Set());
   return result;
 }
 
-function computeFlowOrder(nodes: Map<string, EntityDraft>, edges: Map<string, EntityDraft>): Map<string, number> {
+function computeFlowOrder(nodes: Map<string, NodeDraft>, edges: Map<string, EdgeDraft>): Map<string, number> {
   const adjacency = new Map<string, string[]>();
   const indegree = new Map<string, number>();
 
@@ -265,16 +248,13 @@ function computeFlowOrder(nodes: Map<string, EntityDraft>, edges: Map<string, En
   }
 
   for (const edge of edges.values()) {
-    if (edge.fromId && edge.toId && nodes.has(edge.fromId) && nodes.has(edge.toId)) {
-      adjacency.get(edge.fromId)?.push(edge.toId);
-      indegree.set(edge.toId, (indegree.get(edge.toId) ?? 0) + 1);
+    if (edge.fromNodeId && edge.toNodeId && nodes.has(edge.fromNodeId) && nodes.has(edge.toNodeId)) {
+      adjacency.get(edge.fromNodeId)?.push(edge.toNodeId);
+      indegree.set(edge.toNodeId, (indegree.get(edge.toNodeId) ?? 0) + 1);
     }
   }
 
-  const queue = Array.from(nodes.values())
-    .filter((node) => (indegree.get(node.id) ?? 0) === 0)
-    .sort(compareDrafts);
-
+  const queue = Array.from(nodes.values()).filter((node) => (indegree.get(node.id) ?? 0) === 0).sort(compareDrafts);
   const order = new Map<string, number>();
   let index = 0;
 
@@ -282,7 +262,6 @@ function computeFlowOrder(nodes: Map<string, EntityDraft>, edges: Map<string, En
     const node = queue.shift()!;
     if (order.has(node.id)) continue;
     order.set(node.id, index++);
-
     for (const childId of adjacency.get(node.id) ?? []) {
       indegree.set(childId, (indegree.get(childId) ?? 1) - 1);
       if ((indegree.get(childId) ?? 0) === 0) {
@@ -303,11 +282,7 @@ function computeFlowOrder(nodes: Map<string, EntityDraft>, edges: Map<string, En
   return order;
 }
 
-function compareDrafts(a: EntityDraft, b: EntityDraft): number {
+function compareDrafts(a: NodeDraft, b: NodeDraft): number {
   return (a.startedAtUnixMs ?? Number.MAX_SAFE_INTEGER) - (b.startedAtUnixMs ?? Number.MAX_SAFE_INTEGER)
     || a.id.localeCompare(b.id);
-}
-
-function countErrors(containers: ReadContainer[], nodes: ReadNode[], edges: ReadEdge[]): number {
-  return [...containers, ...nodes, ...edges].filter((item) => item.status === "error").length;
 }

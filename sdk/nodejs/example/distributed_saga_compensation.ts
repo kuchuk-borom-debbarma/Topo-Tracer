@@ -1,72 +1,41 @@
-import { endContainer, endEdge, flushAndShutdown, initExample, sleep, startContainer, startEdge, startNode } from "./_helpers";
+import { finish, fakeWork, initExample } from "./_helpers";
 import { Tracer } from "../src";
 
 /**
- * Distributed saga with failure and compensation.
+ * Distributed saga compensation.
  *
- * Flow intention:
- *   Checkout reserves inventory, then payment fails.
- *   Saga orchestrator issues compensation to release inventory.
- *   Error status and compensation edges make non-happy-path flow visible.
+ * Intention:
+ *   Happy path begins, payment fails, compensation releases inventory.
+ *   Error node + compensation edge show rollback story.
  */
 async function main() {
-  initExample("checkout-orchestrator", "Checkout Orchestrator", "service");
+  initExample();
 
-  const saga = Tracer.startTrace("CheckoutSaga", {
-    kind: "saga",
-    metadata: { intention: "Show failure and rollback path" },
-  });
-  const traceId = saga.traceId;
+  const saga = Tracer.startTrace("CheckoutSaga", { data: { service: "saga-orchestrator" } });
 
-  startContainer(traceId, "inventory-service", "Inventory Service", "service");
-  startContainer(traceId, "payment-service", "Payment Service", "service");
+  const reserve = Tracer.continueTrace(saga.createCarrierHeaders(), "Inventory.reserve()", {
+    data: { service: "inventory-service" },
+  });
+  const reserveEdge = saga.connectTo(reserve, { label: "calls", endImmediately: false });
+  await fakeWork(reserve, 12);
+  saga.endEdge(reserveEdge);
 
-  const reserveInventory = startNode({
-    traceId,
-    containerId: "inventory-service",
-    name: "reserveInventory()",
-    kind: "rpc_server",
+  const charge = Tracer.continueTrace(saga.createCarrierHeaders(), "Payment.charge()", {
+    data: { service: "payment-service", expected: "card declined" },
   });
-  startEdge({ traceId, edgeId: "edge-saga-reserve", fromId: saga.id, toId: reserveInventory.id, kind: "calls" });
-  await sleep(12);
-  endEdge(traceId, "edge-saga-reserve");
-  reserveInventory.end();
+  const chargeEdge = reserve.connectTo(charge, { label: "calls", endImmediately: false });
+  await fakeWork(charge, 18, "error");
+  reserve.endEdge(chargeEdge, "error");
 
-  const chargeCard = startNode({
-    traceId,
-    containerId: "payment-service",
-    name: "chargeCard()",
-    kind: "rpc_server",
-    metadata: { expected: "fail card declined" },
+  const release = Tracer.continueTrace(saga.createCarrierHeaders(), "Inventory.release()", {
+    data: { service: "inventory-service", reason: "payment failed" },
   });
-  startEdge({ traceId, edgeId: "edge-saga-charge", fromId: reserveInventory.id, toId: chargeCard.id, kind: "calls" });
-  await sleep(18);
-  endEdge(traceId, "edge-saga-charge", "error");
-  chargeCard.end("error");
-
-  const releaseInventory = startNode({
-    traceId,
-    containerId: "inventory-service",
-    name: "releaseInventory()",
-    kind: "compensation",
-  });
-  startEdge({
-    traceId,
-    edgeId: "edge-charge-compensate",
-    fromId: chargeCard.id,
-    toId: releaseInventory.id,
-    kind: "compensates",
-    metadata: { reason: "Payment failed after inventory was reserved" },
-  });
-  await sleep(10);
-  endEdge(traceId, "edge-charge-compensate");
-  releaseInventory.end();
+  const compEdge = charge.connectTo(release, { label: "compensates", endImmediately: false });
+  await fakeWork(release, 10);
+  charge.endEdge(compEdge);
 
   saga.end("error");
-  endContainer(traceId, "inventory-service");
-  endContainer(traceId, "payment-service");
-
-  await flushAndShutdown(traceId);
+  await finish(saga.traceId);
 }
 
 main().catch(console.error);

@@ -1,61 +1,50 @@
 export type JsonObject = Record<string, unknown>;
 
+export type ReadNode = {
+  id: string;
+  traceId: string;
+  parentId: string | null;
+  name: string;
+  depth: number;
+  status: string;
+  startedAtUnixMs: number | null;
+  endedAtUnixMs: number | null;
+  durationMs: number | null;
+  ancestryPath: string[];
+  flowOrder: number;
+  diagnostics: string[];
+  data: JsonObject;
+  isGhost?: boolean;
+  hiddenNodeCount?: number;
+  hiddenErrorCount?: number;
+};
+
+export type GraphEdge = {
+  id: string;
+  traceId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  label: string;
+  status: string;
+  startedAtUnixMs: number | null;
+  endedAtUnixMs: number | null;
+  durationMs: number | null;
+  diagnostics: string[];
+  data: JsonObject;
+  isGhost?: boolean;
+  hiddenEdgeCount?: number;
+};
+
 export type TraceSummary = {
   traceId: string;
   createdAtUnixMs: number;
   updatedAtUnixMs: number;
-  containerCount: number;
   nodeCount: number;
   edgeCount: number;
   errorCount: number;
   diagnosticCount: number;
+  maxDepth: number;
   materializedAtUnixMs: number;
-};
-
-export type ReadContainer = {
-  id: string;
-  traceId: string;
-  parentId: string | null;
-  name: string;
-  kind: string;
-  status: string;
-  startedAtUnixMs: number | null;
-  endedAtUnixMs: number | null;
-  durationMs: number | null;
-  ancestryIds: string[];
-  diagnostics: string[];
-  metadata: JsonObject;
-};
-
-export type ReadNode = {
-  id: string;
-  traceId: string;
-  containerId: string | null;
-  parentId: string | null;
-  name: string;
-  kind: string;
-  status: string;
-  startedAtUnixMs: number | null;
-  endedAtUnixMs: number | null;
-  durationMs: number | null;
-  ancestryIds: string[];
-  flowOrder: number;
-  diagnostics: string[];
-  metadata: JsonObject;
-};
-
-export type ReadEdge = {
-  id: string;
-  traceId: string;
-  fromId: string;
-  toId: string;
-  kind: string;
-  status: string;
-  startedAtUnixMs: number | null;
-  endedAtUnixMs: number | null;
-  durationMs: number | null;
-  diagnostics: string[];
-  metadata: JsonObject;
 };
 
 export type TraceListResponse = {
@@ -66,22 +55,21 @@ export type TraceListResponse = {
   totalPages: number;
 };
 
-export type FlowWindowResponse = {
+export type GraphWindowResponse = {
   metadata: {
     traceId: string;
-    anchorId: string | null;
-    detailBudget: number;
+    maxDepth: number;
+    limit: number;
     returnedNodeCount: number;
     totalNodeCount: number;
-    omittedNodeCount: number;
-    omittedEdgeCount: number;
-    hasMoreBefore: boolean;
-    hasMoreAfter: boolean;
+    hiddenNodeCount: number;
+    ghostNodeCount: number;
+    hasBefore: boolean;
+    hasAfter: boolean;
     previousCursor: string | null;
     nextCursor: string | null;
   };
   summary: TraceSummary;
-  containers: ReadContainer[];
   nodes: ReadNode[];
-  edges: ReadEdge[];
+  edges: GraphEdge[];
 };

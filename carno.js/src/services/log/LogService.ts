@@ -2,9 +2,10 @@ import { Service } from "@carno.js/core";
 import { RawEventRepository } from "./RawEventRepository";
 import { ReadModelRepository } from "./ReadModelRepository";
 import type {
-  FlowWindowQuery,
-  FlowWindowResponse,
-  ReadContainer,
+  GhostNode,
+  GraphEdge,
+  GraphWindowQuery,
+  GraphWindowResponse,
   ReadEdge,
   ReadNode,
   TraceEventInput,
@@ -12,8 +13,8 @@ import type {
   TraceSummary,
 } from "./types";
 
-const DEFAULT_DETAIL_BUDGET = 250;
-const MAX_DETAIL_BUDGET = 500;
+const DEFAULT_LIMIT = 250;
+const MAX_LIMIT = 500;
 
 @Service()
 export class LogService {
@@ -24,8 +25,7 @@ export class LogService {
 
   async ingestEvents(events: TraceEventInput[]): Promise<{ ok: true; count: number }> {
     validateEvents(events);
-    const count = await this.rawEvents.append(events);
-    return { ok: true, count };
+    return { ok: true, count: await this.rawEvents.append(events) };
   }
 
   listTraces(page: number, limit: number): Promise<TraceListResponse> {
@@ -36,138 +36,210 @@ export class LogService {
     return this.readModels.getSummary(traceId);
   }
 
-  async getFlowWindow(traceId: string, query: FlowWindowQuery): Promise<FlowWindowResponse | null> {
-    const [summary, containers, allNodes, allEdges] = await Promise.all([
+  async getGraph(traceId: string, query: GraphWindowQuery): Promise<GraphWindowResponse | null> {
+    const [summary, allNodes, allEdges] = await Promise.all([
       this.readModels.getSummary(traceId),
-      this.readModels.getContainers(traceId),
       this.readModels.getNodes(traceId),
       this.readModels.getEdges(traceId),
     ]);
-
     if (!summary) return null;
 
-    const detailBudget = clampBudget(query.detailBudget);
-    const anchorOrder = resolveAnchorOrder(query, allNodes);
-    const before = Math.max(0, query.before ?? Math.floor(detailBudget / 2));
-    const after = Math.max(0, query.after ?? detailBudget - before);
-    const start = Math.max(0, anchorOrder - before);
-    const endExclusive = Math.min(allNodes.length, anchorOrder + after + 1);
-
-    const expandedIds = new Set(query.expandedIds ?? []);
-    const hiddenIds = new Set(query.hiddenIds ?? []);
-    const visibleNodes = selectVisibleNodes(allNodes, start, endExclusive, expandedIds, hiddenIds, detailBudget);
-    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
-    const visibleContainerIds = new Set<string>();
-
-    for (const node of visibleNodes) {
-      if (node.containerId) {
-        visibleContainerIds.add(node.containerId);
-        addContainerAncestors(node.containerId, containers, visibleContainerIds);
-      }
-    }
-
-    const visibleContainers = containers.filter((container) => visibleContainerIds.has(container.id));
-    const visibleEdges = allEdges.filter(
-      (edge) => visibleNodeIds.has(edge.fromId) && visibleNodeIds.has(edge.toId)
-    );
-
-    const omittedNodeCount = Math.max(0, summary.nodeCount - visibleNodes.length);
-    const omittedEdgeCount = Math.max(0, summary.edgeCount - visibleEdges.length);
+    const maxDepth = clampDepth(query.maxDepth, summary.maxDepth);
+    const limit = clampLimit(query.limit);
+    const offset = decodeCursor(query.cursor) ?? 0;
+    const projected = projectDepth(allNodes, allEdges, maxDepth);
+    const windowedNodes = projected.nodes.slice(offset, offset + limit);
+    const nodeIds = new Set(windowedNodes.map((node) => node.id));
+    const windowedEdges = projected.edges.filter((edge) => nodeIds.has(edge.fromNodeId) && nodeIds.has(edge.toNodeId));
 
     return {
       metadata: {
         traceId,
-        anchorId: query.anchorId ?? null,
-        detailBudget,
-        returnedNodeCount: visibleNodes.length,
+        maxDepth,
+        limit,
+        returnedNodeCount: windowedNodes.length,
         totalNodeCount: summary.nodeCount,
-        omittedNodeCount,
-        omittedEdgeCount,
-        hasMoreBefore: start > 0,
-        hasMoreAfter: endExclusive < allNodes.length,
-        previousCursor: start > 0 ? encodeCursor(Math.max(0, start - 1)) : null,
-        nextCursor: endExclusive < allNodes.length ? encodeCursor(endExclusive) : null,
+        hiddenNodeCount: projected.hiddenNodeCount,
+        ghostNodeCount: projected.ghostNodeCount,
+        hasBefore: offset > 0,
+        hasAfter: offset + limit < projected.nodes.length,
+        previousCursor: offset > 0 ? encodeCursor(Math.max(0, offset - limit)) : null,
+        nextCursor: offset + limit < projected.nodes.length ? encodeCursor(offset + limit) : null,
       },
       summary,
-      containers: visibleContainers,
-      nodes: visibleNodes,
-      edges: visibleEdges,
+      nodes: windowedNodes,
+      edges: windowedEdges,
     };
   }
 }
 
 function validateEvents(events: TraceEventInput[]): void {
-  if (!Array.isArray(events)) throw new Error("Request body must be an array of trace events");
+  if (!Array.isArray(events)) throw new Error("Request body must be an array");
   for (const event of events) {
     if (!event.traceId || !event.entityId || !event.entityType || !event.eventType) {
-      throw new Error("Trace event missing traceId/entityId/entityType/eventType");
+      throw new Error("Event missing traceId/entityId/entityType/eventType");
     }
-    if (!Number.isFinite(event.occurredAtUnixMs)) {
-      throw new Error("Trace event missing valid occurredAtUnixMs");
+    if (!Number.isFinite(event.occurredAtUnixMs)) throw new Error("Event missing valid occurredAtUnixMs");
+    if (event.entityType === "node" && event.eventType !== "node.started" && event.eventType !== "node.ended") {
+      throw new Error("Node entity requires node.* event type");
     }
-  }
-}
-
-function clampBudget(value: number | undefined): number {
-  if (!value || !Number.isFinite(value)) return DEFAULT_DETAIL_BUDGET;
-  return Math.min(MAX_DETAIL_BUDGET, Math.max(1, Math.floor(value)));
-}
-
-function resolveAnchorOrder(query: FlowWindowQuery, nodes: ReadNode[]): number {
-  if (query.cursor) {
-    const cursor = decodeCursor(query.cursor);
-    if (cursor !== null) return Math.min(nodes.length - 1, Math.max(0, cursor));
-  }
-  if (query.anchorId) {
-    const anchor = nodes.find((node) => node.id === query.anchorId);
-    if (anchor) return anchor.flowOrder;
-  }
-  return 0;
-}
-
-function selectVisibleNodes(
-  nodes: ReadNode[],
-  start: number,
-  endExclusive: number,
-  expandedIds: Set<string>,
-  hiddenIds: Set<string>,
-  detailBudget: number,
-): ReadNode[] {
-  const base = nodes.slice(start, endExclusive).filter((node) => !hiddenIds.has(node.id));
-  const visible = new Map(base.map((node) => [node.id, node]));
-
-  for (const node of nodes) {
-    if (visible.size >= detailBudget) break;
-    if (!hiddenIds.has(node.id) && node.parentId && expandedIds.has(node.parentId)) {
-      visible.set(node.id, node);
+    if (event.entityType === "edge" && event.eventType !== "edge.started" && event.eventType !== "edge.ended") {
+      throw new Error("Edge entity requires edge.* event type");
     }
   }
-
-  return Array.from(visible.values())
-    .sort((a, b) => a.flowOrder - b.flowOrder)
-    .slice(0, detailBudget);
 }
 
-function addContainerAncestors(
-  containerId: string,
-  containers: ReadContainer[],
-  visibleContainerIds: Set<string>,
-): void {
-  const byId = new Map(containers.map((container) => [container.id, container]));
-  const container = byId.get(containerId);
-  for (const ancestorId of container?.ancestryIds ?? []) {
-    visibleContainerIds.add(ancestorId);
+function projectDepth(nodes: ReadNode[], edges: ReadEdge[], maxDepth: number): {
+  nodes: Array<ReadNode | GhostNode>;
+  edges: GraphEdge[];
+  hiddenNodeCount: number;
+  ghostNodeCount: number;
+} {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const visible = nodes.filter((node) => node.depth <= maxDepth);
+  const visibleIds = new Set(visible.map((node) => node.id));
+  const hidden = nodes.filter((node) => !visibleIds.has(node.id));
+  const ghosts = buildGhosts(hidden, byId, visibleIds, maxDepth);
+  const ghostByAncestor = new Map(ghosts.map((ghost) => [ghost.parentId ?? "", ghost]));
+  const outputNodes = [...visible, ...ghosts].sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
+  const outputNodeIds = new Set(outputNodes.map((node) => node.id));
+  const outputEdges = liftEdges(edges, byId, visibleIds, ghostByAncestor, outputNodeIds);
+
+  return {
+    nodes: outputNodes,
+    edges: outputEdges,
+    hiddenNodeCount: hidden.length,
+    ghostNodeCount: ghosts.length,
+  };
+}
+
+function buildGhosts(
+  hidden: ReadNode[],
+  byId: Map<string, ReadNode>,
+  visibleIds: Set<string>,
+  maxDepth: number,
+): GhostNode[] {
+  const groups = new Map<string, ReadNode[]>();
+
+  for (const node of hidden) {
+    const visibleAncestorId = findVisibleAncestor(node, byId, visibleIds);
+    const groupKey = visibleAncestorId ?? "__root__";
+    const existing = groups.get(groupKey) ?? [];
+    existing.push(node);
+    groups.set(groupKey, existing);
   }
+
+  return Array.from(groups.entries()).map(([ancestorId, group]) => {
+    const parent = ancestorId === "__root__" ? null : byId.get(ancestorId) ?? null;
+    const startTimes = group.map((node) => node.startedAtUnixMs).filter((value): value is number => value !== null);
+    const endTimes = group.map((node) => node.endedAtUnixMs).filter((value): value is number => value !== null);
+    const first = group.slice().sort((a, b) => a.flowOrder - b.flowOrder)[0]!;
+    return {
+      id: `ghost:${ancestorId}`,
+      traceId: first.traceId,
+      parentId: parent?.id ?? null,
+      name: `${group.length} hidden deeper node${group.length === 1 ? "" : "s"}`,
+      depth: Math.max(0, maxDepth + 1),
+      status: group.some((node) => node.status === "error") ? "error" : "ok",
+      startedAtUnixMs: startTimes.length ? Math.min(...startTimes) : null,
+      endedAtUnixMs: endTimes.length ? Math.max(...endTimes) : null,
+      durationMs: startTimes.length && endTimes.length ? Math.max(...endTimes) - Math.min(...startTimes) : null,
+      ancestryPath: parent ? [...parent.ancestryPath, parent.id] : [],
+      flowOrder: first.flowOrder + 0.1,
+      diagnostics: [],
+      data: {
+        summary: "Collapsed by depth slider",
+        hiddenNodeIds: group.slice(0, 25).map((node) => node.id),
+        truncatedHiddenNodeIds: Math.max(0, group.length - 25),
+      },
+      isGhost: true,
+      hiddenNodeCount: group.length,
+      hiddenErrorCount: group.filter((node) => node.status === "error").length,
+    };
+  });
 }
 
-function encodeCursor(flowOrder: number): string {
-  return Buffer.from(String(flowOrder), "utf8").toString("base64url");
+function liftEdges(
+  edges: ReadEdge[],
+  byId: Map<string, ReadNode>,
+  visibleIds: Set<string>,
+  ghostByAncestor: Map<string, GhostNode>,
+  outputNodeIds: Set<string>,
+): GraphEdge[] {
+  const grouped = new Map<string, GraphEdge>();
+
+  for (const edge of edges) {
+    const from = resolveEndpoint(edge.fromNodeId, byId, visibleIds, ghostByAncestor);
+    const to = resolveEndpoint(edge.toNodeId, byId, visibleIds, ghostByAncestor);
+    if (!from || !to || from === to || !outputNodeIds.has(from) || !outputNodeIds.has(to)) continue;
+
+    const key = `${from}->${to}:${edge.label}`;
+    const existing = grouped.get(key);
+    const isGhost = from !== edge.fromNodeId || to !== edge.toNodeId;
+    if (existing) {
+      existing.hiddenEdgeCount = (existing.hiddenEdgeCount ?? 1) + 1;
+      existing.isGhost = existing.isGhost || isGhost;
+      continue;
+    }
+    grouped.set(key, {
+      ...edge,
+      id: isGhost ? `ghost-edge:${key}` : edge.id,
+      fromNodeId: from,
+      toNodeId: to,
+      isGhost: isGhost || undefined,
+      hiddenEdgeCount: isGhost ? 1 : undefined,
+    });
+  }
+
+  return Array.from(grouped.values());
 }
 
-function decodeCursor(cursor: string): number | null {
+function resolveEndpoint(
+  nodeId: string,
+  byId: Map<string, ReadNode>,
+  visibleIds: Set<string>,
+  ghostByAncestor: Map<string, GhostNode>,
+): string | null {
+  if (visibleIds.has(nodeId)) return nodeId;
+  const node = byId.get(nodeId);
+  if (!node) return null;
+  const ancestorId = findVisibleAncestor(node, byId, visibleIds);
+  if (!ancestorId) return ghostByAncestor.get("__root__")?.id ?? null;
+  return ghostByAncestor.get(ancestorId)?.id ?? ancestorId;
+}
+
+function findVisibleAncestor(node: ReadNode, byId: Map<string, ReadNode>, visibleIds: Set<string>): string | null {
+  for (let index = node.ancestryPath.length - 1; index >= 0; index--) {
+    const ancestorId = node.ancestryPath[index];
+    if (ancestorId && visibleIds.has(ancestorId)) return ancestorId;
+  }
+  let parentId = node.parentId;
+  while (parentId) {
+    if (visibleIds.has(parentId)) return parentId;
+    parentId = byId.get(parentId)?.parentId ?? null;
+  }
+  return null;
+}
+
+function clampDepth(value: number | undefined, maxDepth: number): number {
+  if (!Number.isFinite(value)) return Math.min(2, maxDepth);
+  return Math.max(0, Math.min(maxDepth, Math.floor(value!)));
+}
+
+function clampLimit(value: number | undefined): number {
+  if (!Number.isFinite(value)) return DEFAULT_LIMIT;
+  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(value!)));
+}
+
+function encodeCursor(offset: number): string {
+  return Buffer.from(String(offset), "utf8").toString("base64url");
+}
+
+function decodeCursor(cursor?: string): number | null {
+  if (!cursor) return null;
   try {
     const value = Number(Buffer.from(cursor, "base64url").toString("utf8"));
-    return Number.isFinite(value) ? value : null;
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null;
   } catch {
     return null;
   }

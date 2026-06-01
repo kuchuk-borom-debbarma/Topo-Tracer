@@ -16,18 +16,15 @@ export class ClickHouseService {
       username: process.env.CLICKHOUSE_USER || "default",
       password: process.env.CLICKHOUSE_PASSWORD || "password",
     });
-
     await this.runMigrations();
   }
 
   private async runMigrations(): Promise<void> {
-    await this.clientInstance.command({
-      query: "CREATE DATABASE IF NOT EXISTS topo_tracer",
-    });
+    await this.clientInstance.command({ query: "CREATE DATABASE IF NOT EXISTS topo_tracer" });
 
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.trace_events (
+        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_trace_events (
           trace_id String,
           event_id String,
           entity_id String,
@@ -35,120 +32,89 @@ export class ClickHouseService {
           event_type LowCardinality(String),
           occurred_at_ms Int64,
           received_at_ms Int64,
-          parent_id Nullable(String),
-          container_id Nullable(String),
-          from_id Nullable(String),
-          to_id Nullable(String),
-          kind Nullable(String),
           name Nullable(String),
+          depth Nullable(Int32),
+          parent_id Nullable(String),
+          from_node_id Nullable(String),
+          to_node_id Nullable(String),
+          label Nullable(String),
           status Nullable(String),
-          metadata String
+          data String
         ) ENGINE = MergeTree()
+        PARTITION BY toYYYYMM(toDateTime(received_at_ms / 1000))
         ORDER BY (trace_id, received_at_ms, event_id);
       `,
     });
 
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.read_containers (
+        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_read_nodes (
           trace_id String,
           id String,
           parent_id Nullable(String),
           name String,
-          kind String,
-          status String,
+          depth Int32,
+          status LowCardinality(String),
           started_at_ms Nullable(Int64),
           ended_at_ms Nullable(Int64),
           duration_ms Nullable(Int64),
-          ancestry_ids Array(String),
-          diagnostics Array(String),
-          metadata String,
-          materialized_at_ms Int64
-        ) ENGINE = ReplacingMergeTree(materialized_at_ms)
-        ORDER BY (trace_id, id);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.read_nodes (
-          trace_id String,
-          id String,
-          container_id Nullable(String),
-          parent_id Nullable(String),
-          name String,
-          kind String,
-          status String,
-          started_at_ms Nullable(Int64),
-          ended_at_ms Nullable(Int64),
-          duration_ms Nullable(Int64),
-          ancestry_ids Array(String),
+          ancestry_path Array(String),
           flow_order Int64,
           diagnostics Array(String),
-          metadata String,
+          data String,
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
-        ORDER BY (trace_id, id);
+        PARTITION BY sipHash64(trace_id) % 32
+        ORDER BY (trace_id, flow_order, id);
       `,
     });
 
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.read_edges (
+        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_read_edges (
           trace_id String,
           id String,
-          from_id String,
-          to_id String,
-          kind String,
-          status String,
+          from_node_id String,
+          to_node_id String,
+          label String,
+          status LowCardinality(String),
           started_at_ms Nullable(Int64),
           ended_at_ms Nullable(Int64),
           duration_ms Nullable(Int64),
           diagnostics Array(String),
-          metadata String,
+          data String,
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
-        ORDER BY (trace_id, id);
+        PARTITION BY sipHash64(trace_id) % 32
+        ORDER BY (trace_id, from_node_id, to_node_id, id);
       `,
     });
 
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.read_container_ancestry (
-          trace_id String,
-          container_id String,
-          ancestor_id String,
-          depth Int32,
-          materialized_at_ms Int64
-        ) ENGINE = ReplacingMergeTree(materialized_at_ms)
-        ORDER BY (trace_id, container_id, ancestor_id);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.read_node_ancestry (
+        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_read_node_ancestry (
           trace_id String,
           node_id String,
           ancestor_id String,
           depth Int32,
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
-        ORDER BY (trace_id, node_id, ancestor_id);
+        PARTITION BY sipHash64(trace_id) % 32
+        ORDER BY (trace_id, ancestor_id, node_id);
       `,
     });
 
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.read_trace_summary (
+        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_trace_summary (
           trace_id String,
           created_at_ms Int64,
           updated_at_ms Int64,
-          container_count UInt64,
           node_count UInt64,
           edge_count UInt64,
           error_count UInt64,
           diagnostic_count UInt64,
+          max_depth Int32,
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
         ORDER BY trace_id;

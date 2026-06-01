@@ -1,73 +1,40 @@
-import { endContainer, endEdge, flushAndShutdown, initExample, sleep, startContainer, startEdge, startNode } from "./_helpers";
+import { finish, fakeWork, initExample } from "./_helpers";
 import { Tracer } from "../src";
 
 /**
- * Distributed synchronous HTTP/RPC flow.
+ * Distributed synchronous HTTP/RPC.
  *
- * Flow intention:
- *   API Gateway receives checkout.
- *   It synchronously calls Payment Service.
- *   Payment Service synchronously calls Stripe and writes Postgres.
- *   All edges have start and end, so durations show blocking time.
+ * Intention:
+ *   API node calls Payment node, Payment calls Stripe node, Payment writes DB.
+ *   All edges end because caller waits for response.
  */
 async function main() {
-  initExample("api-gateway", "API Gateway", "service");
+  initExample();
 
-  const gateway = Tracer.startTrace("POST /checkout", {
-    kind: "http_server",
-    metadata: { service: "api-gateway" },
+  const api = Tracer.startTrace("API Gateway: POST /checkout", {
+    data: { service: "api-gateway", protocol: "http" },
   });
-  const traceId = gateway.traceId;
 
-  startContainer(traceId, "payment-service", "Payment Service", "service");
-  startContainer(traceId, "stripe", "Stripe API", "external");
-  startContainer(traceId, "payments-db", "Payments Postgres", "database");
-
-  const authorize = gateway.startNode("authorizeRequest()", {
-    kind: "function",
+  const payment = Tracer.continueTrace(api.createCarrierHeaders(), "PaymentService.Charge", {
+    data: { service: "payment-service", protocol: "grpc" },
   });
-  await sleep(5);
-  authorize.end();
+  const apiToPayment = api.connectTo(payment, { label: "grpc call", endImmediately: false });
+  await fakeWork(payment, 10);
+  api.endEdge(apiToPayment);
 
-  const paymentServer = startNode({
-    traceId,
-    containerId: "payment-service",
-    name: "PaymentService.Charge",
-    kind: "rpc_server",
+  const stripe = payment.startNode("Stripe POST /charges", {
+    data: { service: "stripe", protocol: "https" },
   });
-  startEdge({ traceId, edgeId: "edge-gateway-payment", fromId: authorize.id, toId: paymentServer.id, kind: "calls" });
-  await sleep(12);
-  endEdge(traceId, "edge-gateway-payment");
+  const stripeEdge = payment.connectTo(stripe, { label: "https call", endImmediately: false });
+  await fakeWork(stripe, 35);
+  payment.endEdge(stripeEdge);
 
-  const stripeCharge = startNode({
-    traceId,
-    containerId: "stripe",
-    name: "POST /v1/charges",
-    kind: "http_client",
-  });
-  startEdge({ traceId, edgeId: "edge-payment-stripe", fromId: paymentServer.id, toId: stripeCharge.id, kind: "calls" });
-  await sleep(35);
-  endEdge(traceId, "edge-payment-stripe");
-  stripeCharge.end();
+  const db = payment.startNode("INSERT payment", { data: { db: "payments-postgres" } });
+  payment.connectTo(db, { label: "writes" });
+  await fakeWork(db, 13);
 
-  const writePayment = startNode({
-    traceId,
-    containerId: "payments-db",
-    name: "INSERT INTO payments",
-    kind: "db_write",
-  });
-  startEdge({ traceId, edgeId: "edge-payment-db", fromId: paymentServer.id, toId: writePayment.id, kind: "writes" });
-  await sleep(15);
-  endEdge(traceId, "edge-payment-db");
-  writePayment.end();
-
-  paymentServer.end();
-  gateway.end();
-  endContainer(traceId, "payment-service");
-  endContainer(traceId, "stripe");
-  endContainer(traceId, "payments-db");
-
-  await flushAndShutdown(traceId);
+  api.end();
+  await finish(api.traceId);
 }
 
 main().catch(console.error);

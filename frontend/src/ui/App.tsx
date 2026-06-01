@@ -1,33 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { fetchFlowWindow, fetchTraces } from "../api";
-import type { FlowWindowResponse, ReadContainer, ReadEdge, ReadNode, TraceSummary } from "../types";
+import { useMemo, useState } from "react";
+import { fetchGraph, fetchTraces } from "../api";
+import type { GraphEdge, GraphWindowResponse, ReadNode, TraceSummary } from "../types";
+
+const NODE_WIDTH = 250;
+const NODE_HEIGHT = 106;
+const X_GAP = 330;
+const Y_GAP = 148;
 
 export function App() {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [selectedItem, setSelectedItem] = useState<ReadNode | ReadEdge | null>(null);
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [maxDepth, setMaxDepth] = useState(2);
+  const [selectedItem, setSelectedItem] = useState<ReadNode | GraphEdge | null>(null);
 
-  const tracesQuery = useQuery({
-    queryKey: ["traces"],
-    queryFn: () => fetchTraces(),
-  });
-
+  const tracesQuery = useQuery({ queryKey: ["traces"], queryFn: () => fetchTraces() });
   const activeTraceId = selectedTraceId ?? tracesQuery.data?.traces[0]?.traceId ?? null;
+  const activeSummary = tracesQuery.data?.traces.find((trace) => trace.traceId === activeTraceId);
 
-  const flowQuery = useQuery({
-    queryKey: ["flow-window", activeTraceId, cursor, expandedIds],
-    queryFn: () => fetchFlowWindow({
-      traceId: activeTraceId!,
-      cursor,
-      expandedIds,
-      detailBudget: 250,
-    }),
+  const graphQuery = useQuery({
+    queryKey: ["graph", activeTraceId, maxDepth, cursor],
+    queryFn: () => fetchGraph({ traceId: activeTraceId!, maxDepth, cursor, limit: 250 }),
     enabled: Boolean(activeTraceId),
   });
-
-  const flow = flowQuery.data;
 
   return (
     <div className="app-shell">
@@ -36,7 +31,7 @@ export function App() {
           <span className="brand-mark">TT</span>
           <div>
             <h1>Topo Tracer</h1>
-            <p>Causal flow map</p>
+            <p>Primitive node graph</p>
           </div>
         </div>
         <TraceList
@@ -47,31 +42,26 @@ export function App() {
             setSelectedTraceId(traceId);
             setCursor(null);
             setSelectedItem(null);
-            setExpandedIds([]);
           }}
         />
       </aside>
 
-      <main className="flow-area">
-        <FlowToolbar
-          flow={flow}
-          isLoading={flowQuery.isFetching}
-          onLoadBefore={() => setCursor(flow?.metadata.previousCursor ?? null)}
-          onLoadAfter={() => setCursor(flow?.metadata.nextCursor ?? null)}
-        />
-        <FlowView
-          flow={flow}
-          selectedId={selectedItem?.id ?? null}
-          onSelect={setSelectedItem}
-          onToggleExpand={(id) => {
-            setExpandedIds((current) =>
-              current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-            );
+      <main className="graph-area">
+        <GraphToolbar
+          graph={graphQuery.data}
+          summary={activeSummary}
+          maxDepth={maxDepth}
+          onDepthChange={(depth) => {
+            setMaxDepth(depth);
+            setCursor(null);
           }}
+          onPrevious={() => setCursor(graphQuery.data?.metadata.previousCursor ?? null)}
+          onNext={() => setCursor(graphQuery.data?.metadata.nextCursor ?? null)}
         />
+        <GraphView graph={graphQuery.data} selectedId={selectedItem?.id ?? null} onSelect={setSelectedItem} />
       </main>
 
-      <Inspector item={selectedItem} flow={flow} />
+      <Inspector item={selectedItem} graph={graphQuery.data} />
     </div>
   );
 }
@@ -86,9 +76,7 @@ function TraceList(props: {
     <div className="trace-list">
       <div className="section-title">Traces</div>
       {props.isLoading && <div className="empty-state">Loading traces</div>}
-      {!props.isLoading && props.traces.length === 0 && (
-        <div className="empty-state">No materialized traces yet</div>
-      )}
+      {!props.isLoading && props.traces.length === 0 && <div className="empty-state">No traces yet</div>}
       {props.traces.map((trace) => (
         <button
           key={trace.traceId}
@@ -96,238 +84,116 @@ function TraceList(props: {
           onClick={() => props.onSelect(trace.traceId)}
         >
           <span className="trace-id">{trace.traceId}</span>
-          <span>{trace.nodeCount} nodes · {trace.edgeCount} edges</span>
+          <span>{trace.nodeCount} nodes · max depth {trace.maxDepth}</span>
         </button>
       ))}
     </div>
   );
 }
 
-function FlowToolbar(props: {
-  flow?: FlowWindowResponse | null;
-  isLoading: boolean;
-  onLoadBefore: () => void;
-  onLoadAfter: () => void;
+function GraphToolbar(props: {
+  graph?: GraphWindowResponse | null;
+  summary?: TraceSummary;
+  maxDepth: number;
+  onDepthChange: (depth: number) => void;
+  onPrevious: () => void;
+  onNext: () => void;
 }) {
-  const meta = props.flow?.metadata;
+  const max = Math.max(0, props.summary?.maxDepth ?? props.maxDepth);
   return (
     <header className="flow-toolbar">
       <div>
-        <h2>Adaptive Causal Swimlane</h2>
+        <h2>Node Graph</h2>
         <p>
-          {meta
-            ? `${meta.returnedNodeCount}/${meta.totalNodeCount} nodes · ${meta.omittedNodeCount} hidden`
+          {props.graph
+            ? `${props.graph.metadata.returnedNodeCount}/${props.graph.metadata.totalNodeCount} nodes · ${props.graph.metadata.hiddenNodeCount} hidden · ${props.graph.metadata.ghostNodeCount} ghosts`
             : "Waiting for trace"}
         </p>
       </div>
-      <div className="toolbar-actions">
-        <button disabled={!meta?.hasMoreBefore || props.isLoading} onClick={props.onLoadBefore}>
-          Load before
-        </button>
-        <button disabled={!meta?.hasMoreAfter || props.isLoading} onClick={props.onLoadAfter}>
-          Load after
-        </button>
+      <div className="toolbar-controls">
+        <label>
+          Depth {props.maxDepth}
+          <input
+            type="range"
+            min={0}
+            max={max}
+            value={props.maxDepth}
+            onChange={(event) => props.onDepthChange(Number(event.currentTarget.value))}
+          />
+        </label>
+        <button disabled={!props.graph?.metadata.hasBefore} onClick={props.onPrevious}>Prev</button>
+        <button disabled={!props.graph?.metadata.hasAfter} onClick={props.onNext}>Next</button>
       </div>
     </header>
   );
 }
 
-function FlowView(props: {
-  flow?: FlowWindowResponse | null;
+function GraphView(props: {
+  graph?: GraphWindowResponse | null;
   selectedId: string | null;
-  onSelect: (item: ReadNode | ReadEdge) => void;
-  onToggleExpand: (id: string) => void;
+  onSelect: (item: ReadNode | GraphEdge) => void;
 }) {
-  const laneModel = useMemo(() => buildLaneModel(props.flow), [props.flow]);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const nodeRefs = useRef(new Map<string, HTMLElement>());
-  const [arrows, setArrows] = useState<FlowArrow[]>([]);
+  const layout = useMemo(() => buildLayout(props.graph), [props.graph]);
 
-  useLayoutEffect(() => {
-    if (!props.flow || !contentRef.current) return;
-
-    const updateArrows = () => {
-      const contentRect = contentRef.current!.getBoundingClientRect();
-      const nextArrows = props.flow!.edges
-        .map((edge) => {
-          const fromEl = nodeRefs.current.get(edge.fromId);
-          const toEl = nodeRefs.current.get(edge.toId);
-          if (!fromEl || !toEl) return null;
-
-          const from = fromEl.getBoundingClientRect();
-          const to = toEl.getBoundingClientRect();
-          const fromCenterX = from.left - contentRect.left + from.width / 2;
-          const fromCenterY = from.top - contentRect.top + from.height / 2;
-          const toCenterX = to.left - contentRect.left + to.width / 2;
-          const toCenterY = to.top - contentRect.top + to.height / 2;
-          const sameLane = Math.abs(fromCenterX - toCenterX) < 80;
-
-          if (sameLane) {
-            const x = fromCenterX;
-            const y1 = from.bottom - contentRect.top + 4;
-            const y2 = to.top - contentRect.top - 4;
-            return {
-              id: edge.id,
-              kind: edge.kind,
-              status: edge.status,
-              path: `M ${x} ${y1} L ${x} ${y2}`,
-              labelX: x + 12,
-              labelY: y1 + Math.max(18, (y2 - y1) / 2),
-            };
-          }
-
-          const startX = from.right - contentRect.left + 6;
-          const startY = fromCenterY;
-          const endX = to.left - contentRect.left - 8;
-          const endY = toCenterY;
-          const curve = Math.max(80, Math.abs(endX - startX) / 2);
-          return {
-            id: edge.id,
-            kind: edge.kind,
-            status: edge.status,
-            path: `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`,
-            labelX: (startX + endX) / 2,
-            labelY: (startY + endY) / 2 - 8,
-          };
-        })
-        .filter((arrow): arrow is FlowArrow => Boolean(arrow));
-
-      setArrows(nextArrows);
-    };
-
-    updateArrows();
-    const resizeObserver = new ResizeObserver(updateArrows);
-    resizeObserver.observe(contentRef.current);
-    window.addEventListener("resize", updateArrows);
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", updateArrows);
-    };
-  }, [props.flow, laneModel]);
-
-  if (!props.flow) {
-    return <div className="empty-canvas">Select a trace after materialization finishes</div>;
-  }
+  if (!props.graph) return <div className="empty-canvas">Select materialized trace</div>;
 
   return (
-    <section className="flow-canvas">
-      <div ref={contentRef} className="flow-content">
-        <svg
-          className="flow-arrows"
-          width="100%"
-          height="100%"
-          aria-hidden="true"
-        >
+    <section className="graph-canvas">
+      <div className="graph-board" style={{ width: layout.width, height: layout.height }}>
+        <svg className="graph-arrows" width={layout.width} height={layout.height}>
           <defs>
-            <marker id="arrow-ok" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L9,3 z" />
-            </marker>
-            <marker id="arrow-open" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <marker id="graph-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
               <path d="M0,0 L0,6 L9,3 z" />
             </marker>
           </defs>
-          {arrows.map((arrow) => (
-            <g key={arrow.id} className={`flow-arrow ${arrow.status}`}>
-              <path d={arrow.path} markerEnd={`url(#${arrow.status === "open" ? "arrow-open" : "arrow-ok"})`} />
-            </g>
-          ))}
-        </svg>
-        <div
-          className="lane-grid causal-grid"
-          style={{ gridTemplateColumns: `repeat(${laneModel.lanes.length}, minmax(260px, 1fr))` }}
-        >
-          {laneModel.lanes.map((lane, laneIndex) => (
-            <div
-              key={lane.container.id}
-              className="lane lane-header-card"
-              style={{ gridColumn: laneIndex + 1, gridRow: 1 }}
-            >
-              <div className="lane-header">
-                <strong>{lane.container.name}</strong>
-                <span>{lane.container.kind}</span>
-              </div>
-            </div>
-          ))}
-          {laneModel.orderedNodes.map((node, nodeIndex) => {
-            const outgoing = props.flow!.edges.filter((edge) => edge.fromId === node.id);
-            const laneIndex = laneModel.laneIndexByContainer.get(node.containerId ?? "") ?? 0;
+          {props.graph.edges.map((edge) => {
+            const from = layout.positions.get(edge.fromNodeId);
+            const to = layout.positions.get(edge.toNodeId);
+            if (!from || !to) return null;
+            const x1 = from.x + NODE_WIDTH;
+            const y1 = from.y + NODE_HEIGHT / 2;
+            const x2 = to.x;
+            const y2 = to.y + NODE_HEIGHT / 2;
+            const curve = Math.max(90, Math.abs(x2 - x1) / 2);
+            const path = `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
             return (
-              <article
-                key={node.id}
-                ref={(element) => {
-                  if (element) nodeRefs.current.set(node.id, element);
-                  else nodeRefs.current.delete(node.id);
-                }}
-                className={`flow-node ${node.status} ${props.selectedId === node.id ? "selected" : ""}`}
-                style={{ gridColumn: laneIndex + 1, gridRow: nodeIndex + 2 }}
-                onClick={() => props.onSelect(node)}
-              >
-                <div className="node-topline">
-                  <button
-                    title="Expand local detail"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      props.onToggleExpand(node.id);
-                    }}
-                  >
-                    +
-                  </button>
-                  <strong>{node.name}</strong>
-                  <span>{formatDuration(node.durationMs)}</span>
-                </div>
-                <div className="node-meta">
-                  <span>{node.kind}</span>
-                  {node.diagnostics.length > 0 && <span>{node.diagnostics.length} warnings</span>}
-                </div>
-                {outgoing.length > 0 && (
-                  <div className="edge-list">
-                    {outgoing.map((edge) => (
-                      <button
-                        key={edge.id}
-                        className={`edge-chip ${edge.status}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          props.onSelect(edge);
-                        }}
-                      >
-                        <span>{edge.kind}</span>
-                        <strong>{laneModel.nodeNames.get(edge.toId) ?? edge.toId}</strong>
-                        <em>{laneModel.nodeContainerNames.get(edge.toId) ?? "unknown lane"}</em>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </article>
+              <g key={edge.id} className={`graph-edge ${edge.status} ${edge.isGhost ? "ghost" : ""}`} onClick={() => props.onSelect(edge)}>
+                <path d={path} markerEnd="url(#graph-arrow)" />
+                <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8}>{edge.label}</text>
+              </g>
             );
           })}
-        </div>
+        </svg>
+
+        {props.graph.nodes.map((node) => {
+          const position = layout.positions.get(node.id)!;
+          return (
+            <button
+              key={node.id}
+              className={`graph-node ${node.status} ${node.isGhost ? "ghost" : ""} ${props.selectedId === node.id ? "selected" : ""}`}
+              style={{ left: position.x, top: position.y }}
+              onClick={() => props.onSelect(node)}
+            >
+              <span className="node-title">{node.name}</span>
+              <span>depth {node.depth} · {formatDuration(node.durationMs)}</span>
+              {node.isGhost && <strong>{node.hiddenNodeCount} hidden · {node.hiddenErrorCount} errors</strong>}
+              {node.diagnostics.length > 0 && <em>{node.diagnostics.length} diagnostics</em>}
+            </button>
+          );
+        })}
       </div>
-      {props.flow.metadata.omittedNodeCount > 0 && (
-        <div className="omitted-banner">
-          {props.flow.metadata.omittedNodeCount} nodes and {props.flow.metadata.omittedEdgeCount} edges omitted by safety cap.
-        </div>
-      )}
     </section>
   );
 }
 
-type FlowArrow = {
-  id: string;
-  kind: string;
-  status: string;
-  path: string;
-  labelX: number;
-  labelY: number;
-};
-
-function Inspector(props: { item: ReadNode | ReadEdge | null; flow?: FlowWindowResponse | null }) {
+function Inspector(props: { item: ReadNode | GraphEdge | null; graph?: GraphWindowResponse | null }) {
   return (
     <aside className="inspector">
       <div className="section-title">Inspector</div>
-      {!props.item && <div className="empty-state">Select a node or edge</div>}
+      {!props.item && <div className="empty-state">Select node or edge</div>}
       {props.item && (
         <div className="inspector-body">
-          <h3>{itemTitle(props.item)}</h3>
+          <h3>{"fromNodeId" in props.item ? props.item.label : props.item.name}</h3>
           <dl>
             <dt>ID</dt>
             <dd>{props.item.id}</dd>
@@ -338,60 +204,36 @@ function Inspector(props: { item: ReadNode | ReadEdge | null; flow?: FlowWindowR
             <dt>Diagnostics</dt>
             <dd>{props.item.diagnostics.length ? props.item.diagnostics.join(", ") : "none"}</dd>
           </dl>
-          <pre>{JSON.stringify(props.item.metadata, null, 2)}</pre>
+          <pre>{JSON.stringify("data" in props.item ? props.item.data : {}, null, 2)}</pre>
         </div>
       )}
-      {props.flow && (
+      {props.graph && (
         <div className="summary-strip">
-          <span>{props.flow.summary.containerCount} containers</span>
-          <span>{props.flow.summary.errorCount} errors</span>
-          <span>{props.flow.summary.diagnosticCount} diagnostics</span>
+          <span>{props.graph.summary.nodeCount} nodes</span>
+          <span>{props.graph.summary.edgeCount} edges</span>
+          <span>{props.graph.summary.maxDepth} max depth</span>
         </div>
       )}
     </aside>
   );
 }
 
-function buildLaneModel(flow?: FlowWindowResponse | null) {
-  const containers = flow?.containers.length
-    ? flow.containers
-    : [{
-      id: "unknown",
-      traceId: flow?.metadata.traceId ?? "",
-      parentId: null,
-      name: "Unassigned",
-      kind: "container",
-      status: "open",
-      startedAtUnixMs: null,
-      endedAtUnixMs: null,
-      durationMs: null,
-      ancestryIds: [],
-      diagnostics: [],
-      metadata: {},
-    } satisfies ReadContainer];
-  const byContainer = new Map(containers.map((container) => [container.id, {
-    container,
-    nodes: [] as ReadNode[],
-  }]));
-  const fallback = byContainer.values().next().value!;
-  const nodeNames = new Map<string, string>();
-  const nodeContainerNames = new Map<string, string>();
+function buildLayout(graph?: GraphWindowResponse | null) {
+  const positions = new Map<string, { x: number; y: number }>();
+  const nodes = graph?.nodes ?? [];
 
-  for (const node of flow?.nodes ?? []) {
-    nodeNames.set(node.id, node.name);
-    const lane = node.containerId ? byContainer.get(node.containerId) : null;
-    (lane ?? fallback).nodes.push(node);
-    nodeContainerNames.set(node.id, (lane ?? fallback).container.name);
-  }
+  nodes.forEach((node, index) => {
+    positions.set(node.id, {
+      x: 40 + node.depth * X_GAP,
+      y: 40 + index * Y_GAP,
+    });
+  });
 
-  const lanes = Array.from(byContainer.values()).filter((lane) => lane.nodes.length > 0);
-
+  const maxDepth = nodes.reduce((max, node) => Math.max(max, node.depth), 0);
   return {
-    lanes,
-    laneIndexByContainer: new Map(lanes.map((lane, index) => [lane.container.id, index])),
-    orderedNodes: (flow?.nodes ?? []).slice().sort((a, b) => a.flowOrder - b.flowOrder),
-    nodeContainerNames,
-    nodeNames,
+    positions,
+    width: Math.max(1000, 120 + (maxDepth + 1) * X_GAP),
+    height: Math.max(640, 120 + nodes.length * Y_GAP),
   };
 }
 
@@ -399,8 +241,4 @@ function formatDuration(durationMs: number | null): string {
   if (durationMs === null) return "open";
   if (durationMs < 1000) return `${durationMs}ms`;
   return `${(durationMs / 1000).toFixed(2)}s`;
-}
-
-function itemTitle(item: ReadNode | ReadEdge): string {
-  return "fromId" in item ? `${item.kind} edge` : item.name;
 }

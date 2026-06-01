@@ -1,12 +1,5 @@
-export type TraceEventType =
-  | "container.started"
-  | "container.ended"
-  | "node.started"
-  | "node.ended"
-  | "edge.started"
-  | "edge.ended";
-
-export type TraceEntityType = "container" | "node" | "edge";
+export type TraceEventType = "node.started" | "node.ended" | "edge.started" | "edge.ended";
+export type TraceEntityType = "node" | "edge";
 
 export type TraceEventInput = {
   eventId?: string;
@@ -15,29 +8,29 @@ export type TraceEventInput = {
   entityType: TraceEntityType;
   eventType: TraceEventType;
   occurredAtUnixMs: number;
-  parentId?: string | null;
-  containerId?: string | null;
-  fromId?: string | null;
-  toId?: string | null;
-  kind?: string | null;
   name?: string | null;
+  depth?: number | null;
+  parentId?: string | null;
+  fromNodeId?: string | null;
+  toNodeId?: string | null;
+  label?: string | null;
   status?: "ok" | "error" | "warning" | "open" | null;
-  metadata?: Record<string, unknown>;
+  data?: Record<string, unknown>;
 };
 
-export interface TracerConfig {
+export type TracerConfig = {
   baseUrl: string;
   batchSize?: number;
   flushIntervalMs?: number;
-  containerId?: string;
-  containerName?: string;
-  containerKind?: string;
-}
+};
 
-export interface NodeConfig {
-  containerId?: string;
-  parentId?: string | null;
-  kind?: string;
-  status?: "ok" | "error" | "warning" | "open";
-  metadata?: Record<string, unknown>;
-}
+export type NodeConfig = {
+  depth?: number;
+  data?: Record<string, unknown>;
+};
+
+export type EdgeConfig = {
+  label: string;
+  data?: Record<string, unknown>;
+  endImmediately?: boolean;
+};

@@ -1,100 +1,81 @@
 import { v4 as uuidv4 } from "uuid";
 import { Tracer } from "./Tracer";
-import { NodeConfig } from "./types";
+import { EdgeConfig, NodeConfig } from "./types";
 
-export { NodeConfig };
+export { EdgeConfig, NodeConfig };
 
 export class TraceNode {
-  public id: string;
-  public traceId: string;
-  public name: string;
-  public containerId: string;
+  readonly id: string;
+  readonly traceId: string;
+  readonly name: string;
+  readonly depth: number;
+  readonly parentId: string | null;
   private isFinished = false;
 
-  constructor(opts: {
+  constructor(input: {
     id?: string;
     traceId: string;
     name: string;
-    containerId: string;
+    depth: number;
     parentId?: string | null;
-    kind?: string | null;
-    metadata?: Record<string, unknown>;
+    data?: Record<string, unknown>;
   }) {
-    this.id = opts.id || uuidv4();
-    this.traceId = opts.traceId;
-    this.name = opts.name;
-    this.containerId = opts.containerId;
+    this.id = input.id ?? uuidv4();
+    this.traceId = input.traceId;
+    this.name = input.name;
+    this.depth = input.depth;
+    this.parentId = input.parentId ?? null;
 
-    Tracer.ensureContainer(this.traceId, this.containerId);
     Tracer.exportEvent({
       traceId: this.traceId,
       entityId: this.id,
       entityType: "node",
       eventType: "node.started",
       occurredAtUnixMs: Date.now(),
-      containerId: this.containerId,
-      parentId: opts.parentId ?? null,
       name: this.name,
-      kind: opts.kind ?? "operation",
+      depth: this.depth,
+      parentId: this.parentId,
       status: "open",
-      metadata: opts.metadata,
+      data: input.data,
     });
   }
 
-  public startNode(name: string, config?: NodeConfig): TraceNode {
+  startNode(name: string, config?: NodeConfig): TraceNode {
     const child = new TraceNode({
       traceId: this.traceId,
       name,
-      containerId: config?.containerId || this.containerId,
+      depth: config?.depth ?? this.depth + 1,
       parentId: this.id,
-      kind: config?.kind,
-      metadata: config?.metadata,
+      data: config?.data,
     });
-    this.logEdge(this.id, child.id, "continues");
+    this.connectTo(child, { label: "continues" });
     return child;
   }
 
-  public logNode(name: string, config?: NodeConfig): string {
+  logNode(name: string, config?: NodeConfig): string {
     const child = this.startNode(name, config);
-    child.end(config?.status === "open" ? "ok" : config?.status);
+    child.end();
     return child.id;
   }
 
-  public logEdge(fromId: string, toId: string, kind: string, endImmediately = true): string {
-    const edgeId = uuidv4();
-    const startedAt = Date.now();
-    Tracer.exportEvent({
-      traceId: this.traceId,
-      entityId: edgeId,
-      entityType: "edge",
-      eventType: "edge.started",
-      occurredAtUnixMs: startedAt,
-      fromId,
-      toId,
-      kind,
-      status: "open",
-    });
-    if (endImmediately) {
-      Tracer.exportEvent({
-        traceId: this.traceId,
-        entityId: edgeId,
-        entityType: "edge",
-        eventType: "edge.ended",
-        occurredAtUnixMs: Date.now(),
-        status: "ok",
-      });
-    }
-    return edgeId;
+  connectTo(target: TraceNode | string, config: EdgeConfig): string {
+    const targetId = typeof target === "string" ? target : target.id;
+    return Tracer.connect(this.traceId, this.id, targetId, config);
   }
 
-  public createCarrierHeaders(targetNodeId?: string): Record<string, string> {
+  endEdge(edgeId: string, status: "ok" | "error" | "warning" = "ok") {
+    Tracer.endEdge(this.traceId, edgeId, status);
+  }
+
+  createCarrierHeaders(targetNodeId?: string): Record<string, string> {
     return {
       "x-trace-id": this.traceId,
       "x-parent-node-id": targetNodeId || this.id,
+      "x-parent-node-depth": String(this.depth),
     };
   }
 
-  public end(status: "ok" | "error" | "warning" = "ok") {
+  end(status: "ok" | "error" | "warning" = "ok") {
     if (this.isFinished) return;
     this.isFinished = true;
     Tracer.exportEvent({

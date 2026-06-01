@@ -11,52 +11,51 @@ export class RawEventRepository {
     if (!events.length) return 0;
 
     const receivedAtUnixMs = Date.now();
-    const rows = events.map((event) => ({
-      trace_id: event.traceId,
-      event_id: event.eventId || randomUUID(),
-      entity_id: event.entityId,
-      entity_type: event.entityType,
-      event_type: event.eventType,
-      occurred_at_ms: event.occurredAtUnixMs,
-      received_at_ms: receivedAtUnixMs,
-      parent_id: event.parentId ?? null,
-      container_id: event.containerId ?? null,
-      from_id: event.fromId ?? null,
-      to_id: event.toId ?? null,
-      kind: event.kind ?? null,
-      name: event.name ?? null,
-      status: event.status ?? null,
-      metadata: JSON.stringify(event.metadata ?? {}),
-    }));
-
     await this.clickhouse.client.insert({
-      table: "topo_tracer.trace_events",
-      values: rows,
+      table: "topo_tracer.primitive_trace_events",
+      values: events.map((event) => ({
+        trace_id: event.traceId,
+        event_id: event.eventId || randomUUID(),
+        entity_id: event.entityId,
+        entity_type: event.entityType,
+        event_type: event.eventType,
+        occurred_at_ms: event.occurredAtUnixMs,
+        received_at_ms: receivedAtUnixMs,
+        name: event.name ?? null,
+        depth: event.depth ?? null,
+        parent_id: event.parentId ?? null,
+        from_node_id: event.fromNodeId ?? null,
+        to_node_id: event.toNodeId ?? null,
+        label: event.label ?? null,
+        status: event.status ?? null,
+        data: JSON.stringify(event.data ?? {}),
+      })),
       format: "JSONEachRow",
     });
 
-    return rows.length;
+    return events.length;
   }
 
   async listTraceIdsNeedingMaterialization(limit = 20): Promise<string[]> {
-    const query = `
-      SELECT trace_id
-      FROM (
-        SELECT trace_id, max(received_at_ms) AS latest_event_at
-        FROM topo_tracer.trace_events
-        GROUP BY trace_id
-      ) AS raw
-      LEFT JOIN (
-        SELECT trace_id, max(materialized_at_ms) AS latest_materialized_at
-        FROM topo_tracer.read_trace_summary
-        GROUP BY trace_id
-      ) AS summary USING trace_id
-      WHERE latest_materialized_at IS NULL OR latest_event_at > latest_materialized_at
-      ORDER BY latest_event_at ASC
-      LIMIT ${limit}
-    `;
-
-    const result = await this.clickhouse.client.query({ query, format: "JSONEachRow" });
+    const result = await this.clickhouse.client.query({
+      query: `
+        SELECT raw.trace_id
+        FROM (
+          SELECT trace_id, max(received_at_ms) AS latest_event_at
+          FROM topo_tracer.primitive_trace_events
+          GROUP BY trace_id
+        ) AS raw
+        LEFT JOIN (
+          SELECT trace_id, max(materialized_at_ms) AS latest_materialized_at
+          FROM topo_tracer.primitive_trace_summary
+          GROUP BY trace_id
+        ) AS summary USING trace_id
+        WHERE latest_materialized_at IS NULL OR latest_event_at > latest_materialized_at
+        ORDER BY latest_event_at ASC
+        LIMIT ${limit}
+      `,
+      format: "JSONEachRow",
+    });
     const rows = await result.json<{ trace_id: string }>();
     return rows.map((row) => row.trace_id);
   }
@@ -65,7 +64,7 @@ export class RawEventRepository {
     const result = await this.clickhouse.client.query({
       query: `
         SELECT *
-        FROM topo_tracer.trace_events
+        FROM topo_tracer.primitive_trace_events
         WHERE trace_id = {traceId:String}
         ORDER BY received_at_ms ASC, event_id ASC
       `,
@@ -82,19 +81,19 @@ export class RawEventRepository {
       eventType: row.event_type,
       occurredAtUnixMs: Number(row.occurred_at_ms),
       receivedAtUnixMs: Number(row.received_at_ms),
-      parentId: row.parent_id ?? null,
-      containerId: row.container_id ?? null,
-      fromId: row.from_id ?? null,
-      toId: row.to_id ?? null,
-      kind: row.kind ?? null,
       name: row.name ?? null,
+      depth: row.depth === null || row.depth === undefined ? null : Number(row.depth),
+      parentId: row.parent_id ?? null,
+      fromNodeId: row.from_node_id ?? null,
+      toNodeId: row.to_node_id ?? null,
+      label: row.label ?? null,
       status: row.status ?? null,
-      metadata: safeJson(row.metadata),
+      data: parseJson(row.data),
     }));
   }
 }
 
-function safeJson(value: string | null | undefined): Record<string, unknown> {
+function parseJson(value: string | null | undefined): Record<string, unknown> {
   if (!value) return {};
   try {
     const parsed = JSON.parse(value);

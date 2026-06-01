@@ -1,107 +1,83 @@
-# Topo Tracer Design
+# Topo Tracer Primitive Design
 
-Topo Tracer stores traces as append-only lifecycle events and presents them as a causal flow. The write model is optimized for safety and ingestion speed. The read model is rebuilt by a background worker for fast trace browsing, ancestry queries, and capped flow windows.
+Topo Tracer stores one primitive graph: nodes connected to nodes by edges. No groups, containers, services, modules, or special boundaries exist in the core model. Extra context belongs in node/edge `data`.
 
 ## Core Model
 
-- Container: a place or boundary, such as service, module, function, database, queue, or external system.
-- Node: timed work or event inside a container. Nodes may have `parentId` for nested work.
-- Edge: timed causal operation between nodes. Edges have `edge.started` and optional `edge.ended`; missing end means open, async, or fire-and-forget.
+- Node: timed work item. Has `id`, `traceId`, `name`, `depth`, optional `parentId`, timestamps, status, and data.
+- Edge: timed connection from one node to another. Has `fromNodeId`, `toNodeId`, `label`, timestamps, status, and data.
+- Depth: explicit nesting number. Frontend depth slider shows nodes with `depth <= maxDepth`.
+- Ghost node: read-time summary for nodes hidden by depth slider.
 
-The model is graph plus hierarchy:
+## Write Path
 
-- hierarchy comes from `parentId` and ancestry arrays.
-- flow comes from edges and parent-child relationships.
-- time is metadata for duration and diagnostics, not primary ordering.
+Clients append immutable lifecycle events to `POST /telemetry/events`.
 
-## Append-Only Writes
+Node events:
 
-Clients send events to `POST /telemetry/events`.
-
-Raw event types:
-
-- `container.started`
-- `container.ended`
 - `node.started`
 - `node.ended`
+
+Edge events:
+
 - `edge.started`
 - `edge.ended`
 
-Each event stores:
+`edge.ended` is optional. Missing end means async, open, or fire-and-forget.
 
-- `occurredAtUnixMs`: source timestamp from SDK/application.
-- `receivedAtUnixMs`: backend receive timestamp.
-- entity identifiers and optional relationship fields.
-- metadata JSON.
+Each event stores source time (`occurredAtUnixMs`) and backend receive time (`receivedAtUnixMs`). Source time drives durations. Causal links drive graph order.
 
-Raw trace data is never updated or deleted by normal tracing paths.
+## ClickHouse Tables
 
-## Timestamp Semantics
+- `primitive_trace_events`: append-only raw lifecycle events.
+- `primitive_read_nodes`: materialized node rows ordered by `(trace_id, flow_order, id)`.
+- `primitive_read_edges`: materialized edge rows ordered by `(trace_id, from_node_id, to_node_id, id)`.
+- `primitive_read_node_ancestry`: node ancestor index for subtree and ghost queries.
+- `primitive_trace_summary`: per-trace counts, max depth, errors, diagnostics.
 
-Flow order is causal-first. Parent links and edges decide what happened after what. Timestamps are used for durations, labels, and diagnostics.
+Read tables use `ReplacingMergeTree(materialized_at_ms)`, so worker can rebuild read rows while raw events remain immutable.
 
-Duration rules:
+## Materialization
 
-- node duration = `node.ended.occurredAtUnixMs - node.started.occurredAtUnixMs`.
-- edge duration = `edge.ended.occurredAtUnixMs - edge.started.occurredAtUnixMs`.
-- missing end keeps duration null and status open unless another status is provided.
+Background worker folds raw lifecycle events into read rows:
 
-Diagnostics:
+- merges node start/end into one read node.
+- merges edge start/end into one read edge.
+- computes missing depth from ancestry when SDK omits depth.
+- computes `ancestryPath` from parent chain.
+- computes causal `flowOrder` from parent links and edges.
+- records diagnostics: missing start/end, negative duration, cycle, orphan node/edge, clock skew.
 
-- `clockSkewSuspected`: source timestamps conflict with causal order.
-- `negativeDuration`: end time is before start time.
-- `missingStart`: entity has no start event.
-- `missingEnd`: entity has no end event.
-- `cycleDetected`: parent or edge graph contains a cycle.
-- `orphanNode`: node references missing parent/container.
-- `orphanEdge`: edge references missing endpoint.
+## Graph Projection
 
-## Read Model
+`GET /telemetry/traces/:traceId/graph` returns graph window.
 
-The background worker periodically materializes traces from `trace_events`.
+Query params:
 
-Read tables:
+- `maxDepth`: show nodes at or above depth.
+- `limit`: max nodes, capped at 500.
+- `cursor`: simple offset cursor for previous/next pages.
 
-- `read_containers`
-- `read_nodes`
-- `read_edges`
-- `read_container_ancestry`
-- `read_node_ancestry`
-- `read_trace_summary`
+Projection rules:
 
-Read rows include `materializedAtUnixMs` and use replacing tables, so the worker can rebuild a trace without mutating raw events.
+- visible node: `depth <= maxDepth`.
+- hidden node: `depth > maxDepth`.
+- ghost node: one summary per visible ancestor with hidden descendants.
+- lifted edge: if endpoint hidden, route edge to nearest ghost/visible ancestor.
+- self-loop after lifting is dropped.
 
-## Flow Windows
+Response includes `hasBefore`, `hasAfter`, `previousCursor`, `nextCursor`, hidden count, and ghost count.
 
-Large traces are never returned as one unbounded graph. `GET /telemetry/traces/:traceId/flow-window` returns a capped window.
+## Frontend
 
-Inputs:
+Frontend renders graph view:
 
-- `anchorId`: node to focus around.
-- `cursor`: encoded flow position for paging.
-- `before` / `after`: causal window size around anchor.
-- `expandedIds`: nodes whose local children should be included.
-- `hiddenIds`: nodes hidden by user.
-- `detailBudget`: hard cap, max 500.
+- x-axis = depth.
+- y-axis = causal order.
+- nodes show name, depth, duration, status, diagnostics, and data.
+- edges draw SVG arrows with labels and duration data.
+- depth slider hides/shows detail.
+- ghost nodes summarize hidden deeper nodes.
+- Prev/Next buttons use cursor pagination.
 
-Response includes:
-
-- visible containers, nodes, and edges.
-- `hasMoreBefore` / `hasMoreAfter`.
-- `previousCursor` / `nextCursor`.
-- omitted node and edge counts.
-
-This keeps 10k+ traces responsive while preserving causal context.
-
-## Frontend View
-
-The frontend uses one primary view: Adaptive Causal Swimlane.
-
-- vertical position means causal progression.
-- horizontal lanes mean container boundaries.
-- node cards show name, kind, duration, status, and diagnostics.
-- edge chips show synchronous calls and open/fire-and-forget edges.
-- inspector shows selected node/edge details.
-- load controls page through flow windows.
-
-The first version renders synchronous flow. Async/pubsub edges are stored with lifecycle semantics and can be rendered with specialized branch layouts later.
+This makes zoom simple: move depth slider. Low depth shows story. High depth reveals internals.

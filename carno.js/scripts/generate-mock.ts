@@ -1,89 +1,57 @@
 import { randomUUID } from "node:crypto";
 
 const BASE_URL = process.env.TOPO_TRACER_URL ?? "http://localhost:3000";
-const TRACE_ID = `trace_${Date.now()}`;
+const TRACE_ID = `primitive_trace_${Date.now()}`;
 const LARGE_MODE = process.argv.includes("--large");
-const NODE_COUNT = LARGE_MODE ? 10_500 : 18;
+const NODE_COUNT = LARGE_MODE ? 10_500 : 36;
 
 type Event = {
   eventId?: string;
   traceId: string;
   entityId: string;
-  entityType: "container" | "node" | "edge";
-  eventType:
-    | "container.started"
-    | "container.ended"
-    | "node.started"
-    | "node.ended"
-    | "edge.started"
-    | "edge.ended";
+  entityType: "node" | "edge";
+  eventType: "node.started" | "node.ended" | "edge.started" | "edge.ended";
   occurredAtUnixMs: number;
-  parentId?: string | null;
-  containerId?: string | null;
-  fromId?: string | null;
-  toId?: string | null;
-  kind?: string | null;
   name?: string | null;
+  depth?: number | null;
+  parentId?: string | null;
+  fromNodeId?: string | null;
+  toNodeId?: string | null;
+  label?: string | null;
   status?: "ok" | "error" | "warning" | "open" | null;
-  metadata?: Record<string, unknown>;
+  data?: Record<string, unknown>;
 };
 
 const events: Event[] = [];
 let now = Date.now();
 
-function push(event: Omit<Event, "eventId" | "traceId">) {
-  events.push({
-    eventId: randomUUID(),
-    traceId: TRACE_ID,
-    ...event,
-  });
-}
-
-function container(id: string, name: string, kind: string) {
-  push({
-    entityId: id,
-    entityType: "container",
-    eventType: "container.started",
-    occurredAtUnixMs: now,
-    name,
-    kind,
-    status: "open",
-  });
-}
-
-function endContainer(id: string) {
-  push({
-    entityId: id,
-    entityType: "container",
-    eventType: "container.ended",
-    occurredAtUnixMs: now + 20,
-    status: "ok",
-  });
+function emit(event: Omit<Event, "eventId" | "traceId">) {
+  events.push({ eventId: randomUUID(), traceId: TRACE_ID, ...event });
 }
 
 function node(input: {
   id: string;
-  containerId: string;
-  parentId?: string | null;
   name: string;
-  kind: string;
+  depth: number;
+  parentId?: string | null;
   durationMs: number;
-  status?: "ok" | "error";
+  status?: "ok" | "error" | "warning";
+  data?: Record<string, unknown>;
 }) {
-  const start = now;
-  push({
+  const startedAt = now;
+  emit({
     entityId: input.id,
     entityType: "node",
     eventType: "node.started",
-    occurredAtUnixMs: start,
-    containerId: input.containerId,
-    parentId: input.parentId ?? null,
+    occurredAtUnixMs: startedAt,
     name: input.name,
-    kind: input.kind,
+    depth: input.depth,
+    parentId: input.parentId ?? null,
     status: "open",
+    data: input.data,
   });
   now += input.durationMs;
-  push({
+  emit({
     entityId: input.id,
     entityType: "node",
     eventType: "node.ended",
@@ -92,85 +60,97 @@ function node(input: {
   });
 }
 
-function edge(id: string, fromId: string, toId: string, kind: string, durationMs: number, end = true) {
-  const start = now;
-  push({
-    entityId: id,
+function edge(input: {
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  durationMs?: number;
+  close?: boolean;
+  status?: "ok" | "error" | "warning";
+}) {
+  const startedAt = now;
+  emit({
+    entityId: input.id,
     entityType: "edge",
     eventType: "edge.started",
-    occurredAtUnixMs: start,
-    fromId,
-    toId,
-    kind,
-    status: end ? "open" : "open",
+    occurredAtUnixMs: startedAt,
+    fromNodeId: input.from,
+    toNodeId: input.to,
+    label: input.label,
+    status: "open",
   });
-  if (end) {
-    push({
-      entityId: id,
+  if (input.close ?? true) {
+    emit({
+      entityId: input.id,
       entityType: "edge",
       eventType: "edge.ended",
-      occurredAtUnixMs: start + durationMs,
-      status: "ok",
+      occurredAtUnixMs: startedAt + (input.durationMs ?? 1),
+      status: input.status ?? "ok",
     });
   }
 }
 
-container("api", "API Service", "service");
-container("payments", "Payment Module", "module");
-container("db", "Postgres", "database");
-container("external", "Stripe", "external");
+node({
+  id: "root",
+  name: "POST /checkout",
+  depth: 0,
+  durationMs: 8,
+  data: { service: "api", route: "/checkout" },
+});
 
-let previous = "checkout";
-node({ id: previous, containerId: "api", name: "POST /checkout", kind: "http", durationMs: 12 });
-
+let previous = "root";
 for (let i = 1; i < NODE_COUNT; i++) {
-  const containerId = i % 7 === 0 ? "db" : i % 5 === 0 ? "external" : i % 3 === 0 ? "payments" : "api";
+  const parent = i < 16 ? previous : i % 5 === 0 ? "root" : previous;
+  const depth = i < 16 ? i : 1 + (i % 5);
   const id = `node_${i}`;
-  const status = !LARGE_MODE && i === 12 ? "error" : "ok";
+  const label = i % 7 === 0 ? "writes" : i % 5 === 0 ? "publishes" : i % 3 === 0 ? "calls" : "continues";
   node({
     id,
-    containerId,
-    parentId: i < 8 ? previous : null,
-    name: labelFor(containerId, i),
-    kind: kindFor(containerId),
-    durationMs: 4 + (i % 35),
-    status,
+    name: nameFor(i, label),
+    depth,
+    parentId: parent,
+    durationMs: 3 + (i % 30),
+    status: !LARGE_MODE && i === 21 ? "error" : "ok",
+    data: { fakeService: serviceFor(i), label },
   });
-  edge(`edge_${i}`, previous, id, containerId === "db" ? "writes" : containerId === "external" ? "calls" : "continues", 2, i !== 14);
+  edge({
+    id: `edge_${i}`,
+    from: previous,
+    to: id,
+    label,
+    durationMs: 2,
+    close: i !== 11,
+    status: !LARGE_MODE && i === 21 ? "error" : "ok",
+  });
   previous = id;
 }
 
-endContainer("api");
-endContainer("payments");
-endContainer("db");
-endContainer("external");
-
 async function main() {
-  console.log(`Sending ${events.length} events for ${TRACE_ID}`);
-  for (let i = 0; i < events.length; i += 500) {
+  console.log(`Sending ${events.length} primitive events for ${TRACE_ID}`);
+  for (let index = 0; index < events.length; index += 500) {
     const response = await fetch(`${BASE_URL}/telemetry/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(events.slice(i, i + 500)),
+      body: JSON.stringify(events.slice(index, index + 500)),
     });
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status} ${await response.text()}`);
-    }
+    if (!response.ok) throw new Error(`Upload failed: ${response.status} ${await response.text()}`);
   }
-  console.log(`Trace ready after worker materializes: ${TRACE_ID}`);
+  console.log(`Trace ready after materializer: ${TRACE_ID}`);
 }
 
-function labelFor(containerId: string, index: number): string {
-  if (containerId === "db") return `SQL write ${index}`;
-  if (containerId === "external") return `Stripe request ${index}`;
-  if (containerId === "payments") return `Payment step ${index}`;
-  return `Checkout step ${index}`;
+function nameFor(index: number, label: string): string {
+  if (label === "writes") return `SQL write ${index}`;
+  if (label === "publishes") return `publish event ${index}`;
+  if (label === "calls") return `remote call ${index}`;
+  return `function step ${index}`;
 }
 
-function kindFor(containerId: string): string {
-  if (containerId === "db") return "db";
-  if (containerId === "external") return "external_call";
-  return "operation";
+function serviceFor(index: number): string {
+  if (index % 7 === 0) return "postgres";
+  if (index % 5 === 0) return "queue";
+  if (index % 3 === 0) return "payment-service";
+  return "monolith";
 }
 
 main().catch((error) => {

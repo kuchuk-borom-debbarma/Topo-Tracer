@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from "@carno.js/core";
 import { LogService } from "../services/log/LogService";
-import type { FlowWindowQuery, TraceEventInput } from "../services/log/types";
+import type { GraphWindowQuery, TraceEventInput } from "../services/log/types";
 
 @Controller("/telemetry")
 export class LogController {
@@ -8,18 +8,15 @@ export class LogController {
 
   @Post("/events")
   async ingestEvents(@Body() events: TraceEventInput[]) {
-    console.log(`[HTTP POST] /telemetry/events - Ingesting ${events.length} event(s)`);
     return this.logService.ingestEvents(events);
   }
 
   @Get("/traces")
-  async listTraces(
-    @Query("page") page?: string,
-    @Query("limit") limit?: string,
-  ) {
-    const pageNumber = page ? Math.max(1, parseInt(page, 10)) : 1;
-    const limitNumber = limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20;
-    return this.logService.listTraces(pageNumber, limitNumber);
+  async listTraces(@Query("page") page?: string, @Query("limit") limit?: string) {
+    return this.logService.listTraces(
+      page ? Math.max(1, parseInt(page, 10)) : 1,
+      limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20,
+    );
   }
 
   @Get("/traces/:traceId/summary")
@@ -27,34 +24,18 @@ export class LogController {
     return this.logService.getTraceSummary(traceId);
   }
 
-  @Get("/traces/:traceId/flow-window")
-  async getFlowWindow(
+  @Get("/traces/:traceId/graph")
+  async getGraph(
     @Param("traceId") traceId: string,
-    @Query("anchorId") anchorId?: string,
-    @Query("direction") direction?: string,
-    @Query("before") before?: string,
-    @Query("after") after?: string,
-    @Query("expandedIds") expandedIds?: string,
-    @Query("hiddenIds") hiddenIds?: string,
-    @Query("detailBudget") detailBudget?: string,
+    @Query("maxDepth") maxDepth?: string,
+    @Query("limit") limit?: string,
     @Query("cursor") cursor?: string,
   ) {
-    const query: FlowWindowQuery = {
-      anchorId,
-      direction: direction === "before" || direction === "after" ? direction : "around",
-      before: before ? parseInt(before, 10) : undefined,
-      after: after ? parseInt(after, 10) : undefined,
-      expandedIds: parseCsv(expandedIds),
-      hiddenIds: parseCsv(hiddenIds),
-      detailBudget: detailBudget ? parseInt(detailBudget, 10) : undefined,
+    const query: GraphWindowQuery = {
+      maxDepth: maxDepth ? parseInt(maxDepth, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
       cursor,
     };
-
-    return this.logService.getFlowWindow(traceId, query);
+    return this.logService.getGraph(traceId, query);
   }
-}
-
-function parseCsv(value?: string): string[] | undefined {
-  if (!value) return undefined;
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }

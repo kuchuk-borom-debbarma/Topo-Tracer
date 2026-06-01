@@ -1,50 +1,36 @@
-import { flushAndShutdown, initExample, sleep } from "./_helpers";
+import { finish, fakeWork, initExample } from "./_helpers";
 import { Tracer, TraceNode } from "../src";
 
 /**
  * Monolith deep nesting.
  *
- * Flow intention:
- *   One process has a deeply nested function stack.
- *   Every function is its own node.
- *   This stresses local zoom/expand behavior without involving distributed systems.
+ * Intention:
+ *   Create 14 nested nodes so depth slider has real work.
+ *   At low depth, hidden children should become ghost summary nodes.
  */
 async function main() {
-  initExample("monolith", "Billing Monolith", "monolith");
+  initExample();
 
-  const root = Tracer.startTrace("POST /billing/invoice", {
-    kind: "http_server",
-    metadata: { scenario: "deep nested synchronous function calls" },
+  const root = Tracer.startTrace("Monolith: generateInvoice()", {
+    data: { scenario: "deep stack", expectedUi: "ghost nodes when maxDepth is low" },
   });
 
   const stack: TraceNode[] = [];
   let current = root;
-
-  for (let depth = 1; depth <= 12; depth++) {
-    current = current.startNode(`invoicePipeline.step${depth}()`, {
-      kind: "function",
-      metadata: {
-        depth,
-        intention: "Show a deep monolith call stack that should be zoomed locally",
-      },
+  for (let depth = 1; depth <= 14; depth++) {
+    current = current.startNode(`invoice.step${depth}()`, {
+      data: { depth, intent: "Stress depth-based hiding" },
     });
     stack.push(current);
-    await sleep(2);
+    await new Promise((resolve) => setTimeout(resolve, 1));
   }
 
-  const taxLookup = current.startNode("taxRules.selectByRegion()", {
-    kind: "db_query",
-    metadata: { table: "tax_rules" },
-  });
-  await sleep(10);
-  taxLookup.end();
+  const leafDb = current.startNode("SELECT tax_rules", { data: { db: "postgres" } });
+  await fakeWork(leafDb, 10);
 
-  for (const node of stack.reverse()) {
-    node.end();
-  }
-
+  for (const node of stack.reverse()) node.end();
   root.end();
-  await flushAndShutdown(root.traceId);
+  await finish(root.traceId);
 }
 
 main().catch(console.error);

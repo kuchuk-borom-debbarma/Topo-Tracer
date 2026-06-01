@@ -1,38 +1,33 @@
-import { flushAndShutdown, initExample, sleep } from "./_helpers";
+import { finish, fakeWork, initExample } from "./_helpers";
 import { Tracer } from "../src";
 
 /**
- * Basic v2 usage.
+ * Basic primitive graph.
  *
- * Flow intention:
- *   HTTP request enters one service.
- *   The handler calls two nested operations.
- *   Parent/child links plus automatic "continues" edges show simple synchronous flow.
+ * Intention:
+ *   Show smallest useful trace: request node -> validate node -> write node.
+ *   `depth` is nesting. Frontend slider hides nodes deeper than chosen depth.
  */
 async function main() {
-  initExample("api", "Checkout API", "service");
+  initExample();
 
-  const root = Tracer.startTrace("POST /checkout", {
-    kind: "http_server",
-    metadata: { route: "/checkout", method: "POST" },
+  const request = Tracer.startTrace("POST /checkout", {
+    data: { service: "checkout-api", route: "/checkout" },
   });
 
-  const validateCart = root.startNode("validateCart()", {
-    kind: "function",
-    metadata: { intention: "Reject invalid cart before doing expensive work" },
+  const validate = request.startNode("validateCart()", {
+    data: { module: "cart", intent: "Fail fast before writes" },
   });
-  await sleep(8);
-  validateCart.end();
+  await fakeWork(validate, 8);
 
-  const saveOrder = root.startNode("orders.insert()", {
-    kind: "db_query",
-    metadata: { sql: "INSERT INTO orders ..." },
+  const write = request.startNode("INSERT order", {
+    data: { db: "postgres", table: "orders" },
   });
-  await sleep(12);
-  saveOrder.end();
+  validate.connectTo(write, { label: "writes" });
+  await fakeWork(write, 14);
 
-  root.end();
-  await flushAndShutdown(root.traceId);
+  await fakeWork(request, 2);
+  await finish(request.traceId);
 }
 
 main().catch(console.error);
