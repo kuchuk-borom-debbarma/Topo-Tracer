@@ -1,118 +1,111 @@
 import { v4 as uuidv4 } from "uuid";
 import { Tracer } from "./Tracer";
-import { Level } from "./types";
+import { NodeConfig } from "./types";
 
-export interface SpanConfig {
-  groupName?: string;
-  level?: number;
-  tags?: Record<string, string>;
-}
+export { NodeConfig };
 
-export class Span {
+export class TraceNode {
   public id: string;
   public traceId: string;
   public name: string;
-  public groupName: string;
-  public level: number;
-  public tags: Record<string, string>;
+  public containerId: string;
   private isFinished = false;
 
   constructor(opts: {
     id?: string;
     traceId: string;
     name: string;
-    groupName?: string;
-    level?: number;
-    tags?: Record<string, string>;
+    containerId: string;
+    parentId?: string | null;
+    kind?: string | null;
+    metadata?: Record<string, unknown>;
   }) {
     this.id = opts.id || uuidv4();
     this.traceId = opts.traceId;
     this.name = opts.name;
-    // Default groupName to the span name if not provided
-    this.groupName = opts.groupName || this.name;
-    // Default level to INFO if not provided
-    this.level = opts.level !== undefined ? opts.level : Level.INFO;
-    this.tags = opts.tags || {};
+    this.containerId = opts.containerId;
 
-    // Export the "started" span event
-    Tracer.exportSpan({
-      id: this.id,
+    Tracer.ensureContainer(this.traceId, this.containerId);
+    Tracer.exportEvent({
       traceId: this.traceId,
+      entityId: this.id,
+      entityType: "node",
+      eventType: "node.started",
+      occurredAtUnixMs: Date.now(),
+      containerId: this.containerId,
+      parentId: opts.parentId ?? null,
       name: this.name,
-      groupName: this.groupName,
-      level: this.level,
-      tags: this.tags,
-      eventType: "started",
-      timestamp: Date.now(),
+      kind: opts.kind ?? "operation",
+      status: "open",
+      metadata: opts.metadata,
     });
   }
 
-  /**
-   * Starts a child span and automatically logs a directed connection edge to it.
-   */
-  public startSpan(name: string, config?: SpanConfig): Span {
-    const child = new Span({
+  public startNode(name: string, config?: NodeConfig): TraceNode {
+    const child = new TraceNode({
       traceId: this.traceId,
       name,
-      groupName: config?.groupName,
-      level: config?.level,
-      tags: config?.tags,
+      containerId: config?.containerId || this.containerId,
+      parentId: this.id,
+      kind: config?.kind,
+      metadata: config?.metadata,
     });
-    
-    // Auto-wire the parent-child relationship via an edge
-    this.logEdge(child.id);
-
+    this.logEdge(this.id, child.id, "continues");
     return child;
   }
 
-  /**
-   * Quick utility to log an instantaneous execution span (leaf node).
-   */
-  public logSpan(name: string, config?: SpanConfig): string {
-    const child = this.startSpan(name, config);
-    child.end();
+  public logNode(name: string, config?: NodeConfig): string {
+    const child = this.startNode(name, config);
+    child.end(config?.status === "open" ? "ok" : config?.status);
     return child.id;
   }
 
-  /**
-   * Logs a directed connection edge from the current span to a target span ID.
-   */
-  public logEdge(toSpanId: string) {
-    Tracer.exportEdge({
-      id: uuidv4(),
+  public logEdge(fromId: string, toId: string, kind: string, endImmediately = true): string {
+    const edgeId = uuidv4();
+    const startedAt = Date.now();
+    Tracer.exportEvent({
       traceId: this.traceId,
-      fromSpanId: this.id,
-      toSpanId,
-      timestamp: Date.now(),
+      entityId: edgeId,
+      entityType: "edge",
+      eventType: "edge.started",
+      occurredAtUnixMs: startedAt,
+      fromId,
+      toId,
+      kind,
+      status: "open",
     });
+    if (endImmediately) {
+      Tracer.exportEvent({
+        traceId: this.traceId,
+        entityId: edgeId,
+        entityType: "edge",
+        eventType: "edge.ended",
+        occurredAtUnixMs: Date.now(),
+        status: "ok",
+      });
+    }
+    return edgeId;
   }
 
-  /**
-   * Helper to create standard network headers to propagate trace context.
-   */
-  public createCarrierHeaders(targetSpanId?: string): Record<string, string> {
+  public createCarrierHeaders(targetNodeId?: string): Record<string, string> {
     return {
       "x-trace-id": this.traceId,
-      "x-parent-span-id": targetSpanId || this.id,
+      "x-parent-node-id": targetNodeId || this.id,
     };
   }
 
-  /**
-   * Completes the execution of the current span scope.
-   */
-  public end() {
+  public end(status: "ok" | "error" | "warning" = "ok") {
     if (this.isFinished) return;
     this.isFinished = true;
-
-    Tracer.exportSpan({
-      id: this.id,
+    Tracer.exportEvent({
       traceId: this.traceId,
-      name: this.name,
-      groupName: this.groupName,
-      level: this.level,
-      tags: this.tags,
-      eventType: "ended",
-      timestamp: Date.now(),
+      entityId: this.id,
+      entityType: "node",
+      eventType: "node.ended",
+      occurredAtUnixMs: Date.now(),
+      status,
     });
   }
 }
+
+export const Span = TraceNode;

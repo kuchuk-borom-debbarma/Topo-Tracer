@@ -1,45 +1,43 @@
-export const Level = {
-  TRACE: 10,
-  DEBUG: 20,
-  INFO: 30,
-  WARN: 40,
-  ERROR: 50,
-} as const;
+export type TraceEventType =
+  | "container.started"
+  | "container.ended"
+  | "node.started"
+  | "node.ended"
+  | "edge.started"
+  | "edge.ended";
 
-export type TraceSpanInput = {
-  id: string;
-  traceId: string;
-  name: string;
-  groupName: string;
-  level: number;
-  tags: Record<string, string>;
-  eventType: "started" | "ended";
-  timestamp: number; // UNIX timestamp in ms
-};
+export type TraceEntityType = "container" | "node" | "edge";
 
-export type TraceEdgeInput = {
-  id: string;
+export type TraceEventInput = {
+  eventId?: string;
   traceId: string;
-  fromSpanId: string;
-  toSpanId: string;
-  timestamp: number; // UNIX timestamp in ms
+  entityId: string;
+  entityType: TraceEntityType;
+  eventType: TraceEventType;
+  occurredAtUnixMs: number;
+  parentId?: string | null;
+  containerId?: string | null;
+  fromId?: string | null;
+  toId?: string | null;
+  kind?: string | null;
+  name?: string | null;
+  status?: "ok" | "error" | "warning" | "open" | null;
+  metadata?: Record<string, unknown>;
 };
 
 export interface TracerConfig {
-  /**
-   * The base URL of the carno.js backend, e.g. "http://localhost:3000"
-   */
   baseUrl: string;
-  
-  /**
-   * The maximum number of items to keep in memory before flushing.
-   * Default: 100
-   */
   batchSize?: number;
-
-  /**
-   * The interval in milliseconds to periodically flush data.
-   * Default: 2000
-   */
   flushIntervalMs?: number;
+  containerId?: string;
+  containerName?: string;
+  containerKind?: string;
+}
+
+export interface NodeConfig {
+  containerId?: string;
+  parentId?: string | null;
+  kind?: string;
+  status?: "ok" | "error" | "warning" | "open";
+  metadata?: Record<string, unknown>;
 }

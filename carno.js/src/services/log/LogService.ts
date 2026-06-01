@@ -1,225 +1,174 @@
 import { Service } from "@carno.js/core";
-import { ClickHouseService } from "../../infra/ClickHouseService";
-import type { 
-  TraceSpanInput, 
-  TraceEdgeInput, 
-  TraceLayoutResponse,
-  TraceListResponse
+import { RawEventRepository } from "./RawEventRepository";
+import { ReadModelRepository } from "./ReadModelRepository";
+import type {
+  FlowWindowQuery,
+  FlowWindowResponse,
+  ReadContainer,
+  ReadEdge,
+  ReadNode,
+  TraceEventInput,
+  TraceListResponse,
+  TraceSummary,
 } from "./types";
+
+const DEFAULT_DETAIL_BUDGET = 250;
+const MAX_DETAIL_BUDGET = 500;
 
 @Service()
 export class LogService {
-  constructor(private clickhouse: ClickHouseService) {}
+  constructor(
+    private rawEvents: RawEventRepository,
+    private readModels: ReadModelRepository,
+  ) {}
 
-  async logSpans(spans: TraceSpanInput[]): Promise<void> {
-    if (!spans.length) return;
-    
-    const rows = spans.map(s => ({
-      id: s.id,
-      trace_id: s.traceId,
-      name: s.name,
-      group_name: s.groupName,
-      level: s.level,
-      tags: s.tags,
-      event_type: s.eventType === "started" ? 1 : 2,
-      timestamp: s.timestamp
-    }));
-
-    await this.clickhouse.client.insert({
-      table: "toco_tracer.raw_spans",
-      values: rows,
-      format: "JSONEachRow"
-    });
+  async ingestEvents(events: TraceEventInput[]): Promise<{ ok: true; count: number }> {
+    validateEvents(events);
+    const count = await this.rawEvents.append(events);
+    return { ok: true, count };
   }
 
-  async logEdges(edges: TraceEdgeInput[]): Promise<void> {
-    if (!edges.length) return;
-
-    const rows = edges.map(e => ({
-      id: e.id,
-      trace_id: e.traceId,
-      from_span_id: e.fromSpanId,
-      to_span_id: e.toSpanId,
-      timestamp: e.timestamp
-    }));
-
-    await this.clickhouse.client.insert({
-      table: "toco_tracer.raw_edges",
-      values: rows,
-      format: "JSONEachRow"
-    });
+  listTraces(page: number, limit: number): Promise<TraceListResponse> {
+    return this.readModels.listTraces(page, limit);
   }
 
-  async getTraceLayout(traceId: string, maxLevel?: number): Promise<TraceLayoutResponse | null> { 
-    // 1. Fetch Visible Spans
-    let spansQuery = `SELECT * FROM toco_tracer.read_spans WHERE trace_id = '${traceId}'`;
-    
-    if (maxLevel !== undefined) {
-      spansQuery += `
-        AND (
-          level <= ${maxLevel}
-          OR level >= 50
-          OR id IN (
-            SELECT arrayJoin(ancestry_path) 
-            FROM toco_tracer.read_spans 
-            WHERE trace_id = '${traceId}' AND level >= 50
-          )
-        )
-      `;
-    }
+  getTraceSummary(traceId: string): Promise<TraceSummary | null> {
+    return this.readModels.getSummary(traceId);
+  }
 
-    // 2. Fetch Edges with Ancestry
-    const edgesQuery = `
-      SELECT 
-        e.id, 
-        e.trace_id, 
-        e.from_span_id, 
-        e.to_span_id,
-        s_from.ancestry_path as from_ancestry,
-        s_to.ancestry_path as to_ancestry
-      FROM toco_tracer.read_edges e
-      LEFT JOIN toco_tracer.read_spans s_from ON e.from_span_id = s_from.id
-      LEFT JOIN toco_tracer.read_spans s_to ON e.to_span_id = s_to.id
-      WHERE e.trace_id = '${traceId}'
-    `;
-
-    const [spansResult, edgesResult] = await Promise.all([
-      this.clickhouse.client.query({ query: spansQuery, format: 'JSONEachRow' }),
-      this.clickhouse.client.query({ query: edgesQuery, format: 'JSONEachRow' })
+  async getFlowWindow(traceId: string, query: FlowWindowQuery): Promise<FlowWindowResponse | null> {
+    const [summary, containers, allNodes, allEdges] = await Promise.all([
+      this.readModels.getSummary(traceId),
+      this.readModels.getContainers(traceId),
+      this.readModels.getNodes(traceId),
+      this.readModels.getEdges(traceId),
     ]);
 
-    const spans = await spansResult.json<any>();
-    if (spans.length === 0) return null;
+    if (!summary) return null;
 
-    const rawEdges = await edgesResult.json<any>();
+    const detailBudget = clampBudget(query.detailBudget);
+    const anchorOrder = resolveAnchorOrder(query, allNodes);
+    const before = Math.max(0, query.before ?? Math.floor(detailBudget / 2));
+    const after = Math.max(0, query.after ?? detailBudget - before);
+    const start = Math.max(0, anchorOrder - before);
+    const endExclusive = Math.min(allNodes.length, anchorOrder + after + 1);
 
-    // Build visible spans map for fast lookup
-    const visibleSpansMap = new Set(spans.map((s: any) => s.id));
+    const expandedIds = new Set(query.expandedIds ?? []);
+    const hiddenIds = new Set(query.hiddenIds ?? []);
+    const visibleNodes = selectVisibleNodes(allNodes, start, endExclusive, expandedIds, hiddenIds, detailBudget);
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    const visibleContainerIds = new Set<string>();
 
-    // 3. Resolve Edges (The Ghost Router)
-    const edgeMap = new Map<string, any>();
-
-    for (const edge of rawEdges) {
-      let resolvedFromId = edge.from_span_id;
-      let resolvedToId = edge.to_span_id;
-      let isGhost = false;
-
-      // Walk up ancestry if from_span_id is hidden
-      if (!visibleSpansMap.has(resolvedFromId) && edge.from_ancestry) {
-        const fromAncestry: string[] = edge.from_ancestry;
-        let found = false;
-        // Walk backwards (bottom-up)
-        for (let i = fromAncestry.length - 1; i >= 0; i--) {
-          if (visibleSpansMap.has(fromAncestry[i])) {
-            resolvedFromId = fromAncestry[i];
-            isGhost = true;
-            found = true;
-            break;
-          }
-        }
-        // If dead-end (no visible ancestor), drop this edge
-        if (!found) continue;
-      }
-
-      // Walk up ancestry if to_span_id is hidden
-      if (!visibleSpansMap.has(resolvedToId) && edge.to_ancestry) {
-        const toAncestry: string[] = edge.to_ancestry;
-        let found = false;
-        for (let i = toAncestry.length - 1; i >= 0; i--) {
-          if (visibleSpansMap.has(toAncestry[i])) {
-            resolvedToId = toAncestry[i];
-            isGhost = true;
-            found = true;
-            break;
-          }
-        }
-        // If dead-end, drop this edge
-        if (!found) continue;
-      }
-
-      // Drop internal loops
-      if (resolvedFromId === resolvedToId) continue;
-
-      // 4. Group Ghost Edges
-      const edgeKey = `${resolvedFromId}->${resolvedToId}`;
-      if (edgeMap.has(edgeKey)) {
-        const existing = edgeMap.get(edgeKey);
-        if (isGhost) {
-          existing.ghostCount = (existing.ghostCount || 1) + 1;
-        }
-      } else {
-        edgeMap.set(edgeKey, {
-          id: isGhost ? `ghost-${edgeKey}` : edge.id,
-          traceId: traceId,
-          fromSpanId: resolvedFromId,
-          toSpanId: resolvedToId,
-          isGhost: isGhost || undefined,
-          ghostCount: isGhost ? 1 : undefined,
-        });
+    for (const node of visibleNodes) {
+      if (node.containerId) {
+        visibleContainerIds.add(node.containerId);
+        addContainerAncestors(node.containerId, containers, visibleContainerIds);
       }
     }
 
-    const resolvedEdges = Array.from(edgeMap.values());
+    const visibleContainers = containers.filter((container) => visibleContainerIds.has(container.id));
+    const visibleEdges = allEdges.filter(
+      (edge) => visibleNodeIds.has(edge.fromId) && visibleNodeIds.has(edge.toId)
+    );
+
+    const omittedNodeCount = Math.max(0, summary.nodeCount - visibleNodes.length);
+    const omittedEdgeCount = Math.max(0, summary.edgeCount - visibleEdges.length);
 
     return {
-      metadata: { traceId },
-      spans: spans.map((s: any) => ({
-        id: s.id,
-        traceId: s.trace_id,
-        name: s.name,
-        groupName: s.group_name,
-        level: s.level,
-        tags: s.tags,
-        startTimeUs: s.start_time_us ? Number(s.start_time_us) : 0,
-        endTimeUs: s.end_time_us ? Number(s.end_time_us) : null,
-        durationUs: s.duration_us ? Number(s.duration_us) : null,
-        ancestryPath: s.ancestry_path || [],
-      })),
-      edges: resolvedEdges,
-    };
-  }
-
-  async listTraces(page: number, limit: number): Promise<TraceListResponse> {
-    const offset = (page - 1) * limit;
-
-    const tracesQuery = `
-      SELECT 
-        trace_id as traceId, 
-        MIN(start_time_us) as createdAt, 
-        count() as spanCount 
-      FROM toco_tracer.read_spans 
-      GROUP BY trace_id 
-      ORDER BY createdAt DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-
-    const totalQuery = `
-      SELECT count() as total FROM (
-        SELECT trace_id FROM toco_tracer.read_spans GROUP BY trace_id
-      )
-    `;
-
-    const [tracesResult, totalResult] = await Promise.all([
-      this.clickhouse.client.query({ query: tracesQuery, format: 'JSONEachRow' }),
-      this.clickhouse.client.query({ query: totalQuery, format: 'JSONEachRow' })
-    ]);
-
-    const traces = await tracesResult.json<any>();
-    const totalData = await totalResult.json<any>();
-    const total = totalData.length > 0 ? Number(totalData[0].total) : 0;
-    const totalPages = Math.ceil(total / limit);
-
-    return { 
-      traces: traces.map((t: any) => ({
-        traceId: t.traceId,
-        createdAt: Number(t.createdAt) / 1000, // convert us to ms for the frontend
-        spanCount: Number(t.spanCount)
-      })), 
-      total, 
-      page, 
-      limit, 
-      totalPages 
+      metadata: {
+        traceId,
+        anchorId: query.anchorId ?? null,
+        detailBudget,
+        returnedNodeCount: visibleNodes.length,
+        totalNodeCount: summary.nodeCount,
+        omittedNodeCount,
+        omittedEdgeCount,
+        hasMoreBefore: start > 0,
+        hasMoreAfter: endExclusive < allNodes.length,
+        previousCursor: start > 0 ? encodeCursor(Math.max(0, start - 1)) : null,
+        nextCursor: endExclusive < allNodes.length ? encodeCursor(endExclusive) : null,
+      },
+      summary,
+      containers: visibleContainers,
+      nodes: visibleNodes,
+      edges: visibleEdges,
     };
   }
 }
 
+function validateEvents(events: TraceEventInput[]): void {
+  if (!Array.isArray(events)) throw new Error("Request body must be an array of trace events");
+  for (const event of events) {
+    if (!event.traceId || !event.entityId || !event.entityType || !event.eventType) {
+      throw new Error("Trace event missing traceId/entityId/entityType/eventType");
+    }
+    if (!Number.isFinite(event.occurredAtUnixMs)) {
+      throw new Error("Trace event missing valid occurredAtUnixMs");
+    }
+  }
+}
+
+function clampBudget(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) return DEFAULT_DETAIL_BUDGET;
+  return Math.min(MAX_DETAIL_BUDGET, Math.max(1, Math.floor(value)));
+}
+
+function resolveAnchorOrder(query: FlowWindowQuery, nodes: ReadNode[]): number {
+  if (query.cursor) {
+    const cursor = decodeCursor(query.cursor);
+    if (cursor !== null) return Math.min(nodes.length - 1, Math.max(0, cursor));
+  }
+  if (query.anchorId) {
+    const anchor = nodes.find((node) => node.id === query.anchorId);
+    if (anchor) return anchor.flowOrder;
+  }
+  return 0;
+}
+
+function selectVisibleNodes(
+  nodes: ReadNode[],
+  start: number,
+  endExclusive: number,
+  expandedIds: Set<string>,
+  hiddenIds: Set<string>,
+  detailBudget: number,
+): ReadNode[] {
+  const base = nodes.slice(start, endExclusive).filter((node) => !hiddenIds.has(node.id));
+  const visible = new Map(base.map((node) => [node.id, node]));
+
+  for (const node of nodes) {
+    if (visible.size >= detailBudget) break;
+    if (!hiddenIds.has(node.id) && node.parentId && expandedIds.has(node.parentId)) {
+      visible.set(node.id, node);
+    }
+  }
+
+  return Array.from(visible.values())
+    .sort((a, b) => a.flowOrder - b.flowOrder)
+    .slice(0, detailBudget);
+}
+
+function addContainerAncestors(
+  containerId: string,
+  containers: ReadContainer[],
+  visibleContainerIds: Set<string>,
+): void {
+  const byId = new Map(containers.map((container) => [container.id, container]));
+  const container = byId.get(containerId);
+  for (const ancestorId of container?.ancestryIds ?? []) {
+    visibleContainerIds.add(ancestorId);
+  }
+}
+
+function encodeCursor(flowOrder: number): string {
+  return Buffer.from(String(flowOrder), "utf8").toString("base64url");
+}
+
+function decodeCursor(cursor: string): number | null {
+  try {
+    const value = Number(Buffer.from(cursor, "base64url").toString("utf8"));
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}

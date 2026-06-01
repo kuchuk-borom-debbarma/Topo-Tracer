@@ -1,13 +1,10 @@
-import { TraceSpanInput, TraceEdgeInput, TracerConfig } from "./types";
+import { TraceEventInput, TracerConfig } from "./types";
 
 export class BatchExporter {
   private baseUrl: string;
   private batchSize: number;
   private flushIntervalMs: number;
-
-  private spans: TraceSpanInput[] = [];
-  private edges: TraceEdgeInput[] = [];
-
+  private events: TraceEventInput[] = [];
   private timer: NodeJS.Timeout | null = null;
   private isFlushing = false;
 
@@ -22,7 +19,7 @@ export class BatchExporter {
     this.timer = setInterval(() => {
       this.flush().catch(err => console.error("[TopoTracer] Background flush failed:", err));
     }, this.flushIntervalMs);
-    this.timer.unref(); // Don't keep the Node.js event loop alive just for the timer
+    this.timer.unref();
   }
 
   public stop() {
@@ -33,21 +30,9 @@ export class BatchExporter {
     return this.flush();
   }
 
-  public addSpan(span: TraceSpanInput) {
-    this.spans.push(span);
-    this.checkBatchSize();
-  }
-
-  public addEdge(edge: TraceEdgeInput) {
-    this.edges.push(edge);
-    this.checkBatchSize();
-  }
-
-  private checkBatchSize() {
-    if (
-      this.spans.length >= this.batchSize ||
-      this.edges.length >= this.batchSize
-    ) {
+  public addEvent(event: TraceEventInput) {
+    this.events.push(event);
+    if (this.events.length >= this.batchSize) {
       setImmediate(() => {
         this.flush().catch(err => console.error("[TopoTracer] Batch size flush failed:", err));
       });
@@ -56,26 +41,12 @@ export class BatchExporter {
 
   public async flush(): Promise<void> {
     if (this.isFlushing) return;
-    
-    const spansToFlush = this.spans.splice(0, this.spans.length);
-    const edgesToFlush = this.edges.splice(0, this.edges.length);
-
-    if (
-      spansToFlush.length === 0 &&
-      edgesToFlush.length === 0
-    ) {
-      return;
-    }
+    const eventsToFlush = this.events.splice(0, this.events.length);
+    if (eventsToFlush.length === 0) return;
 
     this.isFlushing = true;
-
     try {
-      if (spansToFlush.length > 0) {
-        await this.post("/telemetry/spans", spansToFlush);
-      }
-      if (edgesToFlush.length > 0) {
-        await this.post("/telemetry/edges", edgesToFlush);
-      }
+      await this.post("/telemetry/events", eventsToFlush);
     } catch (error) {
       console.warn("[TopoTracer] Failed to flush telemetry batch. Data dropped.", error);
     } finally {
@@ -83,14 +54,11 @@ export class BatchExporter {
     }
   }
 
-  private async post(path: string, data: any) {
-    const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
+  private async post(path: string, data: unknown) {
+    const response = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(data)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
     });
 
     if (!response.ok) {

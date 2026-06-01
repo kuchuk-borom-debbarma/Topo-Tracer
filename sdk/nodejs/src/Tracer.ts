@@ -1,107 +1,81 @@
-import { BatchExporter } from "./BatchExporter";
-import { Span, SpanConfig } from "./Span";
-import { TraceSpanInput, TraceEdgeInput, TracerConfig } from "./types";
 import { v4 as uuidv4 } from "uuid";
+import { BatchExporter } from "./BatchExporter";
+import { TraceNode, NodeConfig } from "./Span";
+import { TraceEventInput, TracerConfig } from "./types";
 
 export class Tracer {
   private static exporter: BatchExporter | null = null;
-  private static serviceSpanId: string | null = null;
-  private static loggedTraces = new Set<string>();
+  private static containerId = "app";
+  private static containerName = "Application";
+  private static containerKind = "service";
+  private static announcedContainers = new Set<string>();
 
-  /**
-   * Initialize the global Tracer.
-   * @param config - Configuration for the backend connection and batching.
-   */
   public static init(config: TracerConfig) {
     this.exporter = new BatchExporter(config);
     this.exporter.start();
-    this.serviceSpanId = uuidv4();
+    this.containerId = config.containerId || "app";
+    this.containerName = config.containerName || "Application";
+    this.containerKind = config.containerKind || "service";
   }
 
-  /**
-   * Starts a completely new root trace.
-   */
-  public static startTrace(
-    name: string, 
-    opts?: SpanConfig
-  ): Span {
+  public static startTrace(name: string, opts?: NodeConfig): TraceNode {
     const traceId = uuidv4();
-    return new Span({
+    this.ensureContainer(traceId, opts?.containerId || this.containerId);
+    return new TraceNode({
       traceId,
       name,
-      groupName: opts?.groupName,
-      level: opts?.level,
-      tags: opts?.tags,
+      containerId: opts?.containerId || this.containerId,
+      kind: opts?.kind,
+      metadata: opts?.metadata,
     });
   }
 
-  /**
-   * Continues an existing trace from incoming request carrier context headers.
-   */
   public static continueTrace(
     headers: Record<string, string | undefined>,
     name: string,
-    opts?: SpanConfig
-  ): Span {
+    opts?: NodeConfig,
+  ): TraceNode {
     const traceId = headers["x-trace-id"] || uuidv4();
-    const parentSpanId = headers["x-parent-span-id"] || null;
-
-    const span = new Span({
+    const parentId = headers["x-parent-node-id"] || null;
+    this.ensureContainer(traceId, opts?.containerId || this.containerId);
+    const node = new TraceNode({
       traceId,
       name,
-      groupName: opts?.groupName,
-      level: opts?.level,
-      tags: opts?.tags,
+      parentId,
+      containerId: opts?.containerId || this.containerId,
+      kind: opts?.kind,
+      metadata: opts?.metadata,
     });
 
-    if (parentSpanId) {
-      // Connect to the remote parent span via an edge
-      Tracer.exportEdge({
-        id: uuidv4(),
-        traceId,
-        fromSpanId: parentSpanId,
-        toSpanId: span.id,
-        timestamp: Date.now(),
-      });
-    }
-
-    return span;
+    if (parentId) node.logEdge(parentId, node.id, "continues");
+    return node;
   }
 
-  /**
-   * Internal method used to queue a span event for export.
-   */
-  public static exportSpan(span: TraceSpanInput) {
-    if (this.exporter) {
-      this.exporter.addSpan(span);
-    }
+  public static exportEvent(event: TraceEventInput) {
+    this.exporter?.addEvent(event);
   }
 
-  /**
-   * Internal method used to queue an edge for export.
-   */
-  public static exportEdge(edge: TraceEdgeInput) {
-    if (this.exporter) {
-      this.exporter.addEdge(edge);
-    }
-  }
-  
-  /**
-   * Manually flush the current batch of telemetry to the backend.
-   */
   public static async flush() {
-    if (this.exporter) {
-      await this.exporter.flush();
-    }
+    await this.exporter?.flush();
   }
-  
-  /**
-   * Flush pending telemetry and stop background timers.
-   */
+
   public static async shutdown() {
-    if (this.exporter) {
-      await this.exporter.stop();
-    }
+    await this.exporter?.stop();
+  }
+
+  public static ensureContainer(traceId: string, containerId: string) {
+    const key = `${traceId}:${containerId}`;
+    if (this.announcedContainers.has(key)) return;
+    this.announcedContainers.add(key);
+    this.exportEvent({
+      traceId,
+      entityId: containerId,
+      entityType: "container",
+      eventType: "container.started",
+      occurredAtUnixMs: Date.now(),
+      name: containerId === this.containerId ? this.containerName : containerId,
+      kind: containerId === this.containerId ? this.containerKind : "container",
+      status: "open",
+    });
   }
 }
-
