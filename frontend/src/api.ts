@@ -1,6 +1,6 @@
 import type { GraphWindowResponse, TraceListResponse, TraceSummary } from "./types";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3999";
 
 export async function fetchTraces(page = 1, limit = 20): Promise<TraceListResponse> {
   return getJson(`/telemetry/traces?page=${page}&limit=${limit}`);

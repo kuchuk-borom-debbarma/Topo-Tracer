@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-const BASE_URL = process.env.TOPO_TRACER_URL ?? "http://localhost:3000";
+const BASE_URL = process.env.TOPO_TRACER_URL ?? "http://localhost:3999";
 const TRACE_ID = `node_trace_${Date.now()}`;
 const LARGE_MODE = process.argv.includes("--large");
 const NODE_COUNT = LARGE_MODE ? 10_500 : 36;

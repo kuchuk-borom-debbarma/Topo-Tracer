@@ -24,4 +24,4 @@ app.services([
 ]);
 
 app.controllers([LogController]);
-app.listen(Number(process.env.PORT ?? 3000));
+app.listen(Number(process.env.PORT ?? 3999));

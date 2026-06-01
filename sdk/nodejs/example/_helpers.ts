@@ -1,6 +1,6 @@
 import { Tracer, TraceNode } from "../src";
 
-export const BACKEND_URL = process.env.TOPO_TRACER_URL ?? "http://localhost:3000";
+export const BACKEND_URL = process.env.TOPO_TRACER_URL ?? "http://localhost:3999";
 
 export function initExample() {
   Tracer.init({

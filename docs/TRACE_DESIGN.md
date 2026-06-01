@@ -189,6 +189,18 @@ POST /telemetry/events
 POST /telemetry/materialize
 ```
 
+Local development uses:
+
+- Backend: `http://localhost:3999`
+- Frontend: Vite dev server, usually `http://localhost:5173`
+- Frontend override: `VITE_API_BASE_URL=http://localhost:3999`
+- SDK/seed override: `TOPO_TRACER_URL=http://localhost:3999`
+
+Backend enables CORS with `origins: "*"`. If browser says
+`CORS request did not succeed` with status `(null)`, first check that backend is
+actually listening on `3999`; browsers often show that message for connection
+refused or stopped local servers.
+
 Projection steps:
 
 1. Load materialized nodes, edges, and summary for one trace.
