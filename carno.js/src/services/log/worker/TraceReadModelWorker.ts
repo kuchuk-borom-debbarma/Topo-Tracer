@@ -49,7 +49,7 @@ export class TraceReadModelWorker {
       `[TraceReadModelWorker] Materialized ${traceId}: ` +
       `${readModel.summary.nodeCount} nodes, ` +
       `${readModel.summary.edgeCount} edges, ` +
-      `max depth ${readModel.summary.maxDepth}`
+      `max importance ${readModel.summary.maxImportanceLevel}`
     );
   }
 }

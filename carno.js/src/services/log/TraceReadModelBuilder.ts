@@ -13,7 +13,7 @@ type NodeDraft = {
   traceId: string;
   parentId: string | null;
   name: string;
-  depth: number | null;
+  importanceLevel: number | null;
   status: string;
   startedAtUnixMs: number | null;
   endedAtUnixMs: number | null;
@@ -55,20 +55,21 @@ export class TraceReadModelBuilder {
     const flowOrder = computeFlowOrder(nodeDrafts, edgeDrafts);
 
     const nodes = Array.from(nodeDrafts.values()).map<ReadNode>((draft) => {
-      finalizeLifecycle(draft);
+      finalizeLifecycle(draft, { missingEndIsDiagnostic: true });
       const ancestryPath = ancestry.get(draft.id) ?? [];
-      const depth = draft.depth ?? ancestryPath.length;
+      const importanceLevel = draft.importanceLevel ?? 0;
       return {
         id: draft.id,
         traceId: draft.traceId,
         parentId: draft.parentId,
         name: draft.name,
-        depth,
+        importanceLevel,
         status: draft.status,
         startedAtUnixMs: draft.startedAtUnixMs,
         endedAtUnixMs: draft.endedAtUnixMs,
         durationMs: durationOf(draft),
         ancestryPath,
+        indentLevel: ancestryPath.length,
         flowOrder: flowOrder.get(draft.id) ?? Number.MAX_SAFE_INTEGER,
         diagnostics: Array.from(draft.diagnostics),
         data: draft.data,
@@ -76,7 +77,7 @@ export class TraceReadModelBuilder {
     }).sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
 
     const edges = Array.from(edgeDrafts.values()).map<ReadEdge>((draft) => {
-      finalizeLifecycle(draft);
+      finalizeLifecycle(draft, { missingEndIsDiagnostic: false });
       if (!draft.fromNodeId || !draft.toNodeId || !nodeDrafts.has(draft.fromNodeId) || !nodeDrafts.has(draft.toNodeId)) {
         draft.diagnostics.add("orphanEdge");
       }
@@ -119,7 +120,7 @@ export class TraceReadModelBuilder {
         edgeCount: edges.length,
         errorCount: [...nodes, ...edges].filter((item) => item.status === "error").length,
         diagnosticCount: diagnostics.length,
-        maxDepth: nodes.reduce((max, node) => Math.max(max, node.depth), 0),
+        maxImportanceLevel: nodes.reduce((max, node) => Math.max(max, node.importanceLevel), 0),
         materializedAtUnixMs: Date.now(),
       },
     };
@@ -132,7 +133,7 @@ function applyNodeEvent(map: Map<string, NodeDraft>, event: TraceEventRecord): v
     traceId: event.traceId,
     parentId: null,
     name: event.entityId,
-    depth: null,
+    importanceLevel: null,
     status: "open",
     startedAtUnixMs: null,
     endedAtUnixMs: null,
@@ -142,7 +143,7 @@ function applyNodeEvent(map: Map<string, NodeDraft>, event: TraceEventRecord): v
 
   draft.parentId = event.parentId ?? draft.parentId;
   draft.name = event.name ?? draft.name;
-  draft.depth = event.depth ?? draft.depth;
+  draft.importanceLevel = event.importanceLevel ?? draft.importanceLevel;
   draft.data = { ...draft.data, ...event.data };
   applyStatusAndTime(draft, event);
   map.set(event.entityId, draft);
@@ -185,9 +186,12 @@ function applyStatusAndTime(draft: NodeDraft | EdgeDraft, event: TraceEventRecor
   }
 }
 
-function finalizeLifecycle(draft: NodeDraft | EdgeDraft): void {
+function finalizeLifecycle(
+  draft: NodeDraft | EdgeDraft,
+  options: { missingEndIsDiagnostic: boolean },
+): void {
   if (draft.startedAtUnixMs === null) draft.diagnostics.add("missingStart");
-  if (draft.endedAtUnixMs === null) draft.diagnostics.add("missingEnd");
+  if (options.missingEndIsDiagnostic && draft.endedAtUnixMs === null) draft.diagnostics.add("missingEnd");
   if (draft.startedAtUnixMs !== null && draft.endedAtUnixMs !== null && draft.endedAtUnixMs < draft.startedAtUnixMs) {
     draft.diagnostics.add("negativeDuration");
   }

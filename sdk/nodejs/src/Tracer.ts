@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { BatchExporter } from "./BatchExporter";
 import { TraceNode } from "./Span";
-import { EdgeConfig, NodeConfig, TraceEventInput, TracerConfig } from "./types";
+import { normalizeImportance } from "./importance";
+import type { EdgeConfig, NodeConfig, TraceEventInput, TracerConfig } from "./types";
 
 export class Tracer {
   private static exporter: BatchExporter | null = null;
@@ -15,7 +16,7 @@ export class Tracer {
     return new TraceNode({
       traceId: uuidv4(),
       name,
-      depth: config?.depth ?? 0,
+      importanceLevel: normalizeImportance(config?.importanceLevel, 0),
       data: config?.data,
     });
   }
@@ -27,12 +28,12 @@ export class Tracer {
   ): TraceNode {
     const traceId = headers["x-trace-id"] || uuidv4();
     const parentId = headers["x-parent-node-id"] || null;
-    const depth = Number(headers["x-parent-node-depth"] ?? -1) + 1;
+    const parentImportance = normalizeImportance(Number(headers["x-parent-node-importance"] ?? 0), 0);
     return new TraceNode({
       traceId,
       name,
       parentId,
-      depth: config?.depth ?? Math.max(0, depth),
+      importanceLevel: normalizeImportance(config?.importanceLevel, parentImportance),
       data: config?.data,
     });
   }

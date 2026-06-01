@@ -22,9 +22,14 @@ export class ClickHouseService {
   private async runMigrations(): Promise<void> {
     await this.clientInstance.command({ query: "CREATE DATABASE IF NOT EXISTS topo_tracer" });
 
+    // Append-only source of truth.
+    //
+    // ORDER BY starts with trace_id because every materializer/read query is trace-scoped.
+    // received_at_ms + event_id gives deterministic replay order when SDK clocks skew.
+    // importance_level is SDK-provided semantic importance: 0 = most important.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_trace_events (
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_trace_events (
           trace_id String,
           event_id String,
           entity_id String,
@@ -33,7 +38,7 @@ export class ClickHouseService {
           occurred_at_ms Int64,
           received_at_ms Int64,
           name Nullable(String),
-          depth Nullable(Int32),
+          importance_level Nullable(Int32),
           parent_id Nullable(String),
           from_node_id Nullable(String),
           to_node_id Nullable(String),
@@ -46,19 +51,25 @@ export class ClickHouseService {
       `,
     });
 
+    // Read-optimized nodes.
+    //
+    // ReplacingMergeTree lets worker rebuild read rows after late events without
+    // mutating raw history. ORDER BY supports graph page query:
+    // WHERE trace_id = ? ORDER BY flow_order.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_read_nodes (
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_read_nodes (
           trace_id String,
           id String,
           parent_id Nullable(String),
           name String,
-          depth Int32,
+          importance_level Int32,
           status LowCardinality(String),
           started_at_ms Nullable(Int64),
           ended_at_ms Nullable(Int64),
           duration_ms Nullable(Int64),
           ancestry_path Array(String),
+          indent_level Int32,
           flow_order Int64,
           diagnostics Array(String),
           data String,
@@ -69,9 +80,13 @@ export class ClickHouseService {
       `,
     });
 
+    // Read-optimized edges.
+    //
+    // Edges are looked up by trace, then lifted to visible/ghost endpoints in
+    // application code. ORDER BY keeps endpoint scans local to one trace.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_read_edges (
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_read_edges (
           trace_id String,
           id String,
           from_node_id String,
@@ -90,13 +105,18 @@ export class ClickHouseService {
       `,
     });
 
+    // Ancestor index.
+    //
+    // Projection needs fast hidden-subtree summaries and ghost nodes. This table
+    // stores one row per ancestor hop so future queries can fetch descendants via
+    // (trace_id, ancestor_id) without scanning all node JSON.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_read_node_ancestry (
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_read_node_ancestry (
           trace_id String,
           node_id String,
           ancestor_id String,
-          depth Int32,
+          ancestor_depth Int32,
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
         PARTITION BY sipHash64(trace_id) % 32
@@ -104,9 +124,12 @@ export class ClickHouseService {
       `,
     });
 
+    // Trace list/slider metadata.
+    //
+    // max_importance_level drives frontend slider max without loading graph.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.primitive_trace_summary (
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_trace_summary (
           trace_id String,
           created_at_ms Int64,
           updated_at_ms Int64,
@@ -114,7 +137,7 @@ export class ClickHouseService {
           edge_count UInt64,
           error_count UInt64,
           diagnostic_count UInt64,
-          max_depth Int32,
+          max_importance_level Int32,
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
         ORDER BY trace_id;

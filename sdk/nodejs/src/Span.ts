@@ -1,14 +1,15 @@
 import { v4 as uuidv4 } from "uuid";
 import { Tracer } from "./Tracer";
-import { EdgeConfig, NodeConfig } from "./types";
+import { normalizeImportance } from "./importance";
+import type { EdgeConfig, NodeConfig } from "./types";
 
-export { EdgeConfig, NodeConfig };
+export type { EdgeConfig, NodeConfig };
 
 export class TraceNode {
   readonly id: string;
   readonly traceId: string;
   readonly name: string;
-  readonly depth: number;
+  readonly importanceLevel: number;
   readonly parentId: string | null;
   private isFinished = false;
 
@@ -16,14 +17,14 @@ export class TraceNode {
     id?: string;
     traceId: string;
     name: string;
-    depth: number;
+    importanceLevel: number;
     parentId?: string | null;
     data?: Record<string, unknown>;
   }) {
     this.id = input.id ?? uuidv4();
     this.traceId = input.traceId;
     this.name = input.name;
-    this.depth = input.depth;
+    this.importanceLevel = normalizeImportance(input.importanceLevel, 0);
     this.parentId = input.parentId ?? null;
 
     Tracer.exportEvent({
@@ -33,7 +34,7 @@ export class TraceNode {
       eventType: "node.started",
       occurredAtUnixMs: Date.now(),
       name: this.name,
-      depth: this.depth,
+      importanceLevel: this.importanceLevel,
       parentId: this.parentId,
       status: "open",
       data: input.data,
@@ -44,7 +45,7 @@ export class TraceNode {
     const child = new TraceNode({
       traceId: this.traceId,
       name,
-      depth: config?.depth ?? this.depth + 1,
+      importanceLevel: normalizeImportance(config?.importanceLevel, this.importanceLevel),
       parentId: this.id,
       data: config?.data,
     });
@@ -71,7 +72,7 @@ export class TraceNode {
     return {
       "x-trace-id": this.traceId,
       "x-parent-node-id": targetNodeId || this.id,
-      "x-parent-node-depth": String(this.depth),
+      "x-parent-node-importance": String(this.importanceLevel),
     };
   }
 

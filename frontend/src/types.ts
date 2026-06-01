@@ -5,18 +5,20 @@ export type ReadNode = {
   traceId: string;
   parentId: string | null;
   name: string;
-  depth: number;
+  importanceLevel: number;
   status: string;
   startedAtUnixMs: number | null;
   endedAtUnixMs: number | null;
   durationMs: number | null;
   ancestryPath: string[];
+  indentLevel: number;
   flowOrder: number;
   diagnostics: string[];
   data: JsonObject;
   isGhost?: boolean;
   hiddenNodeCount?: number;
   hiddenErrorCount?: number;
+  hiddenDurationMs?: number | null;
 };
 
 export type GraphEdge = {
@@ -43,7 +45,7 @@ export type TraceSummary = {
   edgeCount: number;
   errorCount: number;
   diagnosticCount: number;
-  maxDepth: number;
+  maxImportanceLevel: number;
   materializedAtUnixMs: number;
 };
 
@@ -58,7 +60,7 @@ export type TraceListResponse = {
 export type GraphWindowResponse = {
   metadata: {
     traceId: string;
-    maxDepth: number;
+    maxImportance: number;
     limit: number;
     returnedNodeCount: number;
     totalNodeCount: number;

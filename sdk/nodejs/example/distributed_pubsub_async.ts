@@ -1,5 +1,5 @@
 import { finish, fakeWork, initExample } from "./_helpers";
-import { Tracer } from "../src";
+import { Importance, Tracer } from "../src";
 
 /**
  * Distributed pub/sub async fanout.
@@ -7,15 +7,18 @@ import { Tracer } from "../src";
  * Intention:
  *   Order publishes event. Three consumers branch from same publish node.
  *   Analytics edge stays open to model fire-and-forget.
+ *   Producer/topic/consumers share importance 0 so distributed story stays visible.
  */
 async function main() {
   initExample();
 
   const order = Tracer.startTrace("OrderService: create order", {
+    importanceLevel: Importance.CRITICAL,
     data: { service: "order-service" },
   });
 
   const publish = order.startNode("Kafka publish order.created", {
+    importanceLevel: Importance.CRITICAL,
     data: { topic: "order.created" },
   });
   const publishEdge = order.connectTo(publish, { label: "publishes", endImmediately: false });
@@ -24,6 +27,7 @@ async function main() {
   order.end();
 
   const inventory = Tracer.continueTrace(publish.createCarrierHeaders(), "Inventory consume order.created", {
+    importanceLevel: Importance.CRITICAL,
     data: { service: "inventory-service" },
   });
   const invEdge = publish.connectTo(inventory, { label: "delivers", endImmediately: false });
@@ -31,6 +35,7 @@ async function main() {
   publish.endEdge(invEdge);
 
   const email = Tracer.continueTrace(publish.createCarrierHeaders(), "EmailWorker consume order.created", {
+    importanceLevel: Importance.CRITICAL,
     data: { service: "email-worker" },
   });
   const emailEdge = publish.connectTo(email, { label: "delivers", endImmediately: false });
@@ -38,6 +43,7 @@ async function main() {
   publish.endEdge(emailEdge);
 
   const analytics = Tracer.continueTrace(publish.createCarrierHeaders(), "Analytics buffer order.created", {
+    importanceLevel: Importance.CRITICAL,
     data: { service: "analytics-pipeline" },
   });
   publish.connectTo(analytics, { label: "fire-and-forget", endImmediately: false });

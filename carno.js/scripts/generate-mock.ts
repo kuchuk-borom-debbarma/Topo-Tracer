@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 const BASE_URL = process.env.TOPO_TRACER_URL ?? "http://localhost:3000";
-const TRACE_ID = `primitive_trace_${Date.now()}`;
+const TRACE_ID = `node_trace_${Date.now()}`;
 const LARGE_MODE = process.argv.includes("--large");
 const NODE_COUNT = LARGE_MODE ? 10_500 : 36;
 
@@ -13,7 +13,7 @@ type Event = {
   eventType: "node.started" | "node.ended" | "edge.started" | "edge.ended";
   occurredAtUnixMs: number;
   name?: string | null;
-  depth?: number | null;
+  importanceLevel?: number | null;
   parentId?: string | null;
   fromNodeId?: string | null;
   toNodeId?: string | null;
@@ -32,7 +32,7 @@ function emit(event: Omit<Event, "eventId" | "traceId">) {
 function node(input: {
   id: string;
   name: string;
-  depth: number;
+  importanceLevel: number;
   parentId?: string | null;
   durationMs: number;
   status?: "ok" | "error" | "warning";
@@ -45,7 +45,7 @@ function node(input: {
     eventType: "node.started",
     occurredAtUnixMs: startedAt,
     name: input.name,
-    depth: input.depth,
+    importanceLevel: input.importanceLevel,
     parentId: input.parentId ?? null,
     status: "open",
     data: input.data,
@@ -94,7 +94,7 @@ function edge(input: {
 node({
   id: "root",
   name: "POST /checkout",
-  depth: 0,
+  importanceLevel: 0,
   durationMs: 8,
   data: { service: "api", route: "/checkout" },
 });
@@ -102,13 +102,13 @@ node({
 let previous = "root";
 for (let i = 1; i < NODE_COUNT; i++) {
   const parent = i < 16 ? previous : i % 5 === 0 ? "root" : previous;
-  const depth = i < 16 ? i : 1 + (i % 5);
+  const importanceLevel = i === NODE_COUNT - 1 ? 0 : i % 5 === 0 ? 1 : i % 7 === 0 ? 2 : 4;
   const id = `node_${i}`;
   const label = i % 7 === 0 ? "writes" : i % 5 === 0 ? "publishes" : i % 3 === 0 ? "calls" : "continues";
   node({
     id,
     name: nameFor(i, label),
-    depth,
+    importanceLevel,
     parentId: parent,
     durationMs: 3 + (i % 30),
     status: !LARGE_MODE && i === 21 ? "error" : "ok",

@@ -12,7 +12,7 @@ export class RawEventRepository {
 
     const receivedAtUnixMs = Date.now();
     await this.clickhouse.client.insert({
-      table: "topo_tracer.primitive_trace_events",
+      table: "topo_tracer.node_trace_events",
       values: events.map((event) => ({
         trace_id: event.traceId,
         event_id: event.eventId || randomUUID(),
@@ -22,7 +22,7 @@ export class RawEventRepository {
         occurred_at_ms: event.occurredAtUnixMs,
         received_at_ms: receivedAtUnixMs,
         name: event.name ?? null,
-        depth: event.depth ?? null,
+        importance_level: event.importanceLevel ?? null,
         parent_id: event.parentId ?? null,
         from_node_id: event.fromNodeId ?? null,
         to_node_id: event.toNodeId ?? null,
@@ -42,12 +42,12 @@ export class RawEventRepository {
         SELECT raw.trace_id
         FROM (
           SELECT trace_id, max(received_at_ms) AS latest_event_at
-          FROM topo_tracer.primitive_trace_events
+          FROM topo_tracer.node_trace_events
           GROUP BY trace_id
         ) AS raw
         LEFT JOIN (
           SELECT trace_id, max(materialized_at_ms) AS latest_materialized_at
-          FROM topo_tracer.primitive_trace_summary
+          FROM topo_tracer.node_trace_summary
           GROUP BY trace_id
         ) AS summary USING trace_id
         WHERE latest_materialized_at IS NULL OR latest_event_at > latest_materialized_at
@@ -64,7 +64,7 @@ export class RawEventRepository {
     const result = await this.clickhouse.client.query({
       query: `
         SELECT *
-        FROM topo_tracer.primitive_trace_events
+        FROM topo_tracer.node_trace_events
         WHERE trace_id = {traceId:String}
         ORDER BY received_at_ms ASC, event_id ASC
       `,
@@ -82,7 +82,9 @@ export class RawEventRepository {
       occurredAtUnixMs: Number(row.occurred_at_ms),
       receivedAtUnixMs: Number(row.received_at_ms),
       name: row.name ?? null,
-      depth: row.depth === null || row.depth === undefined ? null : Number(row.depth),
+      importanceLevel: row.importance_level === null || row.importance_level === undefined
+        ? null
+        : Number(row.importance_level),
       parentId: row.parent_id ?? null,
       fromNodeId: row.from_node_id ?? null,
       toNodeId: row.to_node_id ?? null,

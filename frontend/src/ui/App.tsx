@@ -11,7 +11,7 @@ const Y_GAP = 148;
 export function App() {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [maxDepth, setMaxDepth] = useState(2);
+  const [maxImportance, setMaxImportance] = useState(2);
   const [selectedItem, setSelectedItem] = useState<ReadNode | GraphEdge | null>(null);
 
   const tracesQuery = useQuery({ queryKey: ["traces"], queryFn: () => fetchTraces() });
@@ -19,8 +19,8 @@ export function App() {
   const activeSummary = tracesQuery.data?.traces.find((trace) => trace.traceId === activeTraceId);
 
   const graphQuery = useQuery({
-    queryKey: ["graph", activeTraceId, maxDepth, cursor],
-    queryFn: () => fetchGraph({ traceId: activeTraceId!, maxDepth, cursor, limit: 250 }),
+    queryKey: ["graph", activeTraceId, maxImportance, cursor],
+    queryFn: () => fetchGraph({ traceId: activeTraceId!, maxImportance, cursor, limit: 250 }),
     enabled: Boolean(activeTraceId),
   });
 
@@ -50,9 +50,9 @@ export function App() {
         <GraphToolbar
           graph={graphQuery.data}
           summary={activeSummary}
-          maxDepth={maxDepth}
-          onDepthChange={(depth) => {
-            setMaxDepth(depth);
+          maxImportance={maxImportance}
+          onImportanceChange={(importance) => {
+            setMaxImportance(importance);
             setCursor(null);
           }}
           onPrevious={() => setCursor(graphQuery.data?.metadata.previousCursor ?? null)}
@@ -84,7 +84,7 @@ function TraceList(props: {
           onClick={() => props.onSelect(trace.traceId)}
         >
           <span className="trace-id">{trace.traceId}</span>
-          <span>{trace.nodeCount} nodes · max depth {trace.maxDepth}</span>
+          <span>{trace.nodeCount} nodes · max importance {trace.maxImportanceLevel ?? 0}</span>
         </button>
       ))}
     </div>
@@ -94,12 +94,12 @@ function TraceList(props: {
 function GraphToolbar(props: {
   graph?: GraphWindowResponse | null;
   summary?: TraceSummary;
-  maxDepth: number;
-  onDepthChange: (depth: number) => void;
+  maxImportance: number;
+  onImportanceChange: (importance: number) => void;
   onPrevious: () => void;
   onNext: () => void;
 }) {
-  const max = Math.max(0, props.summary?.maxDepth ?? props.maxDepth);
+  const max = Math.max(0, props.summary?.maxImportanceLevel ?? props.maxImportance);
   return (
     <header className="flow-toolbar">
       <div>
@@ -112,13 +112,13 @@ function GraphToolbar(props: {
       </div>
       <div className="toolbar-controls">
         <label>
-          Depth {props.maxDepth}
+          Importance ≤ {props.maxImportance}
           <input
             type="range"
             min={0}
             max={max}
-            value={props.maxDepth}
-            onChange={(event) => props.onDepthChange(Number(event.currentTarget.value))}
+            value={props.maxImportance}
+            onChange={(event) => props.onImportanceChange(Number(event.currentTarget.value))}
           />
         </label>
         <button disabled={!props.graph?.metadata.hasBefore} onClick={props.onPrevious}>Prev</button>
@@ -175,8 +175,11 @@ function GraphView(props: {
               onClick={() => props.onSelect(node)}
             >
               <span className="node-title">{node.name}</span>
-              <span>depth {node.depth} · {formatDuration(node.durationMs)}</span>
-              {node.isGhost && <strong>{node.hiddenNodeCount} hidden · {node.hiddenErrorCount} errors</strong>}
+              <span>indent {indentOf(node)} · importance {importanceOf(node)} · {formatDuration(node.durationMs)}</span>
+              <span>{formatTimeRange(node.startedAtUnixMs, node.endedAtUnixMs)}</span>
+              {isGhostNode(node) && (
+                <strong>{node.hiddenNodeCount} hidden · {node.hiddenErrorCount} errors · {formatDuration(node.hiddenDurationMs ?? null)}</strong>
+              )}
               {node.diagnostics.length > 0 && <em>{node.diagnostics.length} diagnostics</em>}
             </button>
           );
@@ -201,6 +204,10 @@ function Inspector(props: { item: ReadNode | GraphEdge | null; graph?: GraphWind
             <dd>{props.item.status}</dd>
             <dt>Duration</dt>
             <dd>{formatDuration(props.item.durationMs)}</dd>
+            <dt>Started</dt>
+            <dd>{formatTimestamp(props.item.startedAtUnixMs)}</dd>
+            <dt>Ended</dt>
+            <dd>{formatTimestamp(props.item.endedAtUnixMs)}</dd>
             <dt>Diagnostics</dt>
             <dd>{props.item.diagnostics.length ? props.item.diagnostics.join(", ") : "none"}</dd>
           </dl>
@@ -211,7 +218,7 @@ function Inspector(props: { item: ReadNode | GraphEdge | null; graph?: GraphWind
         <div className="summary-strip">
           <span>{props.graph.summary.nodeCount} nodes</span>
           <span>{props.graph.summary.edgeCount} edges</span>
-          <span>{props.graph.summary.maxDepth} max depth</span>
+          <span>{props.graph.summary.maxImportanceLevel ?? 0} max importance</span>
         </div>
       )}
     </aside>
@@ -224,21 +231,49 @@ function buildLayout(graph?: GraphWindowResponse | null) {
 
   nodes.forEach((node, index) => {
     positions.set(node.id, {
-      x: 40 + node.depth * X_GAP,
+      x: 40 + indentOf(node) * X_GAP,
       y: 40 + index * Y_GAP,
     });
   });
 
-  const maxDepth = nodes.reduce((max, node) => Math.max(max, node.depth), 0);
+  const maxIndent = nodes.reduce((max, node) => Math.max(max, indentOf(node)), 0);
   return {
     positions,
-    width: Math.max(1000, 120 + (maxDepth + 1) * X_GAP),
+    width: Math.max(1000, 120 + (maxIndent + 1) * X_GAP),
     height: Math.max(640, 120 + nodes.length * Y_GAP),
   };
+}
+
+function importanceOf(node: ReadNode): number {
+  return Number.isFinite(node.importanceLevel) ? Math.max(0, Math.floor(node.importanceLevel)) : 0;
+}
+
+function indentOf(node: ReadNode): number {
+  if (Number.isFinite(node.indentLevel)) return Math.max(0, Math.floor(node.indentLevel));
+  return Array.isArray(node.ancestryPath) ? node.ancestryPath.length : 0;
 }
 
 function formatDuration(durationMs: number | null): string {
   if (durationMs === null) return "open";
   if (durationMs < 1000) return `${durationMs}ms`;
   return `${(durationMs / 1000).toFixed(2)}s`;
+}
+
+function isGhostNode(node: ReadNode): node is ReadNode & {
+  isGhost: true;
+  hiddenNodeCount: number;
+  hiddenErrorCount: number;
+  hiddenDurationMs: number | null;
+} {
+  return "isGhost" in node && node.isGhost === true;
+}
+
+function formatTimestamp(timestampMs: number | null): string {
+  if (timestampMs === null) return "open";
+  const date = new Date(timestampMs);
+  return `${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.${String(date.getMilliseconds()).padStart(3, "0")}`;
+}
+
+function formatTimeRange(startMs: number | null, endMs: number | null): string {
+  return `${formatTimestamp(startMs)} → ${formatTimestamp(endMs)}`;
 }

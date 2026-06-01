@@ -12,12 +12,12 @@ export async function fetchTraceSummary(traceId: string): Promise<TraceSummary |
 
 export async function fetchGraph(input: {
   traceId: string;
-  maxDepth: number;
+  maxImportance: number;
   cursor?: string | null;
   limit?: number;
 }): Promise<GraphWindowResponse | null> {
   const params = new URLSearchParams();
-  params.set("maxDepth", String(input.maxDepth));
+  params.set("maxImportance", String(input.maxImportance));
   params.set("limit", String(input.limit ?? 250));
   if (input.cursor) params.set("cursor", input.cursor);
   return getJson(`/telemetry/traces/${input.traceId}/graph?${params.toString()}`);

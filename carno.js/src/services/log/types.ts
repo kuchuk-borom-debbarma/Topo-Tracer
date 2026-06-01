@@ -11,7 +11,7 @@ export type TraceEventInput = {
   eventType: TraceEventType;
   occurredAtUnixMs: number;
   name?: string | null;
-  depth?: number | null;
+  importanceLevel?: number | null;
   parentId?: string | null;
   fromNodeId?: string | null;
   toNodeId?: string | null;
@@ -26,7 +26,7 @@ export type TraceEventRecord = Required<
   eventId: string;
   receivedAtUnixMs: number;
   name: string | null;
-  depth: number | null;
+  importanceLevel: number | null;
   parentId: string | null;
   fromNodeId: string | null;
   toNodeId: string | null;
@@ -49,12 +49,13 @@ export type ReadNode = {
   traceId: string;
   parentId: string | null;
   name: string;
-  depth: number;
+  importanceLevel: number;
   status: string;
   startedAtUnixMs: number | null;
   endedAtUnixMs: number | null;
   durationMs: number | null;
   ancestryPath: string[];
+  indentLevel: number;
   flowOrder: number;
   diagnostics: DiagnosticCode[];
   data: JsonObject;
@@ -78,6 +79,7 @@ export type GhostNode = ReadNode & {
   isGhost: true;
   hiddenNodeCount: number;
   hiddenErrorCount: number;
+  hiddenDurationMs: number | null;
 };
 
 export type GraphEdge = ReadEdge & {
@@ -93,7 +95,7 @@ export type TraceSummary = {
   edgeCount: number;
   errorCount: number;
   diagnosticCount: number;
-  maxDepth: number;
+  maxImportanceLevel: number;
   materializedAtUnixMs: number;
 };
 
@@ -106,7 +108,7 @@ export type TraceListResponse = {
 };
 
 export type GraphWindowQuery = {
-  maxDepth?: number;
+  maxImportance?: number;
   limit?: number;
   cursor?: string;
 };
@@ -114,7 +116,7 @@ export type GraphWindowQuery = {
 export type GraphWindowResponse = {
   metadata: {
     traceId: string;
-    maxDepth: number;
+    maxImportance: number;
     limit: number;
     returnedNodeCount: number;
     totalNodeCount: number;

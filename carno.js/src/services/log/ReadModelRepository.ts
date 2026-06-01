@@ -15,18 +15,19 @@ export class ReadModelRepository {
 
     if (input.nodes.length) {
       await this.clickhouse.client.insert({
-        table: "topo_tracer.primitive_read_nodes",
+        table: "topo_tracer.node_read_nodes",
         values: input.nodes.map((node) => ({
           trace_id: node.traceId,
           id: node.id,
           parent_id: node.parentId,
           name: node.name,
-          depth: node.depth,
+          importance_level: node.importanceLevel,
           status: node.status,
           started_at_ms: node.startedAtUnixMs,
           ended_at_ms: node.endedAtUnixMs,
           duration_ms: node.durationMs,
           ancestry_path: node.ancestryPath,
+          indent_level: node.indentLevel,
           flow_order: node.flowOrder,
           diagnostics: node.diagnostics,
           data: JSON.stringify(node.data),
@@ -36,17 +37,17 @@ export class ReadModelRepository {
       });
 
       const ancestryRows = input.nodes.flatMap((node) =>
-        node.ancestryPath.map((ancestorId, depth) => ({
+        node.ancestryPath.map((ancestorId, ancestorDepth) => ({
           trace_id: node.traceId,
           node_id: node.id,
           ancestor_id: ancestorId,
-          depth,
+          ancestor_depth: ancestorDepth,
           materialized_at_ms: materializedAtUnixMs,
         })),
       );
       if (ancestryRows.length) {
         await this.clickhouse.client.insert({
-          table: "topo_tracer.primitive_read_node_ancestry",
+          table: "topo_tracer.node_read_node_ancestry",
           values: ancestryRows,
           format: "JSONEachRow",
         });
@@ -55,7 +56,7 @@ export class ReadModelRepository {
 
     if (input.edges.length) {
       await this.clickhouse.client.insert({
-        table: "topo_tracer.primitive_read_edges",
+        table: "topo_tracer.node_read_edges",
         values: input.edges.map((edge) => ({
           trace_id: edge.traceId,
           id: edge.id,
@@ -75,7 +76,7 @@ export class ReadModelRepository {
     }
 
     await this.clickhouse.client.insert({
-      table: "topo_tracer.primitive_trace_summary",
+      table: "topo_tracer.node_trace_summary",
       values: [{
         trace_id: input.summary.traceId,
         created_at_ms: input.summary.createdAtUnixMs,
@@ -84,7 +85,7 @@ export class ReadModelRepository {
         edge_count: input.summary.edgeCount,
         error_count: input.summary.errorCount,
         diagnostic_count: input.summary.diagnosticCount,
-        max_depth: input.summary.maxDepth,
+        max_importance_level: input.summary.maxImportanceLevel,
         materialized_at_ms: input.summary.materializedAtUnixMs,
       }],
       format: "JSONEachRow",
@@ -94,7 +95,7 @@ export class ReadModelRepository {
   async getSummary(traceId: string): Promise<TraceSummary | null> {
     const rows = await this.queryRows<any>(`
       SELECT *
-      FROM topo_tracer.primitive_trace_summary FINAL
+      FROM topo_tracer.node_trace_summary FINAL
       WHERE trace_id = {traceId:String}
       ORDER BY materialized_at_ms DESC
       LIMIT 1
@@ -107,13 +108,13 @@ export class ReadModelRepository {
     const [traces, totals] = await Promise.all([
       this.queryRows<any>(`
         SELECT *
-        FROM topo_tracer.primitive_trace_summary FINAL
+        FROM topo_tracer.node_trace_summary FINAL
         ORDER BY updated_at_ms DESC
         LIMIT ${limit} OFFSET ${offset}
       `),
       this.queryRows<{ total: string | number }>(`
         SELECT count() AS total
-        FROM topo_tracer.primitive_trace_summary FINAL
+        FROM topo_tracer.node_trace_summary FINAL
       `),
     ]);
 
@@ -130,7 +131,7 @@ export class ReadModelRepository {
   async getNodes(traceId: string): Promise<ReadNode[]> {
     const rows = await this.queryRows<any>(`
       SELECT *
-      FROM topo_tracer.primitive_read_nodes FINAL
+      FROM topo_tracer.node_read_nodes FINAL
       WHERE trace_id = {traceId:String}
       ORDER BY flow_order ASC
     `, { traceId });
@@ -140,7 +141,7 @@ export class ReadModelRepository {
   async getEdges(traceId: string): Promise<ReadEdge[]> {
     const rows = await this.queryRows<any>(`
       SELECT *
-      FROM topo_tracer.primitive_read_edges FINAL
+      FROM topo_tracer.node_read_edges FINAL
       WHERE trace_id = {traceId:String}
     `, { traceId });
     return rows.map(mapEdge);
@@ -165,7 +166,7 @@ function mapSummary(row: any): TraceSummary {
     edgeCount: Number(row.edge_count),
     errorCount: Number(row.error_count),
     diagnosticCount: Number(row.diagnostic_count),
-    maxDepth: Number(row.max_depth),
+    maxImportanceLevel: Number(row.max_importance_level),
     materializedAtUnixMs: Number(row.materialized_at_ms),
   };
 }
@@ -176,12 +177,13 @@ function mapNode(row: any): ReadNode {
     traceId: row.trace_id,
     parentId: row.parent_id ?? null,
     name: row.name,
-    depth: Number(row.depth),
+    importanceLevel: Number(row.importance_level),
     status: row.status,
     startedAtUnixMs: nullableNumber(row.started_at_ms),
     endedAtUnixMs: nullableNumber(row.ended_at_ms),
     durationMs: nullableNumber(row.duration_ms),
     ancestryPath: row.ancestry_path ?? [],
+    indentLevel: Number(row.indent_level),
     flowOrder: Number(row.flow_order),
     diagnostics: row.diagnostics ?? [],
     data: parseJson(row.data),

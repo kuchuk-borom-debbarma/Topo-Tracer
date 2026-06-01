@@ -44,10 +44,10 @@ export class LogService {
     ]);
     if (!summary) return null;
 
-    const maxDepth = clampDepth(query.maxDepth, summary.maxDepth);
+    const maxImportance = clampImportance(query.maxImportance, summary.maxImportanceLevel);
     const limit = clampLimit(query.limit);
     const offset = decodeCursor(query.cursor) ?? 0;
-    const projected = projectDepth(allNodes, allEdges, maxDepth);
+    const projected = projectByImportance(allNodes, allEdges, maxImportance);
     const windowedNodes = projected.nodes.slice(offset, offset + limit);
     const nodeIds = new Set(windowedNodes.map((node) => node.id));
     const windowedEdges = projected.edges.filter((edge) => nodeIds.has(edge.fromNodeId) && nodeIds.has(edge.toNodeId));
@@ -55,7 +55,7 @@ export class LogService {
     return {
       metadata: {
         traceId,
-        maxDepth,
+        maxImportance,
         limit,
         returnedNodeCount: windowedNodes.length,
         totalNodeCount: summary.nodeCount,
@@ -80,6 +80,11 @@ function validateEvents(events: TraceEventInput[]): void {
       throw new Error("Event missing traceId/entityId/entityType/eventType");
     }
     if (!Number.isFinite(event.occurredAtUnixMs)) throw new Error("Event missing valid occurredAtUnixMs");
+    if (event.importanceLevel !== undefined && event.importanceLevel !== null) {
+      if (!Number.isFinite(event.importanceLevel) || event.importanceLevel < 0) {
+        throw new Error("importanceLevel must be a non-negative number");
+      }
+    }
     if (event.entityType === "node" && event.eventType !== "node.started" && event.eventType !== "node.ended") {
       throw new Error("Node entity requires node.* event type");
     }
@@ -89,17 +94,26 @@ function validateEvents(events: TraceEventInput[]): void {
   }
 }
 
-function projectDepth(nodes: ReadNode[], edges: ReadEdge[], maxDepth: number): {
+// Build UI graph for one importance threshold.
+//
+// Lower importanceLevel means more important. Threshold 0 shows only most
+// important nodes; threshold 3 shows levels 0,1,2,3. Hidden nodes are collapsed
+// into ghost nodes under nearest visible ancestor so chains like:
+//   a(0) -> b(1) -> c(4) -> d(4) -> e(1) -> f(0)
+// become:
+//   threshold 0: a -> ghost -> f
+//   threshold 1: a -> b -> ghost -> e -> f
+function projectByImportance(nodes: ReadNode[], edges: ReadEdge[], maxImportance: number): {
   nodes: Array<ReadNode | GhostNode>;
   edges: GraphEdge[];
   hiddenNodeCount: number;
   ghostNodeCount: number;
 } {
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const visible = nodes.filter((node) => node.depth <= maxDepth);
+  const visible = nodes.filter((node) => node.importanceLevel <= maxImportance);
   const visibleIds = new Set(visible.map((node) => node.id));
   const hidden = nodes.filter((node) => !visibleIds.has(node.id));
-  const ghosts = buildGhosts(hidden, byId, visibleIds, maxDepth);
+  const ghosts = buildGhosts(hidden, byId, visibleIds, maxImportance);
   const ghostByAncestor = new Map(ghosts.map((ghost) => [ghost.parentId ?? "", ghost]));
   const outputNodes = [...visible, ...ghosts].sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
   const outputNodeIds = new Set(outputNodes.map((node) => node.id));
@@ -117,7 +131,7 @@ function buildGhosts(
   hidden: ReadNode[],
   byId: Map<string, ReadNode>,
   visibleIds: Set<string>,
-  maxDepth: number,
+  maxImportance: number,
 ): GhostNode[] {
   const groups = new Map<string, ReadNode[]>();
 
@@ -138,23 +152,25 @@ function buildGhosts(
       id: `ghost:${ancestorId}`,
       traceId: first.traceId,
       parentId: parent?.id ?? null,
-      name: `${group.length} hidden deeper node${group.length === 1 ? "" : "s"}`,
-      depth: Math.max(0, maxDepth + 1),
+      name: `${group.length} hidden less-important node${group.length === 1 ? "" : "s"}`,
+      importanceLevel: maxImportance + 1,
       status: group.some((node) => node.status === "error") ? "error" : "ok",
       startedAtUnixMs: startTimes.length ? Math.min(...startTimes) : null,
       endedAtUnixMs: endTimes.length ? Math.max(...endTimes) : null,
       durationMs: startTimes.length && endTimes.length ? Math.max(...endTimes) - Math.min(...startTimes) : null,
       ancestryPath: parent ? [...parent.ancestryPath, parent.id] : [],
+      indentLevel: parent ? parent.indentLevel + 1 : 0,
       flowOrder: first.flowOrder + 0.1,
       diagnostics: [],
       data: {
-        summary: "Collapsed by depth slider",
+        summary: "Collapsed by importance slider",
         hiddenNodeIds: group.slice(0, 25).map((node) => node.id),
         truncatedHiddenNodeIds: Math.max(0, group.length - 25),
       },
       isGhost: true,
       hiddenNodeCount: group.length,
       hiddenErrorCount: group.filter((node) => node.status === "error").length,
+      hiddenDurationMs: startTimes.length && endTimes.length ? Math.max(...endTimes) - Math.min(...startTimes) : null,
     };
   });
 }
@@ -221,9 +237,9 @@ function findVisibleAncestor(node: ReadNode, byId: Map<string, ReadNode>, visibl
   return null;
 }
 
-function clampDepth(value: number | undefined, maxDepth: number): number {
-  if (!Number.isFinite(value)) return Math.min(2, maxDepth);
-  return Math.max(0, Math.min(maxDepth, Math.floor(value!)));
+function clampImportance(value: number | undefined, maxImportanceLevel: number): number {
+  if (!Number.isFinite(value)) return Math.min(2, maxImportanceLevel);
+  return Math.max(0, Math.min(maxImportanceLevel, Math.floor(value!)));
 }
 
 function clampLimit(value: number | undefined): number {

@@ -9,7 +9,7 @@ export type TraceEventInput = {
   eventType: TraceEventType;
   occurredAtUnixMs: number;
   name?: string | null;
-  depth?: number | null;
+  importanceLevel?: number | null;
   parentId?: string | null;
   fromNodeId?: string | null;
   toNodeId?: string | null;
@@ -25,7 +25,7 @@ export type TracerConfig = {
 };
 
 export type NodeConfig = {
-  depth?: number;
+  importanceLevel?: number;
   data?: Record<string, unknown>;
 };
 
@@ -34,3 +34,11 @@ export type EdgeConfig = {
   data?: Record<string, unknown>;
   endImmediately?: boolean;
 };
+
+export const Importance = {
+  CRITICAL: 0,
+  SERVICE: 1,
+  OPERATION: 2,
+  DETAIL: 3,
+  NOISE: 4,
+} as const;

@@ -27,12 +27,12 @@ export class LogController {
   @Get("/traces/:traceId/graph")
   async getGraph(
     @Param("traceId") traceId: string,
-    @Query("maxDepth") maxDepth?: string,
+    @Query("maxImportance") maxImportance?: string,
     @Query("limit") limit?: string,
     @Query("cursor") cursor?: string,
   ) {
     const query: GraphWindowQuery = {
-      maxDepth: maxDepth ? parseInt(maxDepth, 10) : undefined,
+      maxImportance: maxImportance ? parseInt(maxImportance, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       cursor,
     };
