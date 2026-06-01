@@ -3,6 +3,11 @@
 Topo Tracer is now a primitive node-to-node trace graph. There is no group,
 container, span compatibility layer, or derived hierarchy beyond parent links.
 
+More docs:
+
+- [Backend Schema And Queries](./BACKEND_SCHEMA_AND_QUERIES.md)
+- [Development And Verification](./DEVELOPMENT_AND_VERIFICATION.md)
+
 ## Core Model
 
 Trace data has two entities:
@@ -226,11 +231,32 @@ default.
 
 ## Frontend View
 
-Frontend has one view: graph flow.
+Frontend has a trace list page and a dedicated graph page at
+`/traces/:traceId/graph`.
+
+The graph page uses a **structural flow column** layout:
+
+- X axis is structural indent from backend `indentLevel`, capped for readability.
+- Y axis is causal flow order. Sibling work stays in one vertical column.
+- Nested work moves one column right and continues vertically there.
+- True `indentLevel` still appears on node cards when deep nesting exceeds the
+  visual lane cap.
+- Parent/child structure renders as quiet scope lines, not labeled arrows.
+- Downward or rightward relationships render as arrows.
+- Return-to-parent, backward, or cross-window relationships render as compact
+  edge chips on the target node so the view never draws faraway comeback arrows.
+- SDK-created parent/child `continues` edges are structural and hidden as
+  operation arrows. Column position plus scope lines show that relationship.
+  Explicit work edges like `writes`, `schedules`, `publishes`, and
+  `fire-and-forget` remain visible.
 
 - Nodes are cards with name, importance, duration, start/end time, status, and
   diagnostics.
 - Edges are arrows with labels and timing in inspector.
+- Completed edges are solid green.
+- Open async/fire-and-forget edges are solid amber and include `open` in the
+  edge label.
+- Ghost edges are dashed gray and appear only when hidden nodes are collapsed.
 - Horizontal indentation comes from backend-computed `indentLevel`; importance
   controls show/hide only.
 - Importance slider controls detail level.

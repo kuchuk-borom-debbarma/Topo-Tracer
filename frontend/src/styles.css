@@ -24,10 +24,22 @@ button {
   border: 0;
 }
 
-.app-shell {
+.app-shell,
+.graph-page {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 320px;
   min-height: 100vh;
+}
+
+.graph-page {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.list-page {
+  margin: 0 auto;
+  max-width: 920px;
+  min-height: 100vh;
+  padding: 32px;
 }
 
 .trace-sidebar,
@@ -87,8 +99,8 @@ h3 {
 p,
 .section-title,
 .trace-row span,
-.graph-node span,
-.graph-node em {
+.flow-node span,
+.flow-node em {
   color: #627168;
   font-size: 13px;
 }
@@ -144,6 +156,21 @@ p,
   padding: 14px 18px;
 }
 
+.toolbar-title {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.trace-id-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-width: 560px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .toolbar-controls {
   align-items: center;
   display: flex;
@@ -172,29 +199,53 @@ p,
   padding: 0 14px;
 }
 
+.back-button {
+  background: #edf3ef;
+  border: 1px solid #cfdbd2;
+  border-radius: 8px;
+  color: #244c42;
+  cursor: pointer;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 .toolbar-controls button:disabled {
   background: #c5cec8;
   cursor: not-allowed;
 }
 
-.graph-canvas {
+.flow-canvas {
   height: calc(100vh - 76px);
   overflow: auto;
-  padding: 18px;
+  padding: 18px 20px 80px;
 }
 
-.graph-board {
-  background-color: #f1f4ef;
+.flow-board {
+  background: #f6f8f5;
   background-image:
-    linear-gradient(#e0e7e0 1px, transparent 1px),
-    linear-gradient(90deg, #e0e7e0 1px, transparent 1px);
-  background-size: 32px 32px;
+    linear-gradient(#e3eae3 1px, transparent 1px),
+    linear-gradient(90deg, #e3eae3 1px, transparent 1px);
+  background-size: 56px 56px;
   border: 1px solid #d9e1d9;
   border-radius: 8px;
   position: relative;
 }
 
-.graph-arrows {
+.flow-board::before {
+  background: repeating-linear-gradient(
+    to right,
+    rgba(22, 76, 67, 0.05) 0,
+    rgba(22, 76, 67, 0.05) 280px,
+    transparent 280px,
+    transparent 360px
+  );
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.flow-arrows {
   left: 0;
   overflow: visible;
   pointer-events: none;
@@ -203,41 +254,65 @@ p,
   z-index: 1;
 }
 
-.graph-edge {
+.flow-edge {
   pointer-events: auto;
 }
 
-.graph-edge path {
+.scope-link {
+  fill: none;
+  opacity: 0.42;
+  stroke: #9fb0a6;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.flow-edge path {
   fill: none;
   stroke: #164c43;
   stroke-linecap: round;
   stroke-width: 2.5;
 }
 
-.graph-edge.open path {
+.flow-edge.open path {
   stroke: #9c6b18;
-  stroke-dasharray: 8 6;
+  stroke-width: 3;
 }
 
-.graph-edge.ghost path {
+.flow-edge.ghost path {
   stroke: #63736a;
   stroke-dasharray: 4 5;
 }
 
-.graph-edge text {
+.flow-edge text {
   fill: #164c43;
   font-size: 12px;
   font-weight: 900;
   paint-order: stroke;
-  stroke: #f1f4ef;
+  stroke: #f6f8f5;
   stroke-width: 5px;
 }
 
-#graph-arrow path {
+.flow-edge.open text {
+  fill: #8a5f12;
+}
+
+.flow-edge.ghost text {
+  fill: #63736a;
+}
+
+#flow-arrow path {
   fill: #164c43;
 }
 
-.graph-node {
+#flow-arrow-open path {
+  fill: #9c6b18;
+}
+
+#flow-arrow-ghost path {
+  fill: #63736a;
+}
+
+.flow-node {
   background: white;
   border: 1px solid #d6ded6;
   border-left: 5px solid #164c43;
@@ -247,30 +322,59 @@ p,
   cursor: pointer;
   display: grid;
   gap: 7px;
-  min-height: 106px;
+  min-height: 122px;
   padding: 12px;
   position: absolute;
   text-align: left;
-  width: 250px;
+  width: 280px;
   z-index: 2;
 }
 
-.graph-node.error {
+.edge-chip {
+  align-self: start;
+  background: #edf5f1;
+  border: 1px solid #bfd5cc;
+  border-radius: 999px;
+  color: #244c42;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edge-chip.open {
+  background: #fff7e5;
+  border-color: #ddb865;
+  color: #7a5513;
+}
+
+.edge-chip.ghost {
+  background: #f4f6f2;
+  border-color: #aebcb3;
+  border-style: dashed;
+  color: #58675e;
+}
+
+.flow-node.error {
   border-left-color: #ba3e3b;
 }
 
-.graph-node.warning {
+.flow-node.warning {
   border-left-color: #b88922;
 }
 
-.graph-node.ghost {
+.flow-node.ghost {
   background: #fff8e9;
   border-color: #ead59c;
   border-left-color: #9c6b18;
   border-style: dashed;
 }
 
-.graph-node.selected {
+.flow-node.selected {
   box-shadow: 0 0 0 3px #acd9c8;
 }
 
@@ -281,7 +385,7 @@ p,
   overflow-wrap: anywhere;
 }
 
-.graph-node strong {
+.flow-node strong {
   color: #6a4d13;
   font-size: 13px;
 }
@@ -336,6 +440,10 @@ pre {
 
 @media (max-width: 980px) {
   .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-page {
     grid-template-columns: 1fr;
   }
 

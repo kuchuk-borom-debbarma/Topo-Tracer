@@ -1,21 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchGraph, fetchTraces } from "../api";
 import type { GraphEdge, GraphWindowResponse, ReadNode, TraceSummary } from "../types";
 
-const NODE_WIDTH = 250;
-const NODE_HEIGHT = 106;
-const X_GAP = 330;
-const Y_GAP = 148;
+const MAX_VISUAL_INDENT = 8;
+const NODE_WIDTH = 280;
+const NODE_HEIGHT = 122;
+const INDENT_GAP = 360;
+const FLOW_GAP = 168;
+const BOARD_PADDING = 42;
+
+type AppRoute = { page: "list" } | { page: "graph"; traceId: string };
 
 export function App() {
-  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [route, setRoute] = useState(() => readRoute());
   const [cursor, setCursor] = useState<string | null>(null);
   const [maxImportance, setMaxImportance] = useState(2);
   const [selectedItem, setSelectedItem] = useState<ReadNode | GraphEdge | null>(null);
 
   const tracesQuery = useQuery({ queryKey: ["traces"], queryFn: () => fetchTraces() });
-  const activeTraceId = selectedTraceId ?? tracesQuery.data?.traces[0]?.traceId ?? null;
+  const activeTraceId = route.page === "graph" ? route.traceId : null;
   const activeSummary = tracesQuery.data?.traces.find((trace) => trace.traceId === activeTraceId);
 
   const graphQuery = useQuery({
@@ -24,9 +28,19 @@ export function App() {
     enabled: Boolean(activeTraceId),
   });
 
-  return (
-    <div className="app-shell">
-      <aside className="trace-sidebar">
+  useEffect(() => {
+    const onPopState = () => {
+      setRoute(readRoute());
+      setCursor(null);
+      setSelectedItem(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  if (route.page === "list") {
+    return (
+      <div className="list-page">
         <div className="brand">
           <span className="brand-mark">TT</span>
           <div>
@@ -36,21 +50,31 @@ export function App() {
         </div>
         <TraceList
           traces={tracesQuery.data?.traces ?? []}
-          activeTraceId={activeTraceId}
+          activeTraceId={null}
           isLoading={tracesQuery.isLoading}
           onSelect={(traceId) => {
-            setSelectedTraceId(traceId);
+            navigateToTrace(traceId, setRoute);
             setCursor(null);
             setSelectedItem(null);
           }}
         />
-      </aside>
+      </div>
+    );
+  }
 
+  return (
+    <div className="graph-page">
       <main className="graph-area">
         <GraphToolbar
           graph={graphQuery.data}
           summary={activeSummary}
           maxImportance={maxImportance}
+          traceId={activeTraceId}
+          onBack={() => {
+            navigateToList(setRoute);
+            setCursor(null);
+            setSelectedItem(null);
+          }}
           onImportanceChange={(importance) => {
             setMaxImportance(importance);
             setCursor(null);
@@ -95,6 +119,8 @@ function GraphToolbar(props: {
   graph?: GraphWindowResponse | null;
   summary?: TraceSummary;
   maxImportance: number;
+  traceId: string | null;
+  onBack: () => void;
   onImportanceChange: (importance: number) => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -102,13 +128,17 @@ function GraphToolbar(props: {
   const max = Math.max(0, props.summary?.maxImportanceLevel ?? props.maxImportance);
   return (
     <header className="flow-toolbar">
-      <div>
-        <h2>Node Graph</h2>
-        <p>
-          {props.graph
-            ? `${props.graph.metadata.returnedNodeCount}/${props.graph.metadata.totalNodeCount} nodes · ${props.graph.metadata.hiddenNodeCount} hidden · ${props.graph.metadata.ghostNodeCount} ghosts`
-            : "Waiting for trace"}
-        </p>
+      <div className="toolbar-title">
+        <button className="back-button" onClick={props.onBack}>Back</button>
+        <div>
+          <h2>Node Graph</h2>
+          <p className="trace-id-line">{props.traceId ?? "No trace selected"}</p>
+          <p>
+            {props.graph
+              ? `${props.graph.metadata.returnedNodeCount}/${props.graph.metadata.totalNodeCount} nodes · ${props.graph.metadata.hiddenNodeCount} hidden · ${props.graph.metadata.ghostNodeCount} ghosts`
+              : "Waiting for trace"}
+          </p>
+        </div>
       </div>
       <div className="toolbar-controls">
         <label>
@@ -133,57 +163,68 @@ function GraphView(props: {
   selectedId: string | null;
   onSelect: (item: ReadNode | GraphEdge) => void;
 }) {
-  const layout = useMemo(() => buildLayout(props.graph), [props.graph]);
+  const layout = useMemo(() => buildIndentedFlowLayout(props.graph), [props.graph]);
+  const canvasRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    canvasRef.current?.scrollTo({ left: 0, top: 0 });
+  }, [props.graph?.metadata.traceId, props.graph?.metadata.maxImportance, props.graph?.metadata.nextCursor]);
 
   if (!props.graph) return <div className="empty-canvas">Select materialized trace</div>;
 
   return (
-    <section className="graph-canvas">
-      <div className="graph-board" style={{ width: layout.width, height: layout.height }}>
-        <svg className="graph-arrows" width={layout.width} height={layout.height}>
+    <section className="flow-canvas" ref={canvasRef}>
+      <div className="flow-board" style={{ width: layout.width, height: layout.height }}>
+        <svg className="flow-arrows" width={layout.width} height={layout.height}>
           <defs>
-            <marker id="graph-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <marker id="flow-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L9,3 z" />
+            </marker>
+            <marker id="flow-arrow-open" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L9,3 z" />
+            </marker>
+            <marker id="flow-arrow-ghost" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
               <path d="M0,0 L0,6 L9,3 z" />
             </marker>
           </defs>
-          {props.graph.edges.map((edge) => {
-            const from = layout.positions.get(edge.fromNodeId);
-            const to = layout.positions.get(edge.toNodeId);
-            if (!from || !to) return null;
-            const x1 = from.x + NODE_WIDTH;
-            const y1 = from.y + NODE_HEIGHT / 2;
-            const x2 = to.x;
-            const y2 = to.y + NODE_HEIGHT / 2;
-            const curve = Math.max(90, Math.abs(x2 - x1) / 2);
-            const path = `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
+          {layout.scopeLinks.map((link) => (
+            <path key={link.id} className="scope-link" d={link.path} />
+          ))}
+          {layout.edges.map(({ edge, path, labelPosition }) => {
+            const markerId = edge.isGhost ? "flow-arrow-ghost" : edge.status === "open" ? "flow-arrow-open" : "flow-arrow";
             return (
-              <g key={edge.id} className={`graph-edge ${edge.status} ${edge.isGhost ? "ghost" : ""}`} onClick={() => props.onSelect(edge)}>
-                <path d={path} markerEnd="url(#graph-arrow)" />
-                <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8}>{edge.label}</text>
+              <g key={edge.id} className={`flow-edge ${edge.status} ${edge.isGhost ? "ghost" : ""}`} onClick={() => props.onSelect(edge)}>
+                <path d={path} markerEnd={`url(#${markerId})`} />
+                <text x={labelPosition.x} y={labelPosition.y}>{edgeLabel(edge)}</text>
               </g>
             );
           })}
         </svg>
 
-        {props.graph.nodes.map((node) => {
-          const position = layout.positions.get(node.id)!;
-          return (
-            <button
-              key={node.id}
-              className={`graph-node ${node.status} ${node.isGhost ? "ghost" : ""} ${props.selectedId === node.id ? "selected" : ""}`}
-              style={{ left: position.x, top: position.y }}
-              onClick={() => props.onSelect(node)}
-            >
-              <span className="node-title">{node.name}</span>
-              <span>indent {indentOf(node)} · importance {importanceOf(node)} · {formatDuration(node.durationMs)}</span>
-              <span>{formatTimeRange(node.startedAtUnixMs, node.endedAtUnixMs)}</span>
-              {isGhostNode(node) && (
-                <strong>{node.hiddenNodeCount} hidden · {node.hiddenErrorCount} errors · {formatDuration(node.hiddenDurationMs ?? null)}</strong>
-              )}
-              {node.diagnostics.length > 0 && <em>{node.diagnostics.length} diagnostics</em>}
-            </button>
-          );
-        })}
+        {layout.nodes.map(({ node, position, extraIndent }) => (
+          <button
+            key={node.id}
+            className={`flow-node ${node.status} ${node.isGhost ? "ghost" : ""} ${props.selectedId === node.id ? "selected" : ""}`}
+            style={{ left: position.x, top: position.y }}
+            onClick={() => props.onSelect(node)}
+          >
+            {layout.edgeChips.get(node.id)?.map((edge) => (
+              <span key={edge.id} className={`edge-chip ${edge.status} ${edge.isGhost ? "ghost" : ""}`}>
+                {edgeLabel(edge)}
+              </span>
+            ))}
+            <span className="node-title">{node.name}</span>
+            <span>
+              column {Math.min(indentOf(node), MAX_VISUAL_INDENT)} · indent {indentOf(node)} · importance {importanceOf(node)}
+              {extraIndent > 0 ? ` · +${extraIndent} deep` : ""}
+            </span>
+            <span>{formatDuration(node.durationMs)} · {formatTimeRange(node.startedAtUnixMs, node.endedAtUnixMs)}</span>
+            {isGhostNode(node) && (
+              <strong>{node.hiddenNodeCount} hidden · {node.hiddenErrorCount} errors · {formatDuration(node.hiddenDurationMs ?? null)}</strong>
+            )}
+            {node.diagnostics.length > 0 && <em>{node.diagnostics.length} diagnostics</em>}
+          </button>
+        ))}
       </div>
     </section>
   );
@@ -225,22 +266,85 @@ function Inspector(props: { item: ReadNode | GraphEdge | null; graph?: GraphWind
   );
 }
 
-function buildLayout(graph?: GraphWindowResponse | null) {
-  const positions = new Map<string, { x: number; y: number }>();
+function buildIndentedFlowLayout(graph?: GraphWindowResponse | null) {
   const nodes = graph?.nodes ?? [];
-
-  nodes.forEach((node, index) => {
-    positions.set(node.id, {
-      x: 40 + indentOf(node) * X_GAP,
-      y: 40 + index * Y_GAP,
-    });
+  const edges = graph?.edges ?? [];
+  const positions = new Map<string, { x: number; y: number }>();
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const edgeChips = new Map<string, GraphEdge[]>();
+  const laidOutNodes = nodes.map((node, index) => {
+    const indent = indentOf(node);
+    const visualIndent = Math.min(indent, MAX_VISUAL_INDENT);
+    const position = {
+      x: BOARD_PADDING + visualIndent * INDENT_GAP,
+      y: BOARD_PADDING + index * FLOW_GAP,
+    };
+    positions.set(node.id, position);
+    return {
+      node,
+      position,
+      extraIndent: Math.max(0, indent - MAX_VISUAL_INDENT),
+    };
   });
 
-  const maxIndent = nodes.reduce((max, node) => Math.max(max, indentOf(node)), 0);
+  const laidOutEdges = edges.flatMap((edge) => {
+    const targetNode = nodesById.get(edge.toNodeId);
+    if (targetNode?.parentId === edge.fromNodeId && edge.label === "continues") return [];
+
+    const from = positions.get(edge.fromNodeId);
+    const to = positions.get(edge.toNodeId);
+    if (!from || !to) return [];
+    if (to.x < from.x || to.y <= from.y) {
+      const existing = edgeChips.get(edge.toNodeId) ?? [];
+      existing.push(edge);
+      edgeChips.set(edge.toNodeId, existing);
+      return [];
+    }
+
+    const sameColumn = to.x === from.x;
+    const x1 = sameColumn ? from.x + NODE_WIDTH / 2 : from.x + NODE_WIDTH;
+    const y1 = sameColumn ? from.y + NODE_HEIGHT : from.y + NODE_HEIGHT / 2;
+    const x2 = sameColumn ? to.x + NODE_WIDTH / 2 : to.x;
+    const y2 = sameColumn ? to.y : to.y + NODE_HEIGHT / 2;
+    const path = sameColumn
+      ? `M ${x1} ${y1} C ${x1} ${y1 + 42}, ${x2} ${y2 - 42}, ${x2} ${y2}`
+      : `M ${x1} ${y1} C ${x1 + 72} ${y1}, ${x2 - 72} ${y2}, ${x2} ${y2}`;
+
+    return [{
+      edge,
+      path,
+      labelPosition: {
+        x: (x1 + x2) / 2,
+        y: sameColumn ? (y1 + y2) / 2 - 8 : Math.min(y1, y2) - 10,
+      },
+    }];
+  });
+
+  const scopeLinks = nodes.flatMap((node) => {
+    if (!node.parentId) return [];
+    const parent = positions.get(node.parentId);
+    const child = positions.get(node.id);
+    if (!parent || !child) return [];
+
+    const x1 = parent.x + NODE_WIDTH / 2;
+    const y1 = parent.y + NODE_HEIGHT;
+    const x2 = child.x + NODE_WIDTH / 2;
+    const y2 = child.y;
+    const verticalDrop = Math.max(28, Math.min(72, (y2 - y1) / 2));
+    const path = x1 === x2
+      ? `M ${x1} ${y1} C ${x1} ${y1 + verticalDrop}, ${x2} ${y2 - verticalDrop}, ${x2} ${y2}`
+      : `M ${x1} ${y1} C ${x1} ${y1 + verticalDrop}, ${x2} ${y2 - verticalDrop}, ${x2} ${y2}`;
+
+    return [{ id: `scope:${node.parentId}:${node.id}`, path }];
+  });
+
   return {
-    positions,
-    width: Math.max(1000, 120 + (maxIndent + 1) * X_GAP),
-    height: Math.max(640, 120 + nodes.length * Y_GAP),
+    nodes: laidOutNodes,
+    edges: laidOutEdges,
+    edgeChips,
+    scopeLinks,
+    width: Math.max(1100, BOARD_PADDING * 2 + (MAX_VISUAL_INDENT + 1) * INDENT_GAP + NODE_WIDTH),
+    height: Math.max(680, BOARD_PADDING * 2 + Math.max(1, nodes.length) * FLOW_GAP + NODE_HEIGHT),
   };
 }
 
@@ -257,6 +361,11 @@ function formatDuration(durationMs: number | null): string {
   if (durationMs === null) return "open";
   if (durationMs < 1000) return `${durationMs}ms`;
   return `${(durationMs / 1000).toFixed(2)}s`;
+}
+
+function edgeLabel(edge: GraphEdge): string {
+  if (edge.status === "open") return `${edge.label} · open`;
+  return edge.label;
 }
 
 function isGhostNode(node: ReadNode): node is ReadNode & {
@@ -276,4 +385,21 @@ function formatTimestamp(timestampMs: number | null): string {
 
 function formatTimeRange(startMs: number | null, endMs: number | null): string {
   return `${formatTimestamp(startMs)} → ${formatTimestamp(endMs)}`;
+}
+
+function readRoute(): AppRoute {
+  const match = window.location.pathname.match(/^\/traces\/([^/]+)\/graph$/);
+  if (!match) return { page: "list" };
+  return { page: "graph", traceId: decodeURIComponent(match[1]) };
+}
+
+function navigateToTrace(traceId: string, setRoute: (route: AppRoute) => void): void {
+  const route: AppRoute = { page: "graph", traceId };
+  window.history.pushState(null, "", `/traces/${encodeURIComponent(traceId)}/graph`);
+  setRoute(route);
+}
+
+function navigateToList(setRoute: (route: AppRoute) => void): void {
+  window.history.pushState(null, "", "/");
+  setRoute({ page: "list" });
 }
