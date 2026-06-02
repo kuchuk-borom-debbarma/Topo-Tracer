@@ -343,23 +343,148 @@ button {
   padding: 18px 20px 72px;
 }
 
-.reagraph-shell {
-  background:
-    linear-gradient(rgba(248, 250, 252, 0.82), rgba(248, 250, 252, 0.82)),
-    radial-gradient(circle at 1px 1px, rgba(124, 138, 160, 0.32) 1px, transparent 0);
-  background-size: auto, 28px 28px;
+.react-flow-shell {
+  background: #f8fafc;
   overflow: hidden;
   padding: 0;
   position: relative;
 }
 
-.reagraph-shell > div {
+.react-flow-shell .react-flow {
+  background: #f8fafc;
   height: 100%;
   width: 100%;
 }
 
-.reagraph-shell canvas {
-  outline: none;
+.react-flow__node {
+  border-radius: 8px;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  filter: drop-shadow(0 0 5px rgba(15, 118, 110, 0.26));
+}
+
+.react-flow__edge-textbg {
+  stroke: #ffffff;
+  stroke-width: 1px;
+}
+
+.react-flow__controls {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  border-bottom-color: var(--line);
+}
+
+.react-flow__minimap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.flow-node {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-left: 6px solid currentColor;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--accent-blue);
+  display: grid;
+  gap: 7px;
+  min-height: 116px;
+  padding: 12px 13px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  width: 278px;
+}
+
+.flow-node:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.flow-node.selected {
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18), var(--shadow);
+}
+
+.flow-node.error {
+  color: var(--danger);
+}
+
+.flow-node.warning,
+.flow-node.open {
+  color: var(--warning);
+}
+
+.flow-node.ghost {
+  background: #f8fafc;
+  color: var(--ghost);
+  border-style: dashed;
+}
+
+.flow-node-top {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 7px;
+  text-transform: capitalize;
+}
+
+.flow-node-top strong {
+  background: #eef2ff;
+  border-radius: 999px;
+  color: #1d4ed8;
+  font-size: 11px;
+  margin-left: auto;
+  padding: 2px 7px;
+}
+
+.status-dot {
+  background: currentColor;
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.flow-node-title {
+  color: var(--ink);
+  display: -webkit-box;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.24;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.flow-node-meta,
+.flow-node em {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.flow-node em {
+  color: var(--danger);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.flow-node .react-flow__handle {
+  background: currentColor;
+  border: 2px solid #ffffff;
+  height: 9px;
+  width: 9px;
 }
 
 .empty-graph {

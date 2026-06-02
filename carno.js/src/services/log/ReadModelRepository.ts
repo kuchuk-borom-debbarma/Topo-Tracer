@@ -49,7 +49,13 @@ const LATEST_EDGES_SQL = `
   GROUP BY trace_id, id
 `;
 
-const HIDDEN_NODE_ID = "ghost:hidden";
+const HIDDEN_NODE_ID_PREFIX = "ghost:hidden";
+
+type HiddenProjection = {
+  ghosts: GhostNode[];
+  hiddenNodeToGhostId: Map<string, string>;
+  hiddenNodeCount: number;
+};
 
 @Service()
 export class ReadModelRepository implements TraceReadModelStore {
@@ -218,20 +224,18 @@ export class ReadModelRepository implements TraceReadModelStore {
     `, { traceId: input.traceId })).map(mapNode);
     const allEdges = (await this.queryRows<any>(LATEST_EDGES_SQL, { traceId: input.traceId })).map(mapEdge);
     const visibleNodes = allNodes.filter((node) => node.importanceLevel <= input.maxImportance);
-    const hiddenNodes = allNodes.filter((node) => node.importanceLevel > input.maxImportance);
-    const projectedNodes = hiddenNodes.length
-      ? [...visibleNodes, createHiddenGhostNode(input.traceId, input.maxImportance, hiddenNodes)]
-      : visibleNodes;
+    const hiddenProjection = createHiddenProjection(input.traceId, input.maxImportance, allNodes);
+    const projectedNodes = [...visibleNodes, ...hiddenProjection.ghosts];
     projectedNodes.sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
 
     const nodes = projectedNodes.slice(input.offset, input.offset + input.limit);
-    const edges = projectEdges(allEdges, allNodes, nodes, input.maxImportance);
+    const edges = projectEdges(allEdges, allNodes, nodes, input.maxImportance, hiddenProjection.hiddenNodeToGhostId);
 
     return {
       nodes,
       edges,
-      hiddenNodeCount: hiddenNodes.length,
-      ghostNodeCount: hiddenNodes.length ? 1 : 0,
+      hiddenNodeCount: hiddenProjection.hiddenNodeCount,
+      ghostNodeCount: hiddenProjection.ghosts.length,
       projectedNodeCount: projectedNodes.length,
     };
   }
@@ -292,7 +296,37 @@ function mapEdge(row: any): ReadEdge {
   };
 }
 
-function createHiddenGhostNode(traceId: string, maxImportance: number, hiddenNodes: ReadNode[]): GhostNode {
+function createHiddenProjection(traceId: string, maxImportance: number, allNodes: ReadNode[]): HiddenProjection {
+  const sortedNodes = [...allNodes].sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
+  const ghosts: GhostNode[] = [];
+  const hiddenNodeToGhostId = new Map<string, string>();
+  let segment: ReadNode[] = [];
+
+  const flushSegment = () => {
+    if (!segment.length) return;
+    const ghost = createHiddenGhostNode(traceId, maxImportance, segment, ghosts.length);
+    ghosts.push(ghost);
+    for (const node of segment) hiddenNodeToGhostId.set(node.id, ghost.id);
+    segment = [];
+  };
+
+  for (const node of sortedNodes) {
+    if (node.importanceLevel > maxImportance) {
+      segment.push(node);
+    } else {
+      flushSegment();
+    }
+  }
+  flushSegment();
+
+  return {
+    ghosts,
+    hiddenNodeToGhostId,
+    hiddenNodeCount: hiddenNodeToGhostId.size,
+  };
+}
+
+function createHiddenGhostNode(traceId: string, maxImportance: number, hiddenNodes: ReadNode[], segmentIndex: number): GhostNode {
   const started = numericValues(hiddenNodes.map((node) => node.startedAtUnixMs));
   const ended = numericValues(hiddenNodes.map((node) => node.endedAtUnixMs));
   const startedAtUnixMs = started.length ? Math.min(...started) : null;
@@ -302,7 +336,7 @@ function createHiddenGhostNode(traceId: string, maxImportance: number, hiddenNod
   const hasWarning = hiddenNodes.some((node) => node.status === "warning" || node.status === "open");
 
   return {
-    id: HIDDEN_NODE_ID,
+    id: `${HIDDEN_NODE_ID_PREFIX}:${segmentIndex}`,
     traceId,
     name: `${hiddenNodes.length} hidden less-important node${hiddenNodes.length === 1 ? "" : "s"}`,
     importanceLevel: maxImportance + 1,
@@ -329,6 +363,7 @@ function projectEdges(
   allNodes: ReadNode[],
   projectedNodes: Array<ReadNode | GhostNode>,
   maxImportance: number,
+  hiddenNodeToGhostId: Map<string, string>,
 ): GraphEdge[] {
   const allNodeById = new Map(allNodes.map((node) => [node.id, node]));
   const projectedIds = new Set(projectedNodes.map((node) => node.id));
@@ -339,8 +374,9 @@ function projectEdges(
     const to = allNodeById.get(edge.toNodeId);
     if (!from || !to) continue;
 
-    const resolvedFrom = from.importanceLevel <= maxImportance ? edge.fromNodeId : HIDDEN_NODE_ID;
-    const resolvedTo = to.importanceLevel <= maxImportance ? edge.toNodeId : HIDDEN_NODE_ID;
+    const resolvedFrom = from.importanceLevel <= maxImportance ? edge.fromNodeId : hiddenNodeToGhostId.get(edge.fromNodeId);
+    const resolvedTo = to.importanceLevel <= maxImportance ? edge.toNodeId : hiddenNodeToGhostId.get(edge.toNodeId);
+    if (!resolvedFrom || !resolvedTo) continue;
     if (resolvedFrom === resolvedTo || !projectedIds.has(resolvedFrom) || !projectedIds.has(resolvedTo)) continue;
 
     const isGhost = resolvedFrom !== edge.fromNodeId || resolvedTo !== edge.toNodeId;

@@ -29,9 +29,9 @@ Importance.NOISE     // 4
 ```
 
 Lower number means more important. Slider value `N` shows nodes where
-`importanceLevel <= N`. Hidden nodes collapse into one ghost group. Edges are
-lifted only when an explicit edge crosses from a visible node to a hidden node,
-or from a hidden node to a visible node.
+`importanceLevel <= N`. Hidden nodes collapse into contiguous ghost segments.
+Edges are lifted only when an explicit edge crosses from a visible node to a
+hidden segment, or from a hidden segment to a visible node.
 
 ## Write Path
 
@@ -120,9 +120,9 @@ Projection steps:
 1. Load latest summary for one trace.
 2. Load latest read nodes and read edges for the trace.
 3. Keep nodes where `importanceLevel <= maxImportance`.
-4. Collapse all lower-priority nodes into `ghost:hidden` when needed.
+4. Collapse each contiguous lower-priority run into `ghost:hidden:N`.
 5. Window projected nodes by `flowOrder`.
-6. Return only explicit edges whose resolved endpoints are in the window.
+6. Return explicit edges whose resolved endpoints are in the window, lifting hidden endpoints to their segment ghost.
 
 Hard response cap is 500 nodes.
 

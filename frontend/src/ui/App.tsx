@@ -1,93 +1,35 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
-  GraphCanvas as ReagraphCanvas,
-  lightTheme,
-  type GraphCanvasRef,
-  type GraphEdge as ReagraphEdge,
-  type GraphNode as ReagraphNode,
-  type InternalGraphEdge,
-  type InternalGraphNode,
-  type Theme,
-} from "reagraph";
+  Background,
+  BackgroundVariant,
+  Controls,
+  Handle,
+  MarkerType,
+  MiniMap,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { fetchGraph, fetchTraces } from "../api";
 import type { GraphEdge, GraphWindowResponse, ReadNode, TraceSummary } from "../types";
 
+const NODE_WIDTH = 278;
+const NODE_HEIGHT = 116;
+const COLUMN_GAP = 330;
+const ROW_GAP = 154;
+const BOARD_PADDING_X = 72;
+const BOARD_PADDING_Y = 56;
+
 type AppRoute = { page: "list" } | { page: "graph"; traceId: string };
 type Inspectable = ReadNode | GraphEdge;
-
-const graphTheme: Theme = {
-  ...lightTheme,
-  canvas: {
-    background: "#f8fafc",
-    fog: "#f8fafc",
-  },
-  node: {
-    ...lightTheme.node,
-    fill: "#2563eb",
-    activeFill: "#0f766e",
-    inactiveOpacity: 0.18,
-    label: {
-      ...lightTheme.node.label,
-      color: "#17202a",
-      stroke: "#ffffff",
-      activeColor: "#0f766e",
-      backgroundColor: "#ffffff",
-      backgroundOpacity: 0.86,
-      padding: 4,
-      radius: 5,
-    },
-    subLabel: {
-      color: "#667085",
-      stroke: "#ffffff",
-      activeColor: "#0f766e",
-    },
-  },
-  ring: {
-    fill: "#dbeafe",
-    activeFill: "#14b8a6",
-  },
-  edge: {
-    ...lightTheme.edge,
-    fill: "#7c8aa0",
-    activeFill: "#0f766e",
-    opacity: 0.82,
-    selectedOpacity: 1,
-    inactiveOpacity: 0.12,
-    label: {
-      color: "#344054",
-      stroke: "#ffffff",
-      activeColor: "#0f766e",
-      fontSize: 11,
-    },
-    subLabel: {
-      color: "#667085",
-      stroke: "#ffffff",
-      activeColor: "#0f766e",
-      fontSize: 9,
-    },
-  },
-  arrow: {
-    fill: "#7c8aa0",
-    activeFill: "#0f766e",
-  },
-  lasso: {
-    background: "rgba(20, 184, 166, 0.1)",
-    border: "1px solid rgba(15, 118, 110, 0.4)",
-  },
-  cluster: {
-    stroke: "#d7dde5",
-    fill: "#ffffff",
-    opacity: 0.16,
-    selectedOpacity: 0.28,
-    inactiveOpacity: 0.06,
-    label: {
-      color: "#667085",
-      stroke: "#ffffff",
-      fontSize: 12,
-    },
-  },
-};
+type TraceNodeData = { node: ReadNode; subtitle: string };
+type TraceEdgeData = { edge: GraphEdge };
+type TraceFlowNode = Node<TraceNodeData, "trace">;
+type TraceFlowEdge = Edge<TraceEdgeData>;
 
 export function App() {
   const [route, setRoute] = useState(() => readRoute());
@@ -298,12 +240,7 @@ function TraceGraphCanvas(props: {
   onSelect: (item: Inspectable) => void;
   onClearSelection: () => void;
 }) {
-  const graphRef = useRef<GraphCanvasRef | null>(null);
-  const data = useMemo(() => buildReagraphData(props.graph), [props.graph]);
-
-  useEffect(() => {
-    window.requestAnimationFrame(() => graphRef.current?.fitNodesInView?.());
-  }, [props.graph?.metadata.traceId, props.graph?.metadata.maxImportance, props.graph?.metadata.nextCursor]);
+  const flow = useMemo(() => buildFlowData(props.graph, props.selectedId), [props.graph, props.selectedId]);
 
   if (!props.graph) {
     return (
@@ -314,44 +251,44 @@ function TraceGraphCanvas(props: {
   }
 
   return (
-    <section className="graph-canvas reagraph-shell">
-      <ReagraphCanvas
-        ref={graphRef}
-        nodes={data.nodes}
-        edges={data.edges}
-        selections={props.selectedId ? [props.selectedId] : []}
-        actives={props.selectedId ? [props.selectedId] : []}
-        theme={graphTheme}
-        animated
-        draggable
-        aggregateEdges={false}
-        cameraMode="pan"
-        defaultNodeSize={9}
-        minNodeSize={6}
-        maxNodeSize={18}
-        layoutType="forceDirected2d"
-        layoutOverrides={{
-          centerInertia: 0.55,
-          linkDistance: 360,
-          nodeStrength: -1400,
-          nodeLevelRatio: 1.7,
+    <section className="graph-canvas react-flow-shell">
+      <ReactFlow
+        nodes={flow.nodes}
+        edges={flow.edges}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.18, maxZoom: 1.15 }}
+        minZoom={0.2}
+        maxZoom={1.8}
+        nodesDraggable
+        nodesConnectable={false}
+        elementsSelectable
+        proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={{
+          type: "smoothstep",
+          interactionWidth: 18,
+          markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
         }}
-        edgeArrowPosition="end"
-        edgeInterpolation="curved"
-        edgeLabelPosition="natural"
-        labelType="nodes"
-        maxDistance={70000}
-        minDistance={120}
-        onCanvasClick={props.onClearSelection}
-        onNodeClick={(node: InternalGraphNode) => {
-          const readNode = data.nodeById.get(node.id);
+        onPaneClick={props.onClearSelection}
+        onNodeClick={(_, node) => {
+          const readNode = flow.nodeById.get(node.id);
           if (readNode) props.onSelect(readNode);
         }}
-        onEdgeClick={(edge: InternalGraphEdge) => {
-          const readEdge = data.edgeById.get(edge.id);
+        onEdgeClick={(_, edge) => {
+          const readEdge = flow.edgeById.get(edge.id);
           if (readEdge) props.onSelect(readEdge);
         }}
-      />
+      >
+        <Background variant={BackgroundVariant.Dots} gap={28} size={1.4} color="#d7dde5" />
+        <Controls showInteractive={false} />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(node) => String(node.style?.background ?? "#94a3b8")}
+          maskColor="rgba(248, 250, 252, 0.68)"
+          bgColor="#ffffff"
+        />
+      </ReactFlow>
     </section>
   );
 }
@@ -426,9 +363,29 @@ function Inspector(props: {
   );
 }
 
-function buildReagraphData(graph?: GraphWindowResponse | null): {
-  nodes: ReagraphNode[];
-  edges: ReagraphEdge[];
+const TraceNode = memo(function TraceNode(props: NodeProps<TraceFlowNode>) {
+  const node = props.data.node;
+  return (
+    <div className={`flow-node ${node.status} ${node.isGhost ? "ghost" : ""} ${props.selected ? "selected" : ""}`}>
+      <Handle type="target" position={Position.Left} />
+      <div className="flow-node-top">
+        <span className="status-dot" />
+        <span>{capitalize(node.status)}</span>
+        <strong>i{importanceOf(node)}</strong>
+      </div>
+      <div className="flow-node-title">{node.name}</div>
+      <div className="flow-node-meta">{props.data.subtitle}</div>
+      {node.diagnostics.length > 0 && <em>{node.diagnostics.length} diagnostics</em>}
+      <Handle type="source" position={Position.Right} />
+    </div>
+  );
+});
+
+const nodeTypes = { trace: TraceNode };
+
+function buildFlowData(graph?: GraphWindowResponse | null, selectedId?: string | null): {
+  nodes: TraceFlowNode[];
+  edges: TraceFlowEdge[];
   nodeById: Map<string, ReadNode>;
   edgeById: Map<string, GraphEdge>;
 } {
@@ -436,49 +393,163 @@ function buildReagraphData(graph?: GraphWindowResponse | null): {
   const readEdges = graph?.edges ?? [];
   const nodeById = new Map(readNodes.map((node) => [node.id, node]));
   const edgeById = new Map(readEdges.map((edge) => [edge.id, edge]));
+  const positions = layoutNodes(readNodes, readEdges);
 
-  const nodes = readNodes.map<ReagraphNode>((node) => ({
+  const nodes = readNodes.map<TraceFlowNode>((node) => ({
     id: node.id,
-    label: node.name,
-    subLabel: nodeSubLabel(node),
-    labelVisible: readNodes.length <= 80 || node.importanceLevel <= 1 || node.isGhost === true,
-    size: nodeSize(node),
-    fill: nodeFill(node),
-    cluster: nodeCluster(node),
-    data: { node },
+    type: "trace",
+    data: { node, subtitle: nodeSubtitle(node) },
+    position: positions.get(node.id) ?? { x: BOARD_PADDING_X, y: BOARD_PADDING_Y },
+    selected: selectedId === node.id,
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+    style: { width: NODE_WIDTH, background: nodeFill(node) },
   }));
 
   const edges = readEdges
     .filter((edge) => nodeById.has(edge.fromNodeId) && nodeById.has(edge.toNodeId))
-    .map<ReagraphEdge>((edge) => ({
+    .map<TraceFlowEdge>((edge) => ({
       id: edge.id,
       source: edge.fromNodeId,
       target: edge.toNodeId,
-      label: edgeLabel(edge),
-      subLabel: edge.durationMs === null ? edge.status : formatDuration(edge.durationMs),
-      fill: edgeFill(edge),
-      dashed: edge.isGhost === true || edge.status === "open",
-      dashArray: edge.status === "open" ? [10, 8] : [6, 8],
-      interpolation: "curved",
-      arrowPlacement: "end",
       data: { edge },
-      labelVisible: readEdges.length <= 120 || edge.status !== "ok" || edge.isGhost === true,
+      label: edgeLabel(edge),
+      selected: selectedId === edge.id,
+      animated: edge.status === "open",
+      type: "smoothstep",
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(edge), width: 18, height: 18 },
+      style: {
+        stroke: edgeColor(edge),
+        strokeWidth: selectedId === edge.id ? 3 : edge.isGhost ? 1.6 : 2.2,
+        strokeDasharray: edge.isGhost || edge.status === "open" ? "7 7" : undefined,
+      },
+      labelStyle: { fill: edgeColor(edge), fontWeight: 800, fontSize: 12 },
+      labelBgStyle: { fill: "#ffffff", fillOpacity: 0.86 },
+      labelBgPadding: [6, 3],
+      labelBgBorderRadius: 5,
     }));
 
   return { nodes, edges, nodeById, edgeById };
 }
 
-function nodeSubLabel(node: ReadNode): string {
-  if (isGhostNode(node)) return `${node.hiddenNodeCount} hidden · ${node.hiddenErrorCount} errors`;
-  return `${capitalize(node.status)} · i${importanceOf(node)} · ${formatDuration(node.durationMs)}`;
+function layoutNodes(nodes: ReadNode[], edges: GraphEdge[]): Map<string, { x: number; y: number }> {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
+  const incoming = new Map(nodes.map((node) => [node.id, [] as string[]]));
+
+  for (const edge of edges) {
+    if (!nodeById.has(edge.fromNodeId) || !nodeById.has(edge.toNodeId)) continue;
+    outgoing.get(edge.fromNodeId)?.push(edge.toNodeId);
+    incoming.get(edge.toNodeId)?.push(edge.fromNodeId);
+  }
+
+  for (const list of [...outgoing.values(), ...incoming.values()]) {
+    list.sort((a, b) => compareNodes(nodeById.get(a)!, nodeById.get(b)!));
+  }
+
+  const rank = assignRanks(nodes, outgoing, incoming);
+  const byRank = new Map<number, ReadNode[]>();
+  for (const node of nodes) {
+    const bucket = byRank.get(rank.get(node.id) ?? 0) ?? [];
+    bucket.push(node);
+    byRank.set(rank.get(node.id) ?? 0, bucket);
+  }
+
+  const orderedRanks = Array.from(byRank.keys()).sort((a, b) => a - b);
+  const order = new Map<string, number>();
+  for (const level of orderedRanks) {
+    const bucket = byRank.get(level)!;
+    bucket.sort(compareNodes);
+    bucket.forEach((node, index) => order.set(node.id, index));
+  }
+
+  // Barycentric sweeps: children stay near parents; siblings fan downward.
+  for (let sweep = 0; sweep < 4; sweep += 1) {
+    for (const level of orderedRanks) {
+      const bucket = byRank.get(level)!;
+      bucket.sort((a, b) => laneScore(a.id, incoming, order) - laneScore(b.id, incoming, order) || compareNodes(a, b));
+      bucket.forEach((node, index) => order.set(node.id, index));
+    }
+    for (const level of [...orderedRanks].reverse()) {
+      const bucket = byRank.get(level)!;
+      bucket.sort((a, b) => laneScore(a.id, outgoing, order) - laneScore(b.id, outgoing, order) || compareNodes(a, b));
+      bucket.forEach((node, index) => order.set(node.id, index));
+    }
+  }
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const maxRows = Math.max(...Array.from(byRank.values()).map((bucket) => bucket.length), 1);
+  for (const level of orderedRanks) {
+    const bucket = byRank.get(level)!;
+    bucket.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    const yOffset = ((maxRows - bucket.length) * ROW_GAP) / 2;
+    bucket.forEach((node, index) => {
+      positions.set(node.id, {
+        x: BOARD_PADDING_X + level * COLUMN_GAP,
+        y: BOARD_PADDING_Y + yOffset + index * ROW_GAP,
+      });
+    });
+  }
+
+  return positions;
 }
 
-function nodeSize(node: ReadNode): number {
-  if (isGhostNode(node)) return Math.min(18, 10 + Math.sqrt(node.hiddenNodeCount) * 0.7);
-  if (node.status === "error") return 15;
-  if (node.importanceLevel === 0) return 16;
-  if (node.importanceLevel === 1) return 13;
-  return 10;
+function assignRanks(
+  nodes: ReadNode[],
+  outgoing: Map<string, string[]>,
+  incoming: Map<string, string[]>,
+): Map<string, number> {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const remainingIncoming = new Map(nodes.map((node) => [node.id, incoming.get(node.id)?.length ?? 0]));
+  const rank = new Map(nodes.map((node) => [node.id, 0]));
+  const queue = nodes
+    .filter((node) => (remainingIncoming.get(node.id) ?? 0) === 0)
+    .sort(compareNodes)
+    .map((node) => node.id);
+  const visited = new Set<string>();
+
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    for (const targetId of outgoing.get(id) ?? []) {
+      rank.set(targetId, Math.max(rank.get(targetId) ?? 0, (rank.get(id) ?? 0) + 1));
+      remainingIncoming.set(targetId, (remainingIncoming.get(targetId) ?? 1) - 1);
+      if ((remainingIncoming.get(targetId) ?? 0) <= 0) {
+        queue.push(targetId);
+        queue.sort((a, b) => compareNodes(nodeById.get(a)!, nodeById.get(b)!));
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    if (visited.has(node.id)) continue;
+    const parentRanks = (incoming.get(node.id) ?? []).map((id) => rank.get(id) ?? 0);
+    rank.set(node.id, parentRanks.length ? Math.max(...parentRanks) + 1 : 0);
+  }
+
+  return compressRanks(rank);
+}
+
+function compressRanks(rank: Map<string, number>): Map<string, number> {
+  const levels = Array.from(new Set(rank.values())).sort((a, b) => a - b);
+  const remap = new Map(levels.map((level, index) => [level, index]));
+  return new Map(Array.from(rank.entries()).map(([id, level]) => [id, remap.get(level) ?? 0]));
+}
+
+function laneScore(id: string, links: Map<string, string[]>, order: Map<string, number>): number {
+  const linked = links.get(id) ?? [];
+  if (!linked.length) return order.get(id) ?? 0;
+  return linked.reduce((sum, linkedId) => sum + (order.get(linkedId) ?? 0), 0) / linked.length;
+}
+
+function compareNodes(a: ReadNode, b: ReadNode): number {
+  return a.flowOrder - b.flowOrder || (a.startedAtUnixMs ?? 0) - (b.startedAtUnixMs ?? 0) || a.id.localeCompare(b.id);
+}
+
+function nodeSubtitle(node: ReadNode): string {
+  if (isGhostNode(node)) return `${node.hiddenNodeCount} hidden · ${node.hiddenErrorCount} errors`;
+  return `${formatDuration(node.durationMs)} · ${formatTimestamp(node.startedAtUnixMs)} -> ${formatTimestamp(node.endedAtUnixMs)}`;
 }
 
 function nodeFill(node: ReadNode): string {
@@ -491,15 +562,7 @@ function nodeFill(node: ReadNode): string {
   return "#7c8aa0";
 }
 
-function nodeCluster(node: ReadNode): string {
-  if (isGhostNode(node)) return "hidden";
-  if (node.status === "error") return "error";
-  if (node.importanceLevel === 0) return "critical";
-  if (node.importanceLevel === 1) return "service";
-  return "detail";
-}
-
-function edgeFill(edge: GraphEdge): string {
+function edgeColor(edge: GraphEdge): string {
   if (edge.status === "error") return "#c2410c";
   if (edge.status === "warning" || edge.status === "open") return "#b7791f";
   if (edge.isGhost) return "#64748b";
@@ -532,7 +595,8 @@ function isGhostNode(node: ReadNode): node is ReadNode & {
 }
 
 function capitalize(value: string): string {
-  return value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+  return value ? `${value[0].toUpperCase()}${value.slice(1)}`
+    : value;
 }
 
 function formatTimestamp(timestampMs: number | null): string {

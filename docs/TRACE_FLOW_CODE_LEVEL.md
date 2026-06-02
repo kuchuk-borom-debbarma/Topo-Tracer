@@ -152,18 +152,18 @@ are ordered by start time and id.
   "nodes": [
     { "id": "n-root", "name": "POST /checkout", "importanceLevel": 0 },
     { "id": "n-pay", "name": "payment service", "importanceLevel": 1 },
-    { "id": "ghost:hidden", "isGhost": true, "hiddenNodeCount": 2 }
+    { "id": "ghost:hidden:0", "isGhost": true, "hiddenNodeCount": 2 }
   ],
   "edges": [
     { "fromNodeId": "n-root", "toNodeId": "n-pay", "label": "calls" },
-    { "fromNodeId": "n-pay", "toNodeId": "ghost:hidden", "label": "authorizes", "isGhost": true }
+    { "fromNodeId": "n-pay", "toNodeId": "ghost:hidden:0", "label": "authorizes", "isGhost": true }
   ]
 }
 ```
 
-The hidden ghost exists only because low-importance nodes were filtered out. It
-does not mean those nodes were children of another node; it is just a collapsed
-importance bucket.
+Hidden ghosts exist only because low-importance nodes were filtered out. Each
+ghost represents one contiguous hidden run in flow order; it does not define
+parentage.
 
 ## Frontend
 

@@ -150,12 +150,12 @@ synthetic relationship edges from node shape.
 1. Loads latest nodes.
 2. Loads latest edges.
 3. Keeps nodes with `importanceLevel <= maxImportance`.
-4. Creates `ghost:hidden` when lower-importance nodes exist.
+4. Creates one `ghost:hidden:N` node per contiguous lower-importance run.
 5. Windows projected nodes by `flowOrder`.
-6. Resolves explicit edges to visible endpoints or `ghost:hidden`.
+6. Resolves explicit edges to visible endpoints or the matching hidden segment ghost.
 7. Groups lifted ghost edges by `from`, `to`, and `label`.
 
-If both endpoints resolve to the same hidden group, the edge is omitted from the
+If both endpoints resolve to the same hidden segment, the edge is omitted from the
 window because it would not connect visible graph items.
 
 ## Alias Rule
