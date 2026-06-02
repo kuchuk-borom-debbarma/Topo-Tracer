@@ -22,7 +22,6 @@ export class RawEventRepository implements RawEventStore {
       received_at_ms: receivedAtUnixMs,
       name: event.name ?? null,
       importance_level: event.importanceLevel ?? null,
-      parent_id: event.parentId ?? null,
       from_node_id: event.fromNodeId ?? null,
       to_node_id: event.toNodeId ?? null,
       label: event.label ?? null,
@@ -73,16 +72,15 @@ export class RawEventRepository implements RawEventStore {
       query: `
         SELECT
           event_id,
-          {traceId:String} AS trace_id,
+          argMax(trace_id, received_at_ms) AS event_trace_id,
           argMax(entity_id, received_at_ms) AS entity_id,
           argMax(entity_type, received_at_ms) AS entity_type,
           argMax(event_type, received_at_ms) AS event_type,
           argMax(occurred_at_ms, received_at_ms) AS occurred_at_ms,
-          max(received_at_ms) AS received_at_ms,
+          max(received_at_ms) AS latest_received_at_ms,
           min(received_at_ms) AS first_received_at_ms,
           argMax(name, received_at_ms) AS name,
           argMax(importance_level, received_at_ms) AS importance_level,
-          argMax(parent_id, received_at_ms) AS parent_id,
           argMax(from_node_id, received_at_ms) AS from_node_id,
           argMax(to_node_id, received_at_ms) AS to_node_id,
           argMax(label, received_at_ms) AS label,
@@ -100,17 +98,16 @@ export class RawEventRepository implements RawEventStore {
 
     return rows.map((row) => ({
       eventId: row.event_id,
-      traceId: row.trace_id,
+      traceId: row.event_trace_id,
       entityId: row.entity_id,
       entityType: row.entity_type,
       eventType: row.event_type,
       occurredAtUnixMs: Number(row.occurred_at_ms),
-      receivedAtUnixMs: Number(row.received_at_ms),
+      receivedAtUnixMs: Number(row.latest_received_at_ms),
       name: row.name ?? null,
       importanceLevel: row.importance_level === null || row.importance_level === undefined
         ? null
         : Number(row.importance_level),
-      parentId: row.parent_id ?? null,
       fromNodeId: row.from_node_id ?? null,
       toNodeId: row.to_node_id ?? null,
       label: row.label ?? null,

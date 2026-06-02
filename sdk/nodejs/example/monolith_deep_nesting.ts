@@ -20,6 +20,7 @@ async function main() {
   const stack: TraceNode[] = [];
   let current = root;
   for (let step = 1; step <= 14; step++) {
+    const previous = current;
     const importanceLevel = step === 4 || step === 10 ? Importance.SERVICE : Importance.NOISE;
     current = current.startNode(`invoice.step${step}()`, {
       importanceLevel,
@@ -30,6 +31,7 @@ async function main() {
           : "Nested implementation detail hides as ghost",
       },
     });
+    previous.connectTo(current, { label: "calls" });
     stack.push(current);
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
@@ -38,6 +40,7 @@ async function main() {
     importanceLevel: Importance.SERVICE,
     data: { db: "postgres", intent: "Important boundary even though it is deeply nested" },
   });
+  current.connectTo(leafDb, { label: "reads" });
   await fakeWork(leafDb, 10);
 
   for (const node of stack.reverse()) node.end();

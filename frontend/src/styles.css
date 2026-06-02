@@ -86,6 +86,18 @@ button {
   min-height: 100vh;
 }
 
+.app-shell.trace-collapsed {
+  grid-template-columns: 58px minmax(0, 1fr) 340px;
+}
+
+.app-shell.inspector-collapsed {
+  grid-template-columns: 292px minmax(0, 1fr) 58px;
+}
+
+.app-shell.trace-collapsed.inspector-collapsed {
+  grid-template-columns: 58px minmax(0, 1fr) 58px;
+}
+
 .trace-rail,
 .inspector {
   background: var(--panel);
@@ -108,6 +120,11 @@ button {
   margin-bottom: 16px;
 }
 
+.rail-brand > div,
+.inspector-header > div {
+  min-width: 0;
+}
+
 .brand-mark {
   align-items: center;
   background: linear-gradient(135deg, var(--accent), var(--accent-blue));
@@ -120,12 +137,45 @@ button {
   width: 40px;
 }
 
+.brand-mark.compact {
+  height: 34px;
+  width: 34px;
+}
+
+.collapsed-panel {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 10px;
+}
+
+.panel-toggle {
+  align-items: center;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #344054;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  transition: border-color 120ms ease, background 120ms ease;
+  width: 34px;
+}
+
+.panel-toggle:hover {
+  background: #f8fafc;
+  border-color: var(--line-strong);
+}
+
 .rail-brand p,
 .eyebrow,
 .header-stats,
 .trace-row span,
-.graph-node span,
-.graph-node em,
 .summary-strip,
 .empty-state {
   color: var(--muted);
@@ -293,204 +343,28 @@ button {
   padding: 18px 20px 72px;
 }
 
-.empty-graph {
-  align-items: center;
-  display: grid;
-}
-
-.graph-board {
+.reagraph-shell {
   background:
-    radial-gradient(circle at 1px 1px, #dce2e8 1px, transparent 0),
-    var(--panel-soft);
-  background-size: 28px 28px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: inset 0 1px 0 white;
+    linear-gradient(rgba(248, 250, 252, 0.82), rgba(248, 250, 252, 0.82)),
+    radial-gradient(circle at 1px 1px, rgba(124, 138, 160, 0.32) 1px, transparent 0);
+  background-size: auto, 28px 28px;
+  overflow: hidden;
+  padding: 0;
   position: relative;
 }
 
-.importance-column {
-  background: rgba(255, 255, 255, 0.54);
-  border-left: 1px solid rgba(119, 132, 150, 0.22);
-  border-right: 1px solid rgba(119, 132, 150, 0.12);
-  border-radius: 8px;
-  pointer-events: none;
-  position: absolute;
-  top: 42px;
-  width: 288px;
-  z-index: 0;
+.reagraph-shell > div {
+  height: 100%;
+  width: 100%;
 }
 
-.importance-column span {
-  background: #ffffff;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: #475467;
-  font-size: 12px;
-  font-weight: 850;
-  left: 12px;
-  padding: 4px 9px;
-  position: absolute;
-  top: 10px;
+.reagraph-shell canvas {
+  outline: none;
 }
 
-.graph-arrows {
-  left: 0;
-  overflow: visible;
-  pointer-events: none;
-  position: absolute;
-  top: 0;
-  z-index: 1;
-}
-
-.graph-edge {
-  pointer-events: auto;
-}
-
-.graph-edge path {
-  fill: none;
-  stroke: var(--accent-blue);
-  stroke-linecap: round;
-  stroke-width: 2.4;
-}
-
-.graph-edge.return path {
-  stroke: #7a8798;
-  stroke-dasharray: 5 6;
-}
-
-.graph-edge.open path {
-  stroke: var(--warning);
-}
-
-.graph-edge.ghost path {
-  stroke: var(--ghost);
-  stroke-dasharray: 4 6;
-}
-
-.graph-edge text {
-  fill: #1d4ed8;
-  font-size: 12px;
-  font-weight: 900;
-  paint-order: stroke;
-  pointer-events: none;
-  stroke: var(--panel-soft);
-  stroke-width: 5px;
-}
-
-.graph-edge.open text {
-  fill: #8a5f12;
-}
-
-.graph-edge.ghost text,
-.graph-edge.return text {
-  fill: #596579;
-}
-
-#graph-arrow path {
-  fill: var(--accent-blue);
-}
-
-#graph-arrow-open path {
-  fill: var(--warning);
-}
-
-#graph-arrow-muted path {
-  fill: var(--ghost);
-}
-
-.graph-node {
-  background: white;
-  border: 1px solid var(--line);
-  border-left: 5px solid var(--accent-blue);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  color: var(--ink);
-  cursor: pointer;
-  display: grid;
-  gap: 7px;
-  height: 112px;
-  padding: 11px 12px;
-  position: absolute;
-  text-align: left;
-  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
-  width: 260px;
-  z-index: 2;
-}
-
-.graph-node:hover {
-  border-color: var(--line-strong);
-  transform: translateY(-1px);
-}
-
-.graph-node.selected {
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), var(--shadow);
-}
-
-.graph-node.error {
-  border-left-color: var(--danger);
-}
-
-.graph-node.warning {
-  border-left-color: var(--warning);
-}
-
-.graph-node.ghost {
-  background: #f9fafb;
-  border-color: #cbd5e1;
-  border-left-color: var(--ghost);
-  border-style: dashed;
-}
-
-.node-topline {
+.empty-graph {
   align-items: center;
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  text-transform: capitalize;
-}
-
-.node-topline strong {
-  background: #eef2ff;
-  border-radius: 999px;
-  color: #1d4ed8;
-  font-size: 11px;
-  margin-left: auto;
-  padding: 2px 7px;
-}
-
-.status-dot {
-  background: var(--accent);
-  border-radius: 999px;
-  height: 8px;
-  width: 8px;
-}
-
-.graph-node.error .status-dot {
-  background: var(--danger);
-}
-
-.graph-node.warning .status-dot,
-.graph-node.open .status-dot {
-  background: var(--warning);
-}
-
-.node-title {
-  color: var(--ink);
-  display: -webkit-box;
-  font-size: 14px;
-  font-weight: 850;
-  line-height: 1.22;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.graph-node em {
-  color: var(--danger);
-  font-style: normal;
-  font-weight: 800;
+  display: grid;
 }
 
 .empty-state {
@@ -504,8 +378,10 @@ button {
 }
 
 .inspector-header {
-  display: grid;
+  align-items: start;
+  display: flex;
   gap: 4px;
+  justify-content: space-between;
   margin-bottom: 16px;
 }
 
@@ -551,20 +427,36 @@ pre {
 }
 
 @media (max-width: 1120px) {
-  .app-shell {
+  .app-shell,
+  .app-shell.trace-collapsed,
+  .app-shell.inspector-collapsed,
+  .app-shell.trace-collapsed.inspector-collapsed {
     grid-template-columns: 248px minmax(0, 1fr);
   }
 
-  .inspector {
+  .app-shell.trace-collapsed {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .inspector,
+  .app-shell.inspector-collapsed .inspector,
+  .app-shell.trace-collapsed.inspector-collapsed .inspector {
     border-left: 0;
     border-top: 1px solid var(--line);
     grid-column: 1 / -1;
     min-height: auto;
   }
+
+  .app-shell.inspector-collapsed .inspector {
+    align-items: flex-start;
+  }
 }
 
 @media (max-width: 760px) {
-  .app-shell {
+  .app-shell,
+  .app-shell.trace-collapsed,
+  .app-shell.inspector-collapsed,
+  .app-shell.trace-collapsed.inspector-collapsed {
     grid-template-columns: 1fr;
   }
 

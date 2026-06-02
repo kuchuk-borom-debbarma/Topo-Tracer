@@ -10,7 +10,6 @@ export class TraceNode {
   readonly traceId: string;
   readonly name: string;
   readonly importanceLevel: number;
-  readonly parentId: string | null;
   private isFinished = false;
 
   constructor(input: {
@@ -18,14 +17,12 @@ export class TraceNode {
     traceId: string;
     name: string;
     importanceLevel: number;
-    parentId?: string | null;
     data?: Record<string, unknown>;
   }) {
     this.id = input.id ?? uuidv4();
     this.traceId = input.traceId;
     this.name = input.name;
     this.importanceLevel = normalizeImportance(input.importanceLevel, 0);
-    this.parentId = input.parentId ?? null;
 
     Tracer.exportEvent({
       eventId: uuidv4(),
@@ -36,7 +33,6 @@ export class TraceNode {
       occurredAtUnixMs: Date.now(),
       name: this.name,
       importanceLevel: this.importanceLevel,
-      parentId: this.parentId,
       status: "open",
       data: input.data,
     });
@@ -47,10 +43,8 @@ export class TraceNode {
       traceId: this.traceId,
       name,
       importanceLevel: normalizeImportance(config?.importanceLevel, this.importanceLevel),
-      parentId: this.id,
       data: config?.data,
     });
-    this.connectTo(child, { label: "continues" });
     return child;
   }
 
@@ -72,8 +66,8 @@ export class TraceNode {
   createCarrierHeaders(targetNodeId?: string): Record<string, string> {
     return {
       "x-trace-id": this.traceId,
-      "x-parent-node-id": targetNodeId || this.id,
-      "x-parent-node-importance": String(this.importanceLevel),
+      "x-source-node-id": targetNodeId || this.id,
+      "x-source-node-importance": String(this.importanceLevel),
     };
   }
 

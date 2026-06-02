@@ -20,6 +20,7 @@ async function main() {
     importanceLevel: Importance.SERVICE,
     data: { module: "products", intent: "Persist upload before async work" },
   });
+  request.connectTo(save, { label: "writes" });
   await fakeWork(save, 9);
 
   const resizeJob = request.startNode("enqueue ResizeImages", {

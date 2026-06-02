@@ -10,7 +10,6 @@ export type TraceEventInput = {
   occurredAtUnixMs: number;
   name?: string | null;
   importanceLevel?: number | null;
-  parentId?: string | null;
   fromNodeId?: string | null;
   toNodeId?: string | null;
   label?: string | null;

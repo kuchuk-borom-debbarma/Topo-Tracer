@@ -12,7 +12,6 @@ import type {
 type NodeDraft = {
   id: string;
   traceId: string;
-  parentId: string | null;
   name: string;
   importanceLevel: number | null;
   status: string;
@@ -54,25 +53,20 @@ export class TraceReadModelBuilder implements TraceReadModelProjector {
       else applyEdgeEvent(edgeDrafts, event);
     }
 
-    const ancestry = computeAncestry(nodeDrafts);
     const flowOrder = computeFlowOrder(nodeDrafts, edgeDrafts);
 
     const nodes = Array.from(nodeDrafts.values()).map<ReadNode>((draft) => {
       finalizeLifecycle(draft, { missingEndIsDiagnostic: true });
-      const ancestryPath = ancestry.get(draft.id) ?? [];
       const importanceLevel = draft.importanceLevel ?? 0;
       return {
         id: draft.id,
         traceId: draft.traceId,
-        parentId: draft.parentId,
         name: draft.name,
         importanceLevel,
         status: draft.status,
         startedAtUnixMs: draft.startedAtUnixMs,
         endedAtUnixMs: draft.endedAtUnixMs,
         durationMs: durationOf(draft),
-        ancestryPath,
-        indentLevel: ancestryPath.length,
         flowOrder: flowOrder.get(draft.id) ?? Number.MAX_SAFE_INTEGER,
         diagnostics: Array.from(draft.diagnostics),
         data: draft.data,
@@ -139,7 +133,6 @@ function applyNodeEvent(map: Map<string, NodeDraft>, event: TraceEventRecord): v
   const draft = map.get(event.entityId) ?? {
     id: event.entityId,
     traceId: event.traceId,
-    parentId: null,
     name: event.entityId,
     importanceLevel: null,
     status: "open",
@@ -149,7 +142,6 @@ function applyNodeEvent(map: Map<string, NodeDraft>, event: TraceEventRecord): v
     diagnostics: new Set<DiagnosticCode>(),
   };
 
-  draft.parentId = event.parentId ?? draft.parentId;
   draft.name = event.name ?? draft.name;
   draft.importanceLevel = event.importanceLevel ?? draft.importanceLevel;
   draft.data = { ...draft.data, ...event.data };
@@ -210,39 +202,6 @@ function durationOf(draft: NodeDraft | EdgeDraft): number | null {
   return draft.endedAtUnixMs - draft.startedAtUnixMs;
 }
 
-function computeAncestry(nodes: Map<string, NodeDraft>): Map<string, string[]> {
-  const result = new Map<string, string[]>();
-
-  const visit = (id: string, seen: Set<string>): string[] => {
-    const cached = result.get(id);
-    if (cached) return cached;
-    const node = nodes.get(id);
-    if (!node?.parentId) {
-      result.set(id, []);
-      return [];
-    }
-    if (seen.has(id)) {
-      node.diagnostics.add("cycleDetected");
-      result.set(id, []);
-      return [];
-    }
-    const parent = nodes.get(node.parentId);
-    if (!parent) {
-      node.diagnostics.add("orphanNode");
-      result.set(id, []);
-      return [];
-    }
-    const nextSeen = new Set(seen);
-    nextSeen.add(id);
-    const ancestry = [...visit(parent.id, nextSeen), parent.id];
-    result.set(id, ancestry);
-    return ancestry;
-  };
-
-  for (const id of nodes.keys()) visit(id, new Set());
-  return result;
-}
-
 function computeFlowOrder(nodes: Map<string, NodeDraft>, edges: Map<string, EdgeDraft>): Map<string, number> {
   const adjacency = new Map<string, string[]>();
   const indegree = new Map<string, number>();
@@ -250,13 +209,6 @@ function computeFlowOrder(nodes: Map<string, NodeDraft>, edges: Map<string, Edge
   for (const node of nodes.values()) {
     adjacency.set(node.id, []);
     indegree.set(node.id, 0);
-  }
-
-  for (const node of nodes.values()) {
-    if (node.parentId && nodes.has(node.parentId)) {
-      adjacency.get(node.parentId)?.push(node.id);
-      indegree.set(node.id, (indegree.get(node.id) ?? 0) + 1);
-    }
   }
 
   for (const edge of edges.values()) {

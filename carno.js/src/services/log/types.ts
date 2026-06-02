@@ -12,7 +12,6 @@ export type TraceEventInput = {
   occurredAtUnixMs: number;
   name?: string | null;
   importanceLevel?: number | null;
-  parentId?: string | null;
   fromNodeId?: string | null;
   toNodeId?: string | null;
   label?: string | null;
@@ -27,7 +26,6 @@ export type TraceEventRecord = Required<
   receivedAtUnixMs: number;
   name: string | null;
   importanceLevel: number | null;
-  parentId: string | null;
   fromNodeId: string | null;
   toNodeId: string | null;
   label: string | null;
@@ -41,21 +39,17 @@ export type DiagnosticCode =
   | "missingStart"
   | "missingEnd"
   | "cycleDetected"
-  | "orphanNode"
   | "orphanEdge";
 
 export type ReadNode = {
   id: string;
   traceId: string;
-  parentId: string | null;
   name: string;
   importanceLevel: number;
   status: string;
   startedAtUnixMs: number | null;
   endedAtUnixMs: number | null;
   durationMs: number | null;
-  ancestryPath: string[];
-  indentLevel: number;
   flowOrder: number;
   diagnostics: DiagnosticCode[];
   data: JsonObject;

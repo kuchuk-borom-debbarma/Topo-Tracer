@@ -27,13 +27,11 @@ export class Tracer {
     config?: NodeConfig,
   ): TraceNode {
     const traceId = headers["x-trace-id"] || uuidv4();
-    const parentId = headers["x-parent-node-id"] || null;
-    const parentImportance = normalizeImportance(Number(headers["x-parent-node-importance"] ?? 0), 0);
+    const sourceImportance = normalizeImportance(Number(headers["x-source-node-importance"] ?? 0), 0);
     return new TraceNode({
       traceId,
       name,
-      parentId,
-      importanceLevel: normalizeImportance(config?.importanceLevel, parentImportance),
+      importanceLevel: normalizeImportance(config?.importanceLevel, sourceImportance),
       data: config?.data,
     });
   }

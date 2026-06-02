@@ -1,23 +1,101 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  GraphCanvas as ReagraphCanvas,
+  lightTheme,
+  type GraphCanvasRef,
+  type GraphEdge as ReagraphEdge,
+  type GraphNode as ReagraphNode,
+  type InternalGraphEdge,
+  type InternalGraphNode,
+  type Theme,
+} from "reagraph";
 import { fetchGraph, fetchTraces } from "../api";
 import type { GraphEdge, GraphWindowResponse, ReadNode, TraceSummary } from "../types";
 
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 112;
-const COLUMN_GAP = 336;
-const ROW_GAP = 152;
-const BOARD_PADDING = 42;
-const IMPORTANCE_LABELS = ["Critical", "Service", "Operation", "Detail", "Noise"];
-
 type AppRoute = { page: "list" } | { page: "graph"; traceId: string };
 type Inspectable = ReadNode | GraphEdge;
+
+const graphTheme: Theme = {
+  ...lightTheme,
+  canvas: {
+    background: "#f8fafc",
+    fog: "#f8fafc",
+  },
+  node: {
+    ...lightTheme.node,
+    fill: "#2563eb",
+    activeFill: "#0f766e",
+    inactiveOpacity: 0.18,
+    label: {
+      ...lightTheme.node.label,
+      color: "#17202a",
+      stroke: "#ffffff",
+      activeColor: "#0f766e",
+      backgroundColor: "#ffffff",
+      backgroundOpacity: 0.86,
+      padding: 4,
+      radius: 5,
+    },
+    subLabel: {
+      color: "#667085",
+      stroke: "#ffffff",
+      activeColor: "#0f766e",
+    },
+  },
+  ring: {
+    fill: "#dbeafe",
+    activeFill: "#14b8a6",
+  },
+  edge: {
+    ...lightTheme.edge,
+    fill: "#7c8aa0",
+    activeFill: "#0f766e",
+    opacity: 0.82,
+    selectedOpacity: 1,
+    inactiveOpacity: 0.12,
+    label: {
+      color: "#344054",
+      stroke: "#ffffff",
+      activeColor: "#0f766e",
+      fontSize: 11,
+    },
+    subLabel: {
+      color: "#667085",
+      stroke: "#ffffff",
+      activeColor: "#0f766e",
+      fontSize: 9,
+    },
+  },
+  arrow: {
+    fill: "#7c8aa0",
+    activeFill: "#0f766e",
+  },
+  lasso: {
+    background: "rgba(20, 184, 166, 0.1)",
+    border: "1px solid rgba(15, 118, 110, 0.4)",
+  },
+  cluster: {
+    stroke: "#d7dde5",
+    fill: "#ffffff",
+    opacity: 0.16,
+    selectedOpacity: 0.28,
+    inactiveOpacity: 0.06,
+    label: {
+      color: "#667085",
+      stroke: "#ffffff",
+      fontSize: 12,
+    },
+  },
+};
 
 export function App() {
   const [route, setRoute] = useState(() => readRoute());
   const [cursor, setCursor] = useState<string | null>(null);
   const [maxImportance, setMaxImportance] = useState(2);
   const [selectedItem, setSelectedItem] = useState<Inspectable | null>(null);
+  const [isTraceRailCollapsed, setIsTraceRailCollapsed] = useState(false);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
 
   const tracesQuery = useQuery({ queryKey: ["traces"], queryFn: () => fetchTraces() });
   const activeTraceId = route.page === "graph" ? route.traceId : null;
@@ -49,12 +127,14 @@ export function App() {
   const summary = graphQuery.data?.summary ?? activeSummary;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${isTraceRailCollapsed ? "trace-collapsed" : ""} ${isInspectorCollapsed ? "inspector-collapsed" : ""}`}>
       <TraceRail
         traces={tracesQuery.data?.traces ?? []}
         activeTraceId={activeTraceId}
         isLoading={tracesQuery.isLoading}
         isError={tracesQuery.isError}
+        isCollapsed={isTraceRailCollapsed}
+        onToggleCollapsed={() => setIsTraceRailCollapsed((value) => !value)}
         onRefresh={() => tracesQuery.refetch()}
         onSelect={(traceId) => {
           navigateToTrace(traceId, setRoute);
@@ -77,19 +157,26 @@ export function App() {
           onImportanceChange={(importance) => {
             setMaxImportance(importance);
             setCursor(null);
+            setSelectedItem(null);
           }}
           onPrevious={() => setCursor(graphQuery.data?.metadata.previousCursor ?? null)}
           onNext={() => setCursor(graphQuery.data?.metadata.nextCursor ?? null)}
         />
-        <GraphCanvas
+        <TraceGraphCanvas
           graph={graphQuery.data}
           isError={graphQuery.isError}
           selectedId={selectedItem?.id ?? null}
           onSelect={setSelectedItem}
+          onClearSelection={() => setSelectedItem(null)}
         />
       </main>
 
-      <Inspector item={selectedItem} graph={graphQuery.data} />
+      <Inspector
+        item={selectedItem}
+        graph={graphQuery.data}
+        isCollapsed={isInspectorCollapsed}
+        onToggleCollapsed={() => setIsInspectorCollapsed((value) => !value)}
+      />
     </div>
   );
 }
@@ -99,9 +186,22 @@ function TraceRail(props: {
   activeTraceId: string | null;
   isLoading: boolean;
   isError: boolean;
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
   onRefresh: () => void;
   onSelect: (traceId: string) => void;
 }) {
+  if (props.isCollapsed) {
+    return (
+      <aside className="trace-rail collapsed-panel">
+        <button className="panel-toggle" onClick={props.onToggleCollapsed} aria-label="Expand trace list">
+          &gt;
+        </button>
+        <span className="brand-mark compact">TT</span>
+      </aside>
+    );
+  }
+
   return (
     <aside className="trace-rail">
       <div className="rail-brand">
@@ -110,6 +210,9 @@ function TraceRail(props: {
           <h1>Topo Tracer</h1>
           <p>{props.traces.length} traces</p>
         </div>
+        <button className="panel-toggle" onClick={props.onToggleCollapsed} aria-label="Collapse trace list">
+          &lt;
+        </button>
       </div>
 
       <div className="rail-actions">
@@ -188,17 +291,18 @@ function GraphHeader(props: {
   );
 }
 
-function GraphCanvas(props: {
+function TraceGraphCanvas(props: {
   graph?: GraphWindowResponse | null;
   isError: boolean;
   selectedId: string | null;
   onSelect: (item: Inspectable) => void;
+  onClearSelection: () => void;
 }) {
-  const layout = useMemo(() => buildImportanceLayout(props.graph), [props.graph]);
-  const canvasRef = useRef<HTMLElement | null>(null);
+  const graphRef = useRef<GraphCanvasRef | null>(null);
+  const data = useMemo(() => buildReagraphData(props.graph), [props.graph]);
 
   useEffect(() => {
-    canvasRef.current?.scrollTo({ left: 0, top: 0 });
+    window.requestAnimationFrame(() => graphRef.current?.fitNodesInView?.());
   }, [props.graph?.metadata.traceId, props.graph?.metadata.maxImportance, props.graph?.metadata.nextCursor]);
 
   if (!props.graph) {
@@ -210,76 +314,74 @@ function GraphCanvas(props: {
   }
 
   return (
-    <section className="graph-canvas" ref={canvasRef}>
-      <div className="graph-board" style={{ width: layout.width, height: layout.height }}>
-        {layout.columns.map((column) => (
-          <div
-            key={column.level}
-            className="importance-column"
-            style={{ left: column.x, height: layout.height - BOARD_PADDING * 2 }}
-          >
-            <span>{column.label}</span>
-          </div>
-        ))}
-
-        <svg className="graph-arrows" width={layout.width} height={layout.height}>
-          <defs>
-            <marker id="graph-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L9,3 z" />
-            </marker>
-            <marker id="graph-arrow-open" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L9,3 z" />
-            </marker>
-            <marker id="graph-arrow-muted" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L9,3 z" />
-            </marker>
-          </defs>
-          {layout.edges.map(({ edge, path, labelPosition, direction }) => {
-            const markerId = edge.isGhost ? "graph-arrow-muted" : edge.status === "open" ? "graph-arrow-open" : "graph-arrow";
-            return (
-              <g
-                key={edge.id}
-                className={`graph-edge ${edge.status} ${edge.isGhost ? "ghost" : ""} ${direction}`}
-                onClick={() => props.onSelect(edge)}
-              >
-                <path d={path} markerEnd={`url(#${markerId})`} />
-                <text x={labelPosition.x} y={labelPosition.y}>{edgeLabel(edge)}</text>
-              </g>
-            );
-          })}
-        </svg>
-
-        {layout.nodes.map(({ node, position }) => (
-          <button
-            key={node.id}
-            className={`graph-node ${node.status} ${node.isGhost ? "ghost" : ""} ${props.selectedId === node.id ? "selected" : ""}`}
-            style={{ left: position.x, top: position.y }}
-            onClick={() => props.onSelect(node)}
-          >
-            <span className="node-topline">
-              <span className="status-dot" />
-              <span>{node.status}</span>
-              <strong>i{importanceOf(node)}</strong>
-            </span>
-            <span className="node-title">{node.name}</span>
-            <span>{formatDuration(node.durationMs)} · {formatTimeRange(node.startedAtUnixMs, node.endedAtUnixMs)}</span>
-            {isGhostNode(node) && (
-              <span>{node.hiddenNodeCount} hidden · {node.hiddenErrorCount} errors</span>
-            )}
-            {node.diagnostics.length > 0 && <em>{node.diagnostics.length} diagnostics</em>}
-          </button>
-        ))}
-      </div>
+    <section className="graph-canvas reagraph-shell">
+      <ReagraphCanvas
+        ref={graphRef}
+        nodes={data.nodes}
+        edges={data.edges}
+        selections={props.selectedId ? [props.selectedId] : []}
+        actives={props.selectedId ? [props.selectedId] : []}
+        theme={graphTheme}
+        animated
+        draggable
+        aggregateEdges={false}
+        cameraMode="pan"
+        defaultNodeSize={9}
+        minNodeSize={6}
+        maxNodeSize={18}
+        layoutType="forceDirected2d"
+        layoutOverrides={{
+          centerInertia: 0.55,
+          linkDistance: 360,
+          nodeStrength: -1400,
+          nodeLevelRatio: 1.7,
+        }}
+        edgeArrowPosition="end"
+        edgeInterpolation="curved"
+        edgeLabelPosition="natural"
+        labelType="nodes"
+        maxDistance={70000}
+        minDistance={120}
+        onCanvasClick={props.onClearSelection}
+        onNodeClick={(node: InternalGraphNode) => {
+          const readNode = data.nodeById.get(node.id);
+          if (readNode) props.onSelect(readNode);
+        }}
+        onEdgeClick={(edge: InternalGraphEdge) => {
+          const readEdge = data.edgeById.get(edge.id);
+          if (readEdge) props.onSelect(readEdge);
+        }}
+      />
     </section>
   );
 }
 
-function Inspector(props: { item: Inspectable | null; graph?: GraphWindowResponse | null }) {
+function Inspector(props: {
+  item: Inspectable | null;
+  graph?: GraphWindowResponse | null;
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
+}) {
+  if (props.isCollapsed) {
+    return (
+      <aside className="inspector collapsed-panel">
+        <button className="panel-toggle" onClick={props.onToggleCollapsed} aria-label="Expand inspector">
+          &lt;
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="inspector">
       <div className="inspector-header">
-        <p className="eyebrow">Inspector</p>
-        <h3>{props.item ? ("fromNodeId" in props.item ? "Edge" : "Node") : "Nothing selected"}</h3>
+        <div>
+          <p className="eyebrow">Inspector</p>
+          <h3>{props.item ? ("fromNodeId" in props.item ? "Edge" : "Node") : "Nothing selected"}</h3>
+        </div>
+        <button className="panel-toggle" onClick={props.onToggleCollapsed} aria-label="Collapse inspector">
+          &gt;
+        </button>
       </div>
 
       {!props.item && <div className="empty-state">Select node or edge</div>}
@@ -324,72 +426,84 @@ function Inspector(props: { item: Inspectable | null; graph?: GraphWindowRespons
   );
 }
 
-function buildImportanceLayout(graph?: GraphWindowResponse | null) {
-  const nodes = [...(graph?.nodes ?? [])].sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
-  const edges = graph?.edges ?? [];
-  const maxLevel = Math.max(
-    graph?.metadata.maxImportance ?? 0,
-    ...nodes.map((node) => importanceOf(node)),
-  );
-  const columnCount = Math.max(1, maxLevel + 1);
-  const groupedNodes = new Map<number, ReadNode[]>();
-  const positions = new Map<string, { x: number; y: number }>();
+function buildReagraphData(graph?: GraphWindowResponse | null): {
+  nodes: ReagraphNode[];
+  edges: ReagraphEdge[];
+  nodeById: Map<string, ReadNode>;
+  edgeById: Map<string, GraphEdge>;
+} {
+  const readNodes = [...(graph?.nodes ?? [])].sort((a, b) => a.flowOrder - b.flowOrder || a.id.localeCompare(b.id));
+  const readEdges = graph?.edges ?? [];
+  const nodeById = new Map(readNodes.map((node) => [node.id, node]));
+  const edgeById = new Map(readEdges.map((edge) => [edge.id, edge]));
 
-  for (const node of nodes) {
-    const level = importanceOf(node);
-    const group = groupedNodes.get(level) ?? [];
-    group.push(node);
-    groupedNodes.set(level, group);
-  }
+  const nodes = readNodes.map<ReagraphNode>((node) => ({
+    id: node.id,
+    label: node.name,
+    subLabel: nodeSubLabel(node),
+    labelVisible: readNodes.length <= 80 || node.importanceLevel <= 1 || node.isGhost === true,
+    size: nodeSize(node),
+    fill: nodeFill(node),
+    cluster: nodeCluster(node),
+    data: { node },
+  }));
 
-  const laidOutNodes = nodes.map((node) => {
-    const level = importanceOf(node);
-    const row = groupedNodes.get(level)?.findIndex((item) => item.id === node.id) ?? 0;
-    const position = {
-      x: BOARD_PADDING + level * COLUMN_GAP,
-      y: BOARD_PADDING + 46 + row * ROW_GAP,
-    };
-    positions.set(node.id, position);
-    return { node, position };
-  });
+  const edges = readEdges
+    .filter((edge) => nodeById.has(edge.fromNodeId) && nodeById.has(edge.toNodeId))
+    .map<ReagraphEdge>((edge) => ({
+      id: edge.id,
+      source: edge.fromNodeId,
+      target: edge.toNodeId,
+      label: edgeLabel(edge),
+      subLabel: edge.durationMs === null ? edge.status : formatDuration(edge.durationMs),
+      fill: edgeFill(edge),
+      dashed: edge.isGhost === true || edge.status === "open",
+      dashArray: edge.status === "open" ? [10, 8] : [6, 8],
+      interpolation: "curved",
+      arrowPlacement: "end",
+      data: { edge },
+      labelVisible: readEdges.length <= 120 || edge.status !== "ok" || edge.isGhost === true,
+    }));
 
-  const maxRows = Math.max(1, ...Array.from(groupedNodes.values()).map((group) => group.length));
-  const laidOutEdges = edges.flatMap((edge) => {
-    const from = positions.get(edge.fromNodeId);
-    const to = positions.get(edge.toNodeId);
-    if (!from || !to) return [];
+  return { nodes, edges, nodeById, edgeById };
+}
 
-    const x1 = from.x + NODE_WIDTH;
-    const y1 = from.y + NODE_HEIGHT / 2;
-    const x2 = to.x;
-    const y2 = to.y + NODE_HEIGHT / 2;
-    const direction = x2 >= x1 ? "forward" : "return";
-    const path = direction === "forward"
-      ? `M ${x1} ${y1} C ${x1 + 80} ${y1}, ${x2 - 80} ${y2}, ${x2} ${y2}`
-      : `M ${x1} ${y1} C ${x1 + 92} ${y1 - 72}, ${x2 - 92} ${y2 - 72}, ${x2} ${y2}`;
+function nodeSubLabel(node: ReadNode): string {
+  if (isGhostNode(node)) return `${node.hiddenNodeCount} hidden · ${node.hiddenErrorCount} errors`;
+  return `${capitalize(node.status)} · i${importanceOf(node)} · ${formatDuration(node.durationMs)}`;
+}
 
-    return [{
-      edge,
-      path,
-      direction,
-      labelPosition: {
-        x: direction === "forward" ? (x1 + x2) / 2 : Math.max(x2, x1) + 12,
-        y: direction === "forward" ? (y1 + y2) / 2 - 8 : Math.min(y1, y2) - 64,
-      },
-    }];
-  });
+function nodeSize(node: ReadNode): number {
+  if (isGhostNode(node)) return Math.min(18, 10 + Math.sqrt(node.hiddenNodeCount) * 0.7);
+  if (node.status === "error") return 15;
+  if (node.importanceLevel === 0) return 16;
+  if (node.importanceLevel === 1) return 13;
+  return 10;
+}
 
-  return {
-    nodes: laidOutNodes,
-    edges: laidOutEdges,
-    columns: Array.from({ length: columnCount }, (_, level) => ({
-      level,
-      x: BOARD_PADDING + level * COLUMN_GAP - 14,
-      label: `i${level} ${IMPORTANCE_LABELS[level] ?? "Detail"}`,
-    })),
-    width: Math.max(980, BOARD_PADDING * 2 + columnCount * COLUMN_GAP + NODE_WIDTH),
-    height: Math.max(620, BOARD_PADDING * 2 + 46 + maxRows * ROW_GAP + NODE_HEIGHT),
-  };
+function nodeFill(node: ReadNode): string {
+  if (isGhostNode(node)) return "#64748b";
+  if (node.status === "error") return "#c2410c";
+  if (node.status === "warning" || node.status === "open") return "#b7791f";
+  if (node.importanceLevel === 0) return "#0f766e";
+  if (node.importanceLevel === 1) return "#2563eb";
+  if (node.importanceLevel === 2) return "#7c3aed";
+  return "#7c8aa0";
+}
+
+function nodeCluster(node: ReadNode): string {
+  if (isGhostNode(node)) return "hidden";
+  if (node.status === "error") return "error";
+  if (node.importanceLevel === 0) return "critical";
+  if (node.importanceLevel === 1) return "service";
+  return "detail";
+}
+
+function edgeFill(edge: GraphEdge): string {
+  if (edge.status === "error") return "#c2410c";
+  if (edge.status === "warning" || edge.status === "open") return "#b7791f";
+  if (edge.isGhost) return "#64748b";
+  return "#2563eb";
 }
 
 function importanceOf(node: ReadNode): number {
@@ -417,14 +531,14 @@ function isGhostNode(node: ReadNode): node is ReadNode & {
   return node.isGhost === true;
 }
 
+function capitalize(value: string): string {
+  return value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+}
+
 function formatTimestamp(timestampMs: number | null): string {
   if (timestampMs === null) return "open";
   const date = new Date(timestampMs);
   return `${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.${String(date.getMilliseconds()).padStart(3, "0")}`;
-}
-
-function formatTimeRange(startMs: number | null, endMs: number | null): string {
-  return `${formatTimestamp(startMs)} -> ${formatTimestamp(endMs)}`;
 }
 
 function readRoute(): AppRoute {

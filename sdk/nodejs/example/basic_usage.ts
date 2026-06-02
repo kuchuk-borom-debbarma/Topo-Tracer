@@ -20,6 +20,7 @@ async function main() {
     importanceLevel: Importance.SERVICE,
     data: { module: "cart", intent: "Fail fast before writes" },
   });
+  request.connectTo(validate, { label: "validates" });
   await fakeWork(validate, 8);
 
   const write = request.startNode("INSERT order", {

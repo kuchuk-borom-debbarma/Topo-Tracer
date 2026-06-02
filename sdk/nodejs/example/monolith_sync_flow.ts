@@ -23,18 +23,21 @@ async function main() {
     importanceLevel: Importance.SERVICE,
     data: { module: "controller", intent: "Entry into application code" },
   });
+  http.connectTo(controller, { label: "calls" });
   await fakeWork(controller, 4);
 
   const domain = controller.startNode("OrderWorkflow.createOrder()", {
     importanceLevel: Importance.SERVICE,
     data: { module: "domain", intent: "Main business step" },
   });
+  controller.connectTo(domain, { label: "calls" });
   await fakeWork(domain, 9);
 
   const pricing = domain.startNode("Pricing.calculateTotal()", {
     importanceLevel: Importance.DETAIL,
     data: { module: "pricing", intent: "Useful detail, hide at low importance" },
   });
+  domain.connectTo(pricing, { label: "calls" });
   await fakeWork(pricing, 7);
 
   const repository = domain.startNode("OrderRepository.save()", {

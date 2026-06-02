@@ -3,15 +3,12 @@ export type JsonObject = Record<string, unknown>;
 export type ReadNode = {
   id: string;
   traceId: string;
-  parentId: string | null;
   name: string;
   importanceLevel: number;
   status: string;
   startedAtUnixMs: number | null;
   endedAtUnixMs: number | null;
   durationMs: number | null;
-  ancestryPath: string[];
-  indentLevel: number;
   flowOrder: number;
   diagnostics: string[];
   data: JsonObject;

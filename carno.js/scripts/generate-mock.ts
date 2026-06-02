@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 const BASE_URL = process.env.TOPO_TRACER_URL ?? "http://localhost:3999";
-const TRACE_ID = `node_trace_${Date.now()}`;
+const TRACE_ID = `node_trace_${Date.now()}_${randomUUID().slice(0, 8)}`;
 const LARGE_MODE = process.argv.includes("--large");
 const NODE_COUNT = LARGE_MODE ? 10_500 : 36;
 
@@ -14,7 +14,6 @@ type Event = {
   occurredAtUnixMs: number;
   name?: string | null;
   importanceLevel?: number | null;
-  parentId?: string | null;
   fromNodeId?: string | null;
   toNodeId?: string | null;
   label?: string | null;
@@ -33,7 +32,6 @@ function node(input: {
   id: string;
   name: string;
   importanceLevel: number;
-  parentId?: string | null;
   durationMs: number;
   status?: "ok" | "error" | "warning";
   data?: Record<string, unknown>;
@@ -46,7 +44,6 @@ function node(input: {
     occurredAtUnixMs: startedAt,
     name: input.name,
     importanceLevel: input.importanceLevel,
-    parentId: input.parentId ?? null,
     status: "open",
     data: input.data,
   });
@@ -101,15 +98,13 @@ node({
 
 let previous = "root";
 for (let i = 1; i < NODE_COUNT; i++) {
-  const parent = i < 16 ? previous : i % 5 === 0 ? "root" : previous;
   const importanceLevel = i === NODE_COUNT - 1 ? 0 : i % 5 === 0 ? 1 : i % 7 === 0 ? 2 : 4;
   const id = `node_${i}`;
-  const label = i % 7 === 0 ? "writes" : i % 5 === 0 ? "publishes" : i % 3 === 0 ? "calls" : "continues";
+  const label = i % 7 === 0 ? "writes" : i % 5 === 0 ? "publishes" : i % 3 === 0 ? "calls" : "then";
   node({
     id,
     name: nameFor(i, label),
     importanceLevel,
-    parentId: parent,
     durationMs: 3 + (i % 30),
     status: !LARGE_MODE && i === 21 ? "error" : "ok",
     data: { fakeService: serviceFor(i), label },
