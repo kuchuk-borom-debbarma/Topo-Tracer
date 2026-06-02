@@ -1,60 +1,37 @@
-import { Tracer } from "../src/index";
-import { v4 as uuidv4 } from "uuid";
+import { finish, fakeWork, initExample } from "./_helpers";
+import { Importance, Tracer } from "../src";
 
-async function runExample() {
-  // 1. Initialize the Tracer for this Node.js process (Container)
-  Tracer.init(
-    { baseUrl: "http://localhost:3000" },
-    { name: "OrderService", containerType: "Node.js Process", id: "order-svc-1" }
-  );
+/**
+ * Basic primitive graph.
+ *
+ * Intention:
+ *   Show smallest useful trace: request node -> validate node -> write node.
+ *   `importanceLevel` is semantic importance. Lower number = more important.
+ *   Slider 0 shows request only. Slider 1 adds validate/write. No container needed.
+ */
+async function main() {
+  initExample();
 
-  console.log("Started Tracer for OrderService.");
+  const request = Tracer.startTrace("POST /checkout", {
+    data: { service: "checkout-api", route: "/checkout" },
+  });
 
-  // 2. Start a trace when a request comes in
-  const rootNode = Tracer.startTrace("POST /api/orders", "http_server_request");
+  const validate = request.startNode("validateCart()", {
+    importanceLevel: Importance.SERVICE,
+    data: { module: "cart", intent: "Fail fast before writes" },
+  });
+  request.connectTo(validate, { label: "validates" });
+  await fakeWork(validate, 8);
 
-  console.log(`Started Trace: ${rootNode.traceId}`);
+  const write = request.startNode("INSERT order", {
+    importanceLevel: Importance.SERVICE,
+    data: { db: "postgres", table: "orders" },
+  });
+  validate.connectTo(write, { label: "writes" });
+  await fakeWork(write, 14);
 
-  // Simulate some initial request processing time
-  await new Promise(r => setTimeout(r, 10));
-  rootNode.markProcessed();
-
-  // 3. Create a child node for a database query
-  const dbNode = rootNode.startChild("INSERT INTO orders", "database_query");
-  
-  // Simulate DB processing
-  await new Promise(r => setTimeout(r, 20));
-  dbNode.markProcessed();
-  
-  // Finish DB processing
-  await new Promise(r => setTimeout(r, 5));
-  dbNode.markCompleted({ rowsInserted: 1 });
-
-  console.log("Database node completed.");
-
-  // 4. Simulate a call to another service (PaymentService)
-  // We record an egress edge to the external service
-  const targetContainerId = "payment-svc-1";
-  const targetNodeId = uuidv4(); // Usually provided by context propagation or determined later
-  rootNode.recordEgressEdge(targetContainerId, targetNodeId, "http_client_request");
-
-  // 5. Complete the root node
-  rootNode.markCompleted({ status: 200, orderId: 123 });
-
-  console.log("Root node completed.");
-
-  // 6. Flush pending telemetry to the backend
-  console.log("Flushing telemetry...");
-  // Note: we catch since the backend might not be running locally right now
-  try {
-    await Tracer.flush();
-    console.log("Telemetry flushed successfully.");
-  } catch (error: any) {
-    console.log("Telemetry flush failed (expected if backend is not running):", error.message);
-  }
-
-  // Stop background intervals
-  await Tracer.shutdown();
+  await fakeWork(request, 2);
+  await finish(request.traceId);
 }
 
-runExample().catch(console.error);
+main().catch(console.error);

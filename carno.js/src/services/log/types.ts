@@ -1,176 +1,135 @@
-export type JsonValue = unknown;
+export type JsonObject = Record<string, unknown>;
 
-export type TraceContainer = {
-  id: string;
+export type TraceEventType = "node.started" | "node.ended" | "edge.started" | "edge.ended";
+export type TraceEntityType = "node" | "edge";
+
+export type TraceEventInput = {
+  eventId?: string;
   traceId: string;
-  name: string;
-  type: string;
-  metadata?: JsonValue;
-  createdAtLocal: Date;
-  createdAtRemote: Date;
+  entityId: string;
+  entityType: TraceEntityType;
+  eventType: TraceEventType;
+  occurredAtUnixMs: number;
+  name?: string | null;
+  importanceLevel?: number | null;
+  fromNodeId?: string | null;
+  toNodeId?: string | null;
+  label?: string | null;
+  status?: "ok" | "error" | "warning" | "open" | null;
+  data?: JsonObject;
 };
 
-export type TraceBlock = {
-  id: string;
-  traceId: string;
-  containerId: string;
-  name: string;
-  type: string;
-  metadata?: JsonValue;
+export type TraceEventRecord = Required<
+  Pick<TraceEventInput, "traceId" | "entityId" | "entityType" | "eventType" | "occurredAtUnixMs">
+> & {
+  eventId: string;
+  receivedAtUnixMs: number;
+  name: string | null;
+  importanceLevel: number | null;
+  fromNodeId: string | null;
+  toNodeId: string | null;
+  label: string | null;
+  status: string | null;
+  data: JsonObject;
 };
 
-export type TraceNode = {
-  id: string;
-  traceId: string;
-  blockId: string;
-  name: string;
-  type: string;
-  metadata?: JsonValue;
-  eventType: "started" | "ended";
-  eventAtLocal: Date;
-  ingestedAtRemote: Date;
-};
+export type DiagnosticCode =
+  | "clockSkewSuspected"
+  | "negativeDuration"
+  | "missingStart"
+  | "missingEnd"
+  | "cycleDetected"
+  | "orphanEdge";
 
-export type TraceEdge = {
-  id: string;
-  traceId: string;
-  fromNodeId: string;
-  toNodeId: string;
-  type: string;
-  metadata?: JsonValue;
-  eventType: "requested" | "responded";
-  eventAtLocal: Date;
-  ingestedAtRemote: Date;
-};
-
-export type TraceContainerInput = Omit<TraceContainer, "createdAtRemote">;
-export type TraceBlockInput = TraceBlock;
-export type TraceNodeInput = Omit<TraceNode, "ingestedAtRemote">;
-export type TraceEdgeInput = Omit<TraceEdge, "ingestedAtRemote">;
-
-/**
- * Represents a pre-computed layout Block on the read path.
- * A Block represents a structural vertical boundary/function scope.
- */
-export type ReadBlock = {
-  /** Unique identifier of the block (maps to raw TraceBlock.id) */
-  id: string;
-  /** Globally unique trace identifier */
-  traceId: string;
-  /** Containing physical container or service ID */
-  containerId: string;
-  /** ID of the parent block calling this block (empty if root block) */
-  parentBlockId: string;
-  /** Specific calling Node ID inside the parent block that triggered this block */
-  callingNodeId: string;
-  /** Human-readable name of the function call scope (e.g. 'foo()') */
-  name: string;
-  /** Type of scope (e.g. 'function', 'method', 'rpc') */
-  type: string;
-  /** Horizontal coordinate offset (X-depth): 0 = root, 1 = nested child call, etc. */
-  absoluteDepth: number;
-  /** Earliest start timestamp derived from child nodes (in microseconds) */
-  startTimeUs: number;
-  /** Total execution duration of the block (in microseconds), null if never ended */
-  durationUs: number | null;
-  /** Ordered array of ancestor IDs starting from top container down to itself */
-  ancestryPath: string[];
-  /** Custom JSON baggage/metadata properties */
-  metadata?: JsonValue;
-};
-
-/**
- * Represents an operational step or log checkpoint inside a specific Block.
- * These flow vertically inside a Block card.
- */
 export type ReadNode = {
-  /** Unique identifier of the node (maps to raw TraceNode.id) */
   id: string;
-  /** Globally unique trace identifier */
   traceId: string;
-  /** Containing Block ID */
-  blockId: string;
-  /** Human-readable node name or log description */
   name: string;
-  /** Type of checkpoint (e.g. 'db', 'http_client', 'step', 'log') */
-  type: string;
-  /** Verbosity/importance zoom level: 0 = critical, 1 = key, 2 = detailed logs */
-  zoomLevel: number;
-  /** Vertical sequence index (Y-coordinate flow) inside the containing block */
-  localSequence: number;
-  /** Time of started event (in microseconds) */
-  startTimeUs: number;
-  /** Elapsed execution time (in microseconds), null for simple point logs */
-  durationUs: number | null;
-  /** Ordered array of ancestor IDs starting from top container down to itself */
-  ancestryPath: string[];
-  /** Custom JSON baggage/metadata properties */
-  metadata?: JsonValue;
+  importanceLevel: number;
+  status: string;
+  startedAtUnixMs: number | null;
+  endedAtUnixMs: number | null;
+  durationMs: number | null;
+  flowOrder: number;
+  diagnostics: DiagnosticCode[];
+  data: JsonObject;
 };
 
-/**
- * Represents a horizontal connecting jump wire (edge) linking two Blocks on the UI.
- */
 export type ReadEdge = {
-  /** Unique row ID (composed of edgeId + zoomLevel) */
   id: string;
-  /** Unique identifier of the edge (maps to raw TraceEdge.id) */
-  edgeId: string;
-  /** Globally unique trace identifier */
   traceId: string;
-  /** Source block ID containing the calling node */
-  fromBlockId: string;
-  /** Exact calling Node ID that dispatched the call */
   fromNodeId: string;
-  /** Destination block ID receiving the call */
-  toBlockId: string;
-  /** Exact entry Node ID that accepted the call */
   toNodeId: string;
+  label: string;
+  status: string;
+  startedAtUnixMs: number | null;
+  endedAtUnixMs: number | null;
+  durationMs: number | null;
+  diagnostics: DiagnosticCode[];
+  data: JsonObject;
 };
 
-/**
- * Metadata caching the zoom capabilities and completion status of a trace.
- */
-export type TraceMetadata = {
-  /** Globally unique trace identifier */
+export type GhostNode = ReadNode & {
+  isGhost: true;
+  hiddenNodeCount: number;
+  hiddenErrorCount: number;
+  hiddenDurationMs: number | null;
+};
+
+export type GraphEdge = ReadEdge & {
+  isGhost?: boolean;
+  hiddenEdgeCount?: number;
+};
+
+export type TraceSummary = {
   traceId: string;
-  /** Ingress materialization status: 1 = zoom layout is built and ready, 0 = processing */
-  isZoomReady: boolean;
-  /** Maximum structural call-depth resolved (used to size the UI zoom slider dynamically) */
-  maxAvailableDepth: number;
-  /** Tracks completed offset index in materialization broker queue */
-  materializedOffset: number;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  nodeCount: number;
+  edgeCount: number;
+  errorCount: number;
+  diagnosticCount: number;
+  maxImportanceLevel: number;
+  materializedAtUnixMs: number;
 };
 
-/**
- * Represents the complete read-optimized dynamic layout response structure.
- */
-export type TraceLayoutResponse = {
+export type TraceListResponse = {
+  traces: TraceSummary[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
+
+export type GraphWindowQuery = {
+  maxImportance?: number;
+  limit?: number;
+  cursor?: string;
+};
+
+export type GraphWindowResponse = {
   metadata: {
     traceId: string;
-    isZoomReady: boolean;
-    maxAvailableDepth: number;
-    currentDepth: number;
+    maxImportance: number;
+    limit: number;
+    returnedNodeCount: number;
+    totalNodeCount: number;
+    hiddenNodeCount: number;
+    ghostNodeCount: number;
+    hasBefore: boolean;
+    hasAfter: boolean;
+    previousCursor: string | null;
+    nextCursor: string | null;
   };
-  blocks: ReadBlock[];
-  nodes: ReadNode[];
-  edges: ReadEdge[];
+  summary: TraceSummary;
+  nodes: Array<ReadNode | GhostNode>;
+  edges: GraphEdge[];
 };
 
-/**
- * Represents a node event collapsed by starting/ending lifecycle timestamps.
- */
-export type TraceNodeCollapsed = {
-  id: string;
-  blockId: string;
-  name: string;
-  type: string;
-  metadata?: JsonValue;
-  startTimeUs: number;
-  endTimeUs: number;
-  durationUs: number | null;
+export type GraphProjectionResult = {
+  nodes: Array<ReadNode | GhostNode>;
+  edges: GraphEdge[];
+  hiddenNodeCount: number;
+  ghostNodeCount: number;
+  projectedNodeCount: number;
 };
-
-
-
-

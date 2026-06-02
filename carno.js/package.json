@@ -4,7 +4,10 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run --watch src/index.ts"
+    "dev": "bun run --watch src/index.ts",
+    "seed": "bun run scripts/generate-mock.ts",
+    "seed:large": "bun run scripts/generate-mock.ts --large",
+    "check": "bun build src/index.ts --target bun --outdir /private/tmp/topo-tracer-build"
   },
   "devDependencies": {
     "@types/bun": "latest",

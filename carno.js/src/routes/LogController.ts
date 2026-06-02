@@ -1,52 +1,51 @@
 import { Body, Controller, Get, Param, Post, Query } from "@carno.js/core";
 import { LogService } from "../services/log/LogService";
-import type { TraceBlockInput, TraceContainerInput, TraceEdgeInput, TraceNodeInput } from "../services/log/types";
+import { TraceReadModelWorker } from "../services/log/worker/TraceReadModelWorker";
+import type { GraphWindowQuery, TraceEventInput } from "../services/log/types";
 
 @Controller("/telemetry")
 export class LogController {
-  constructor(private logService: LogService) {}
+  constructor(
+    private logService: LogService,
+    private traceReadModelWorker: TraceReadModelWorker,
+  ) {}
 
-  @Post("/containers")
-  async logContainers(@Body() containers: TraceContainerInput[]) {
-    await this.logService.logContainers(containers);
-    return { ok: true, count: containers.length };
-  }
-
-  @Post("/blocks")
-  async logBlocks(@Body() blocks: TraceBlockInput[]) {
-    await this.logService.logBlocks(blocks);
-    return { ok: true, count: blocks.length };
-  }
-
-  @Post("/nodes")
-  async logNodes(@Body() nodes: TraceNodeInput[]) {
-    await this.logService.logNodes(nodes);
-    return { ok: true, count: nodes.length };
-  }
-
-  @Post("/edges")
-  async logEdges(@Body() edges: TraceEdgeInput[]) {
-    await this.logService.logEdges(edges);
-    return { ok: true, count: edges.length };
-  }
-
-  @Get("/trace/:traceId")
-  async getTraceLayout(
-    @Param("traceId") traceId: string,
-    @Query("zoom_level") zoomLevel?: string
-  ) {
-    const level = zoomLevel !== undefined ? parseInt(zoomLevel, 10) : undefined;
-    return await this.logService.getTraceLayout(traceId, level);
+  @Post("/events")
+  async ingestEvents(@Body() events: TraceEventInput[]) {
+    return this.logService.ingestEvents(events);
   }
 
   @Get("/traces")
-  async listTraces(
-    @Query("page") page?: string,
-    @Query("limit") limit?: string
+  async listTraces(@Query("page") page?: string, @Query("limit") limit?: string) {
+    return this.logService.listTraces(
+      page ? Math.max(1, parseInt(page, 10)) : 1,
+      limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20,
+    );
+  }
+
+  @Get("/traces/:traceId/summary")
+  async getTraceSummary(@Param("traceId") traceId: string) {
+    return this.logService.getTraceSummary(traceId);
+  }
+
+  @Get("/traces/:traceId/graph")
+  async getGraph(
+    @Param("traceId") traceId: string,
+    @Query("maxImportance") maxImportance?: string,
+    @Query("limit") limit?: string,
+    @Query("cursor") cursor?: string,
   ) {
-    const p = page ? Math.max(1, parseInt(page, 10)) : 1;
-    const l = limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20;
-    return await this.logService.listTraces(p, l);
+    const query: GraphWindowQuery = {
+      maxImportance: maxImportance ? parseInt(maxImportance, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      cursor,
+    };
+    return this.logService.getGraph(traceId, query);
+  }
+
+  @Post("/materialize")
+  async materializePending() {
+    await this.traceReadModelWorker.processBatch();
+    return { ok: true };
   }
 }
-

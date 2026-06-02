@@ -1,3 +1,3 @@
 export * from "./types";
-export * from "./TraceNode";
+export * from "./Span";
 export * from "./Tracer";

@@ -16,170 +16,167 @@ export class ClickHouseService {
       username: process.env.CLICKHOUSE_USER || "default",
       password: process.env.CLICKHOUSE_PASSWORD || "password",
     });
-
     await this.runMigrations();
   }
 
   private async runMigrations(): Promise<void> {
     await this.clientInstance.command({
-      query: "CREATE DATABASE IF NOT EXISTS toco_tracer",
+      query: "CREATE DATABASE IF NOT EXISTS topo_tracer",
     });
 
-    await this.resetSchema();
-
+    // Append-only source of truth.
+    //
+    // ORDER BY starts with trace_id because every materializer/read query is trace-scoped.
+    // received_at_ms + event_id gives deterministic replay order when SDK clocks skew.
+    // event_id is the idempotency identity; replay queries collapse duplicate retries.
+    // importance_level is SDK-provided semantic importance: 0 = most important.
+    //
+    // Q: Why keep many nullable columns instead of only trace_id + data JSON?
+    // A: This is a compact union of node and edge lifecycle event payloads. The
+    // required envelope columns drive trace replay, ordering, and idempotency.
+    // Sparse typed payload columns keep common materializer predicates fast and
+    // avoid parsing JSON for edge/status/importance fields.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.containers (
-          id String,
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_trace_events (
+          -- Stable trace partition key. All writes, replay, and reads are trace-scoped.
           trace_id String,
-          name String,
-          type String,
-          metadata String,
-          createdAtLocal Int64,
-          createdAtRemote Int64
+          -- SDK/generated idempotency key. Duplicate retries collapse during replay.
+          event_id String,
+          -- Node id or edge id affected by this event.
+          entity_id String,
+          -- Event target family: node or edge.
+          entity_type LowCardinality(String),
+          -- Lifecycle transition, such as node.started or edge.ended.
+          event_type LowCardinality(String),
+          -- SDK event time used for trace semantics and duration math.
+          occurred_at_ms Int64,
+          -- Server ingest time used for deterministic replay order and freshness checks.
+          received_at_ms Int64,
+          -- Node display name. Null for edge-only events or unnamed updates.
+          name Nullable(String),
+          -- Node importance. Null for edge events and node events that do not set it.
+          importance_level Nullable(Int32),
+          -- Edge source node id. Null for node events or incomplete edge updates.
+          from_node_id Nullable(String),
+          -- Edge target node id. Null for node events or incomplete edge updates.
+          to_node_id Nullable(String),
+          -- Edge label. Null for node events or default-label edge updates.
+          label Nullable(String),
+          -- Reported lifecycle status. Null means builder derives status from events.
+          status Nullable(String),
+          -- Extra user payload kept as JSON string for flexible SDK metadata.
+          data String
         ) ENGINE = MergeTree()
+        PARTITION BY toYYYYMM(toDateTime(received_at_ms / 1000))
+        ORDER BY (trace_id, received_at_ms, event_id);
+      `,
+    });
+
+    // Read-optimized nodes.
+    //
+    // ReplacingMergeTree lets worker rebuild read rows after late events without
+    // mutating raw history. ORDER BY uses the logical row identity, so a changed
+    // flow_order replaces the old node instead of leaving a stale copy.
+    await this.clientInstance.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_read_nodes (
+          -- Trace key for scoped projection and list/detail reads.
+          trace_id String,
+          -- Stable node id.
+          id String,
+          -- Resolved display name after replaying node lifecycle events.
+          name String,
+          -- Resolved importance where 0 is most important.
+          importance_level Int32,
+          -- Resolved node status after lifecycle merge and diagnostics.
+          status LowCardinality(String),
+          -- Earliest node start time from replayed events.
+          started_at_ms Nullable(Int64),
+          -- Latest node end time from replayed events.
+          ended_at_ms Nullable(Int64),
+          -- ended_at_ms - started_at_ms when both are known.
+          duration_ms Nullable(Int64),
+          -- Stable topological order used for graph/window ordering.
+          flow_order Int64,
+          -- Builder warnings such as cycleDetected or missingEnd.
+          diagnostics Array(String),
+          -- Merged node metadata JSON.
+          data String,
+          -- Read-model version for ReplacingMergeTree and argMax reads.
+          materialized_at_ms Int64
+        ) ENGINE = ReplacingMergeTree(materialized_at_ms)
+        PARTITION BY sipHash64(trace_id) % 32
         ORDER BY (trace_id, id);
       `,
     });
 
+    // Read-optimized edges.
+    //
+    // Edges are materialized read rows, not raw completed-edge facts. Projection
+    // queries lift endpoints to visible nodes or ghost groups inside ClickHouse.
+    // The "read" prefix keeps the table clearly separate from append-only events.
+    // ORDER BY uses edge identity for rebuild correctness.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.blocks (
-          id String,
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_read_edges (
+          -- Trace key for scoped projection reads.
           trace_id String,
-          containerId String,
-          name String,
-          type String,
-          metadata String
-        ) ENGINE = MergeTree()
-        ORDER BY (trace_id, containerId, id);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.nodes (
+          -- Stable edge id.
           id String,
-          trace_id String,
-          blockId String,
-          name String,
-          type String,
-          metadata String,
-          eventType Enum8('started' = 1, 'ended' = 2),
-          eventAtLocal Int64,
-          ingestedAtRemote Int64
-        ) ENGINE = MergeTree()
-        ORDER BY (trace_id, blockId, id, eventAtLocal);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.edges (
-          id String,
-          trace_id String,
-          fromNodeId String,
-          toNodeId String,
-          type String,
-          metadata String,
-          eventType Enum8('requested' = 1, 'responded' = 2),
-          eventAtLocal Int64,
-          ingestedAtRemote Int64
-        ) ENGINE = MergeTree()
-        ORDER BY (trace_id, id, eventAtLocal);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.read_blocks (
-          id String,                  -- Unique ID of the block (maps to raw TraceBlock.id)
-          trace_id String,            -- The globally unique trace ID
-          container_id String,        -- Container/service where this block ran
-          parent_block_id String,     -- Parent block ID calling this block (empty if root)
-          calling_node_id String,     -- The exact Node ID inside parent_block that triggered this block
-          name String,                -- Human-readable function call scope name (e.g. 'foo()')
-          type String,                -- Scope type (e.g. 'function', 'rpc')
-          absolute_depth UInt16,      -- Horizontal offset X-coordinate: 0 = root block, 1 = nested, etc.
-          start_time_us Int64,        -- Earliest start timestamp derived from child nodes (in microseconds)
-          duration_us Nullable(Int64),-- Derived block execution duration (in microseconds)
-          ancestry_path Array(String),-- Ordered array of ancestor IDs from top container down to itself
-          metadata String             -- Stringified JSON baggage properties
-        ) ENGINE = MergeTree()
-        ORDER BY (trace_id, absolute_depth, start_time_us);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.read_nodes (
-          id String,                  -- Unique ID of the node (maps to raw TraceNode.id)
-          trace_id String,            -- The globally unique trace ID
-          block_id String,            -- Containing Block ID
-          name String,                -- Human-readable node/log name
-          type String,                -- Checkpoint type (e.g. 'db', 'log')
-          zoom_level UInt8,           -- Verbosity importance: 0 = critical, 1 = key, 2 = detailed
-          local_sequence UInt32,      -- Vertical flow index Y-coordinate inside this block
-          start_time_us Int64,        -- Timing for started event (in microseconds)
-          duration_us Nullable(Int64),-- Node execution duration (in microseconds)
-          ancestry_path Array(String),-- Ordered array of ancestor IDs from top container down to itself
-          metadata String             -- Stringified JSON baggage properties
-        ) ENGINE = MergeTree()
-        ORDER BY (trace_id, block_id, local_sequence);
-      `,
-    });
-
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.read_edges (
-          id String,                  -- Unique row ID (edge_id + zoom_level)
-          edge_id String,             -- Unique ID of the edge (maps to raw TraceEdge.id)
-          trace_id String,            -- The globally unique trace ID
-          from_block_id String,       -- Source block ID containing the calling node
-          from_node_id String,        -- Source calling Node ID that dispatched the call
-          to_block_id String,         -- Destination block ID receiving the call
-          to_node_id String           -- Destination entry Node ID that accepted the call
-        ) ENGINE = MergeTree()
+          -- Resolved source node id.
+          from_node_id String,
+          -- Resolved target node id.
+          to_node_id String,
+          -- Resolved display label after replaying edge lifecycle events.
+          label String,
+          -- Resolved edge status after lifecycle merge and diagnostics.
+          status LowCardinality(String),
+          -- Earliest edge start time from replayed events.
+          started_at_ms Nullable(Int64),
+          -- Latest edge end time from replayed events.
+          ended_at_ms Nullable(Int64),
+          -- ended_at_ms - started_at_ms when both are known.
+          duration_ms Nullable(Int64),
+          -- Builder warnings such as orphanEdge or clockSkewSuspected.
+          diagnostics Array(String),
+          -- Merged edge metadata JSON.
+          data String,
+          -- Read-model version for ReplacingMergeTree and argMax reads.
+          materialized_at_ms Int64
+        ) ENGINE = ReplacingMergeTree(materialized_at_ms)
+        PARTITION BY sipHash64(trace_id) % 32
         ORDER BY (trace_id, id);
       `,
     });
 
+    // Trace list/slider metadata.
+    //
+    // max_importance_level drives frontend slider max without loading graph.
     await this.clientInstance.command({
       query: `
-        CREATE TABLE IF NOT EXISTS toco_tracer.trace_metadata (
-          trace_id String,            -- The globally unique trace ID
-          is_zoom_ready UInt8,        -- Completion status of layout: 1 = ready, 0 = materializing
-          max_available_depth UInt16,  -- Max structural call-depth resolved (used to size UI slider range)
-          materialized_offset UInt32  -- Completed offset index in materialization queue
-        ) ENGINE = ReplacingMergeTree()
+        CREATE TABLE IF NOT EXISTS topo_tracer.node_trace_summary (
+          -- Stable trace id shown in trace lists and graph detail routes.
+          trace_id String,
+          -- Earliest occurred_at_ms in the trace.
+          created_at_ms Int64,
+          -- Latest occurred_at_ms in the trace.
+          updated_at_ms Int64,
+          -- Materialized node count.
+          node_count UInt64,
+          -- Materialized edge count.
+          edge_count UInt64,
+          -- Count of materialized nodes/edges with error status.
+          error_count UInt64,
+          -- Total number of materializer diagnostics.
+          diagnostic_count UInt64,
+          -- Highest node importance; drives the frontend slider max.
+          max_importance_level Int32,
+          -- Read-model version for ReplacingMergeTree and argMax reads.
+          materialized_at_ms Int64
+        ) ENGINE = ReplacingMergeTree(materialized_at_ms)
         ORDER BY trace_id;
       `,
     });
   }
-
-  private async resetSchema(): Promise<void> {
-    const tables = [
-      "trace_metadata",
-      "read_edges",
-      "read_nodes",
-      "read_blocks",
-      "edge_egress_ancestry",
-      "node_ancestry",
-      "v2_logs",
-      "v2_blocks",
-      "v2_containers",
-      "logs",
-      "edges",
-      "nodes",
-      "blocks",
-      "containers",
-    ];
-
-    for (const table of tables) {
-      await this.clientInstance.command({
-        query: `DROP TABLE IF EXISTS toco_tracer.${table}`,
-      });
-    }
-  }
 }
-

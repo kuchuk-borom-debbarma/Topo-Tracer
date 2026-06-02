@@ -1,11 +1,13 @@
 import { Carno } from "@carno.js/core";
-import { LogRepo } from "./services/log/internal/LogRepo";
-import { LogRepoClickHouseImpl } from "./services/log/internal/repo-impls/LogRepoClickHouseImpl";
 import { LogService } from "./services/log/LogService";
-import { LogServiceImpl } from "./services/log/internal/LogServiceImpl";
 import { ClickHouseService } from "./infra/ClickHouseService";
 import { LogController } from "./routes/LogController";
-import { TraceMaterializationWorker } from "./services/log/internal/worker/TraceMaterializationWorker";
+import { RawEventRepository } from "./services/log/RawEventRepository";
+import { ReadModelRepository } from "./services/log/ReadModelRepository";
+import { TraceReadModelBuilder } from "./services/log/TraceReadModelBuilder";
+import { TraceReadModelWorker } from "./services/log/worker/TraceReadModelWorker";
+import { EventBus } from "./infra/events/EventBus";
+import { InMemoryEventBus } from "./infra/events/InMemoryEventBus";
 
 const app = new Carno({
   validation: true,
@@ -15,12 +17,14 @@ const app = new Carno({
 });
 
 app.services([
+  { token: EventBus, useClass: InMemoryEventBus },
   ClickHouseService,
-  TraceMaterializationWorker,
-  { token: LogRepo, useClass: LogRepoClickHouseImpl },
-  { token: LogService, useClass: LogServiceImpl },
+  RawEventRepository,
+  ReadModelRepository,
+  TraceReadModelBuilder,
+  LogService,
+  TraceReadModelWorker,
 ]);
 
 app.controllers([LogController]);
-app.listen(3000);
-
+app.listen(Number(process.env.PORT ?? 3999));
