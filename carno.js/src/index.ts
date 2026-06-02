@@ -6,6 +6,8 @@ import { RawEventRepository } from "./services/log/RawEventRepository";
 import { ReadModelRepository } from "./services/log/ReadModelRepository";
 import { TraceReadModelBuilder } from "./services/log/TraceReadModelBuilder";
 import { TraceReadModelWorker } from "./services/log/worker/TraceReadModelWorker";
+import { EventBus } from "./infra/events/EventBus";
+import { InMemoryEventBus } from "./infra/events/InMemoryEventBus";
 
 const app = new Carno({
   validation: true,
@@ -15,6 +17,7 @@ const app = new Carno({
 });
 
 app.services([
+  { token: EventBus, useClass: InMemoryEventBus },
   ClickHouseService,
   RawEventRepository,
   ReadModelRepository,

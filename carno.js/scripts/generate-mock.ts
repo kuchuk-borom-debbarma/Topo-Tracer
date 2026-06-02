@@ -136,7 +136,8 @@ async function main() {
     });
     if (!response.ok) throw new Error(`Upload failed: ${response.status} ${await response.text()}`);
   }
-  console.log(`Trace ready after materializer: ${TRACE_ID}`);
+  await fetch(`${BASE_URL}/telemetry/materialize`, { method: "POST" }).catch(() => null);
+  console.log(`Trace ready: ${TRACE_ID}`);
 }
 
 function nameFor(index: number, label: string): string {

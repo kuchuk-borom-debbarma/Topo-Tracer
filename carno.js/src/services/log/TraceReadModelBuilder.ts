@@ -1,4 +1,5 @@
 import { Service } from "@carno.js/core";
+import type { TraceReadModelProjector } from "./contracts";
 import type {
   DiagnosticCode,
   JsonObject,
@@ -35,7 +36,9 @@ type EdgeDraft = {
 };
 
 @Service()
-export class TraceReadModelBuilder {
+export class TraceReadModelBuilder implements TraceReadModelProjector {
+  private lastMaterializedAtUnixMs = 0;
+
   build(traceId: string, events: TraceEventRecord[]): {
     nodes: ReadNode[];
     edges: ReadEdge[];
@@ -121,9 +124,14 @@ export class TraceReadModelBuilder {
         errorCount: [...nodes, ...edges].filter((item) => item.status === "error").length,
         diagnosticCount: diagnostics.length,
         maxImportanceLevel: nodes.reduce((max, node) => Math.max(max, node.importanceLevel), 0),
-        materializedAtUnixMs: Date.now(),
+        materializedAtUnixMs: this.nextMaterializedAtUnixMs(),
       },
     };
+  }
+
+  private nextMaterializedAtUnixMs(): number {
+    this.lastMaterializedAtUnixMs = Math.max(Date.now(), this.lastMaterializedAtUnixMs + 1);
+    return this.lastMaterializedAtUnixMs;
   }
 }
 

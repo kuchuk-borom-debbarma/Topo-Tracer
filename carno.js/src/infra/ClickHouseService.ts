@@ -20,13 +20,19 @@ export class ClickHouseService {
   }
 
   private async runMigrations(): Promise<void> {
-    await this.clientInstance.command({ query: "CREATE DATABASE IF NOT EXISTS topo_tracer" });
+    await this.clientInstance.command({
+      query: "CREATE DATABASE IF NOT EXISTS topo_tracer",
+    });
 
     // Append-only source of truth.
     //
     // ORDER BY starts with trace_id because every materializer/read query is trace-scoped.
     // received_at_ms + event_id gives deterministic replay order when SDK clocks skew.
+    // event_id is the idempotency identity; replay queries collapse duplicate retries.
     // importance_level is SDK-provided semantic importance: 0 = most important.
+
+    // TODO explain each column, also why so many fields that are not mandatory? lets keep design simple and remove unnecessary columns
+    // TODO Do you think we will benifit from storing edges[] ancestry too?
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS topo_tracer.node_trace_events (
@@ -54,8 +60,8 @@ export class ClickHouseService {
     // Read-optimized nodes.
     //
     // ReplacingMergeTree lets worker rebuild read rows after late events without
-    // mutating raw history. ORDER BY supports graph page query:
-    // WHERE trace_id = ? ORDER BY flow_order.
+    // mutating raw history. ORDER BY uses the logical row identity, so a changed
+    // flow_order replaces the old node instead of leaving a stale copy.
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS topo_tracer.node_read_nodes (
@@ -76,14 +82,16 @@ export class ClickHouseService {
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
         PARTITION BY sipHash64(trace_id) % 32
-        ORDER BY (trace_id, flow_order, id);
+        ORDER BY (trace_id, id);
       `,
     });
 
     // Read-optimized edges.
     //
     // Edges are looked up by trace, then lifted to visible/ghost endpoints in
-    // application code. ORDER BY keeps endpoint scans local to one trace.
+    // application code. ORDER BY uses edge identity for rebuild correctness.
+
+    // TODO Why call it read edges when all it is storing is completed edges so lets just call it edges? correct me on this. For read nodes it makes sense because it has some read optimised columns like ancestry_path.
     await this.clientInstance.command({
       query: `
         CREATE TABLE IF NOT EXISTS topo_tracer.node_read_edges (
@@ -101,26 +109,7 @@ export class ClickHouseService {
           materialized_at_ms Int64
         ) ENGINE = ReplacingMergeTree(materialized_at_ms)
         PARTITION BY sipHash64(trace_id) % 32
-        ORDER BY (trace_id, from_node_id, to_node_id, id);
-      `,
-    });
-
-    // Ancestor index.
-    //
-    // Projection needs fast hidden-subtree summaries and ghost nodes. This table
-    // stores one row per ancestor hop so future queries can fetch descendants via
-    // (trace_id, ancestor_id) without scanning all node JSON.
-    await this.clientInstance.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS topo_tracer.node_read_node_ancestry (
-          trace_id String,
-          node_id String,
-          ancestor_id String,
-          ancestor_depth Int32,
-          materialized_at_ms Int64
-        ) ENGINE = ReplacingMergeTree(materialized_at_ms)
-        PARTITION BY sipHash64(trace_id) % 32
-        ORDER BY (trace_id, ancestor_id, node_id);
+        ORDER BY (trace_id, id);
       `,
     });
 

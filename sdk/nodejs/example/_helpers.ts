@@ -7,6 +7,7 @@ export function initExample() {
     baseUrl: BACKEND_URL,
     batchSize: 50,
     flushIntervalMs: 1000,
+    maxRetries: 5,
   });
 }
 
@@ -22,6 +23,7 @@ export async function fakeWork(node: TraceNode, ms: number, status: "ok" | "erro
 export async function finish(traceId: string) {
   await Tracer.flush();
   await Tracer.shutdown();
+  await fetch(`${BACKEND_URL}/telemetry/materialize`, { method: "POST" }).catch(() => null);
   console.log(`Trace ID: ${traceId}`);
-  console.log("Open frontend and select trace after materializer runs.");
+  console.log("Open frontend and select trace.");
 }

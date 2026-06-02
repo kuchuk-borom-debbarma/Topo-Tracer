@@ -21,16 +21,13 @@ Expected:
 Carno running on port 3999
 ```
 
-Backend CORS is open for dev:
+Backend uses dev CORS:
 
 ```ts
 cors: {
   origins: "*",
 }
 ```
-
-If browser says `CORS request did not succeed` with status `(null)`, backend is
-usually stopped or the frontend points at wrong port.
 
 Check:
 
@@ -39,12 +36,7 @@ curl -i -H 'Origin: http://localhost:5173' \
   'http://127.0.0.1:3999/telemetry/traces?page=1&limit=20'
 ```
 
-Look for:
-
-```text
-HTTP/1.1 200 OK
-Access-Control-Allow-Origin: *
-```
+Look for `HTTP/1.1 200 OK` and `Access-Control-Allow-Origin: *`.
 
 ## Start Frontend
 
@@ -61,8 +53,6 @@ VITE_API_BASE_URL=http://localhost:3999 npm run dev
 
 ## Run Seed
 
-Normal seed:
-
 ```sh
 cd carno.js
 bun run seed
@@ -75,16 +65,17 @@ cd carno.js
 bun run seed:large
 ```
 
-Expected seed output:
+Expected:
 
 ```text
-Trace ready after materializer: node_trace_...
+Trace ready: node_trace_...
 ```
 
-Materializer should later log:
+Worker should log materialization quickly because ingestion publishes
+`trace.events.ingested`. Manual fallback:
 
-```text
-Materialized node_trace_...: 10500 nodes, 10499 edges, max importance 4
+```sh
+curl -X POST 'http://localhost:3999/telemetry/materialize'
 ```
 
 ## Run SDK Examples
@@ -106,26 +97,33 @@ Each should print:
 
 ```text
 Trace ID: ...
-Open frontend and select trace after materializer runs.
+Open frontend and select trace.
 ```
-
-If an example logs `Failed to flush telemetry`, backend is not reachable at
-`TOPO_TRACER_URL` or default `http://localhost:3999`.
 
 ## Build Checks
 
-Backend:
+Backend bundle:
 
 ```sh
 cd carno.js
 bun run check
 ```
 
+Backend typecheck note:
+
+```sh
+cd carno.js
+./node_modules/.bin/tsc --noEmit
+```
+
+Current full `tsc` reports errors inside `@carno.js/core/src`; local source has
+no additional errors after those dependency errors.
+
 Frontend:
 
 ```sh
 cd frontend
-npm run build -- --mode development
+npm run build
 ```
 
 SDK:
@@ -135,23 +133,7 @@ cd sdk/nodejs
 npm run build
 ```
 
-SDK examples typecheck:
-
-```sh
-cd sdk/nodejs
-./node_modules/.bin/tsc --noEmit --ignoreConfig \
-  --target ES2022 \
-  --module CommonJS \
-  --moduleResolution node \
-  --esModuleInterop \
-  --strict \
-  --skipLibCheck \
-  --types node \
-  --ignoreDeprecations 6.0 \
-  example/*.ts src/*.ts
-```
-
-## Graph Window Smoke Checks
+## Smoke Checks
 
 List traces:
 
@@ -159,41 +141,36 @@ List traces:
 curl -s 'http://localhost:3999/telemetry/traces?limit=3'
 ```
 
-Fetch a low-detail large trace:
+Fetch graph:
 
 ```sh
 curl -s 'http://localhost:3999/telemetry/traces/{traceId}/graph?maxImportance=0&limit=10'
 ```
 
-Check response has:
-
-- `metadata.returnedNodeCount <= 10`
-- `metadata.hiddenNodeCount > 0` for large trace
-- `metadata.ghostNodeCount > 0`
-- nodes include `importanceLevel`
-- nodes include `indentLevel`
-- ghost nodes include `hiddenNodeCount`
-
-## Frontend Smoke Checks
-
-Open frontend and select latest trace.
-
 Expected:
 
-- Trace list loads.
-- Toolbar says `Importance <=`.
-- Large trace renders capped node window.
-- Node cards show `indent`, `importance`, duration, and time range.
-- Ghost cards show hidden count and hidden duration.
+- `metadata.returnedNodeCount <= 10`
+- `metadata.hiddenNodeCount > 0` on large trace at low detail
+- `metadata.ghostNodeCount > 0` when hidden nodes exist
+- nodes include `importanceLevel`
+- ghost nodes include `hiddenNodeCount`
+
+Frontend expected:
+
+- Trace rail loads.
+- Graph header stats update.
+- Importance slider changes detail level.
+- Graph columns read `i0`, `i1`, etc.
+- Node cards show status, importance, duration, and time range.
 - Arrows have labels.
-- Inspector shows id, status, started, ended, duration, diagnostics, metadata.
+- Inspector shows id, status, endpoints for edges, timing, diagnostics, JSON.
 
 Bad signs:
 
 - Browser console has `NaN` style/SVG warnings.
-- Trace list says empty after seed and materializer.
-- `CORS request did not succeed` with status `(null)`.
+- Trace list is empty after seed and materialize.
 - Graph request returns more than 500 nodes.
+- Backend logs repeated event handler failures.
 
 ## Environment Variables
 
@@ -203,37 +180,15 @@ Backend:
 - `CLICKHOUSE_HOST`: default `http://localhost:8123`.
 - `CLICKHOUSE_USER`: default `default`.
 - `CLICKHOUSE_PASSWORD`: default `password`.
-- `TRACE_MATERIALIZER_INTERVAL_MS`: default `5000`.
+- `EVENT_BUS_IDEMPOTENCY_TTL_MS`: in-memory event dedupe TTL, default `600000`.
+- `TRACE_MATERIALIZER_BATCH_SIZE`: dirty trace batch size, default `50`.
+- `TRACE_MATERIALIZER_RECOVERY_INTERVAL_MS`: recovery scan interval, default
+  `30000`; set `0` to disable.
+- `TRACE_MATERIALIZER_INTERVAL_MS`: legacy fallback for recovery interval.
 
 Frontend:
 
 - `VITE_API_BASE_URL`: backend URL, default `http://localhost:3999`.
-
-## Graph Page
-
-Trace list is at `/`.
-
-Dedicated graph view is:
-
-```text
-/traces/{traceId}/graph
-```
-
-Graph edge styling:
-
-- Solid green edge: completed causal edge.
-- Solid amber edge with `open` label: async/fire-and-forget edge without
-  `edge.ended`.
-- Dashed gray edge: ghost edge created by collapsing hidden nodes.
-- Compact edge chip on node: relationship returns to a parent column, points
-  backward, or is outside current graph window, so UI avoids drawing a faraway
-  comeback arrow.
-- Parent/child `continues` edges are hidden as arrows. Columns already show that
-  structure, and quiet scope lines connect parent to child. Only explicit work
-  edges should visually connect cards as operation arrows.
-
-If graph metadata says `0 hidden` and `0 ghosts`, there should be no dashed
-ghost edges. Open async edges should still be visible as solid amber.
 
 SDK/seed:
 

@@ -28,6 +28,7 @@ export class TraceNode {
     this.parentId = input.parentId ?? null;
 
     Tracer.exportEvent({
+      eventId: uuidv4(),
       traceId: this.traceId,
       entityId: this.id,
       entityType: "node",
@@ -80,6 +81,7 @@ export class TraceNode {
     if (this.isFinished) return;
     this.isFinished = true;
     Tracer.exportEvent({
+      eventId: uuidv4(),
       traceId: this.traceId,
       entityId: this.id,
       entityType: "node",

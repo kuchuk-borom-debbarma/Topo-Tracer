@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Param, Post, Query } from "@carno.js/core";
 import { LogService } from "../services/log/LogService";
+import { TraceReadModelWorker } from "../services/log/worker/TraceReadModelWorker";
 import type { GraphWindowQuery, TraceEventInput } from "../services/log/types";
 
 @Controller("/telemetry")
 export class LogController {
-  constructor(private logService: LogService) {}
+  constructor(
+    private logService: LogService,
+    private traceReadModelWorker: TraceReadModelWorker,
+  ) {}
 
   @Post("/events")
   async ingestEvents(@Body() events: TraceEventInput[]) {
@@ -37,5 +41,11 @@ export class LogController {
       cursor,
     };
     return this.logService.getGraph(traceId, query);
+  }
+
+  @Post("/materialize")
+  async materializePending() {
+    await this.traceReadModelWorker.processBatch();
+    return { ok: true };
   }
 }

@@ -1,133 +1,91 @@
 # Topo Tracer Design
 
-Topo Tracer is now a primitive node-to-node trace graph. There is no group,
-container, span compatibility layer, or derived hierarchy beyond parent links.
-
-More docs:
-
-- [Backend Schema And Queries](./BACKEND_SCHEMA_AND_QUERIES.md)
-- [Development And Verification](./DEVELOPMENT_AND_VERIFICATION.md)
+Topo Tracer stores a primitive graph: nodes are work; edges are causal links.
+There is no span/container compatibility layer.
 
 ## Core Model
 
-Trace data has two entities:
+Entities:
 
-- `Node`: one meaningful unit of work. It may be a request, function, service
-  call, database query, queue publish, queue consume, or user-defined event.
-- `Edge`: one causal link from one node to another. It carries a label and its
-  own timing so arrows can say `calls`, `writes`, `publishes`, `delivers`, or
-  `fire-and-forget`.
+- `Node`: request, function, service call, DB query, queue publish/consume, or
+  user-defined work.
+- `Edge`: causal link between nodes with label and optional lifecycle.
 
-Each node has:
-
-- `id`
-- `traceId`
-- `parentId`
-- `name`
-- `importanceLevel`
-- `startedAtUnixMs`
-- `endedAtUnixMs`
-- `durationMs`
-- `indentLevel`
-- `status`
-- `data`
-
-`importanceLevel` is set by the SDK/user. It is not call depth. Lower number
-means more important:
-
-- `0`: critical story node
-- `1`: service or major boundary
-- `2`: operation
-- `3`: detail
-- `4`: noisy implementation detail
-
-Developers can choose their own meaning. For example, a distributed trace can
-set all service boundary nodes to `0`, even when one service is nested under
-another in the causal tree.
-
-## Importance Slider
-
-Frontend slider value `N` shows nodes where:
+Node importance is semantic, not depth:
 
 ```ts
-node.importanceLevel <= N
+Importance.CRITICAL  // 0
+Importance.SERVICE   // 1
+Importance.OPERATION // 2
+Importance.DETAIL    // 3
+Importance.NOISE     // 4
 ```
 
-All hidden nodes are summarized as ghost nodes. Example:
-
-```text
-a(0) -> b(1) -> c(4) -> d(4) -> e(1) -> f(0)
-```
-
-At slider `0`:
-
-```text
-a -> ghost(covers b,c,d,e) -> f
-```
-
-At slider `1`:
-
-```text
-a -> b -> ghost(covers c,d) -> e -> f
-```
-
-Ghost nodes keep flow understandable without flooding the graph. A ghost node
-stores hidden node count, hidden error count, first hidden start time, last
-hidden end time, hidden duration, and a short sample of hidden node ids.
-
-## Indentation
-
-Indentation is structural, not semantic. Backend computes `indentLevel` from
-`ancestryPath.length` when it materializes nodes. Frontend uses `indentLevel` for
-horizontal placement. SDK does not send indentation because SDK authors should
-only describe work and importance, not UI layout.
-
-Backend is best place for this calculation because it already validates parent
-links, detects cycles/orphans, creates ancestry, and inserts ghost nodes. Ghost
-nodes get `parent.indentLevel + 1`, so collapsed work appears visually between
-the visible parent and later visible descendants.
+Lower number means more important. Slider value `N` shows nodes where
+`importanceLevel <= N`. Hidden nodes collapse into ghost nodes with count,
+error count, duration, and sampled ids.
 
 ## Write Path
 
-Writes are append-only. SDK sends immutable lifecycle events:
+SDK sends immutable lifecycle events:
 
 - `node.started`
 - `node.ended`
 - `edge.started`
 - `edge.ended`
 
-`edge.ended` is optional. Missing edge end means async, open, or
-fire-and-forget.
+Every SDK event has a stable `eventId`. Backend still generates one if an older
+client omits it, but retry-safe ingestion depends on SDK-side ids.
 
-Raw table: `topo_tracer.node_trace_events`
+Backend flow:
 
-Design:
+1. Validate request body.
+2. Append raw events to ClickHouse.
+3. Publish `trace.events.ingested` on `EventBus`.
+4. Event-driven worker batches dirty trace ids.
+5. Worker replays raw events and writes read models.
 
-- `MergeTree`, not replacing, because raw history must be immutable.
-- `ORDER BY (trace_id, received_at_ms, event_id)` because materialization is
-  trace-scoped and backend receive time gives deterministic replay when SDK
-  clocks skew.
-- `PARTITION BY toYYYYMM(received_at_ms)` because raw writes age by ingest time.
-- `importance_level Nullable(Int32)` because only `node.started` needs it.
+Event bus rule:
 
-## Timestamp Rules
+- Application code publishes domain events only.
+- Idempotency/delivery dedupe live inside event bus implementation.
+- Dev implementation is `InMemoryEventBus`.
+- Kafka implementation can later satisfy same `EventBus` contract.
 
-Every event has dual time:
+## Contracts
 
-- `occurredAtUnixMs`: source/SDK event time.
-- `receivedAtUnixMs`: backend receive time.
+Backend service/infra boundaries are declared in contracts:
 
-Read model uses `occurredAtUnixMs` for durations:
+- `EventBusPort`
+- `RawEventStore`
+- `TraceReadModelStore`
+- `TraceReadModelProjector`
+- `TraceLogService`
 
-```text
-node.duration = node.ended.occurredAt - node.started.occurredAt
-edge.duration = edge.ended.occurredAt - edge.started.occurredAt
-```
+Carno injects runtime classes, so `EventBus` is also a runtime DI token. Callers
+depend on the contract surface; providers can swap underneath.
 
-Read model uses causal links first for ordering. Timestamps never override
-parent/edge causality. `receivedAtUnixMs` is diagnostic and tie-break data.
+## Materialized Model
 
-Safety diagnostics:
+Raw table is append-only. Read tables are rebuildable:
+
+- `node_read_nodes`
+- `node_read_edges`
+- `node_trace_summary`
+
+Read queries do not use `FINAL` on hot paths. They group by logical ids and use
+`argMax(..., materialized_at_ms)` so latest materialization wins even if old rows
+have different `flow_order`.
+
+Materializer computes:
+
+- lifecycle status and duration
+- ancestry path and diagnostics
+- causal `flowOrder`
+- trace summary counts
+- monotonic `materializedAtUnixMs`
+
+Diagnostics:
 
 - `clockSkewSuspected`
 - `negativeDuration`
@@ -137,160 +95,110 @@ Safety diagnostics:
 - `orphanNode`
 - `orphanEdge`
 
-Open edges are valid for async/fire-and-forget flow. Missing `edge.ended` keeps
-edge status/duration open; it is not a `missingEnd` diagnostic by itself.
+Open edges are valid async/fire-and-forget links.
 
-## Materialized Read Model
+## Ancestry Path
 
-Background worker rebuilds read tables from raw events.
+`ancestryPath` is stored on every materialized node. It is an ordered array of
+ancestor node ids from root to direct parent.
 
-Tables:
+Example tree:
 
-- `node_read_nodes`
-- `node_read_edges`
-- `node_read_node_ancestry`
-- `node_trace_summary`
+```text
+n-root
+  n-pay
+    n-card
+  n-pub
+```
 
-`node_read_nodes` design:
+Materialized node ancestry:
 
-- `ReplacingMergeTree(materialized_at_ms)` allows late events to rebuild rows
-  without changing raw history.
-- `ORDER BY (trace_id, flow_order, id)` serves graph pages in causal order.
-- `importance_level` is a real column so slider queries avoid JSON parsing.
-- `indent_level` is a real column so frontend graph layout does not recompute
-  ancestry on every render.
-- `ancestry_path Array(String)` lets projection find nearest visible ancestor.
+| node | parentId | ancestryPath | meaning |
+| --- | --- | --- | --- |
+| `n-root` | `null` | `[]` | root has no ancestors |
+| `n-pay` | `n-root` | `["n-root"]` | direct child of root |
+| `n-card` | `n-pay` | `["n-root", "n-pay"]` | root -> payment -> card |
+| `n-pub` | `n-root` | `["n-root"]` | direct child of root |
 
-`node_read_edges` design:
+Rules:
 
-- `ReplacingMergeTree(materialized_at_ms)` for rebuilds.
-- `ORDER BY (trace_id, from_node_id, to_node_id, id)` keeps endpoint scans local
-  to one trace.
+- `parentId` stores only direct parent.
+- `ancestryPath` stores full parent chain.
+- Last item in `ancestryPath` is direct parent when parent exists.
+- `indentLevel = ancestryPath.length`.
+- Root nodes always have `[]`.
 
-`node_read_node_ancestry` design:
+Why store array on node rows:
 
-- One row per ancestor hop.
-- `ancestor_depth` is only index position inside ancestry path. It is not
-  importance.
-- `ORDER BY (trace_id, ancestor_id, node_id)` supports future descendant summary
-  queries without scanning all node JSON.
+- Graph projection needs nearest visible ancestor for hidden nodes.
+- ClickHouse handles arrays efficiently for trace-scoped reads.
+- `arrayReverse(ancestry_path)` searches from direct parent back to root.
+- `arrayFirst(ancestor_id -> has(visible_ids, ancestor_id), ...)` finds nearest
+  visible ancestor in one query.
+- This avoids a separate ancestry index table and avoids writing one extra row
+  per ancestor hop.
 
-`node_trace_summary` design:
+Why no edge ancestry:
 
-- One row per trace.
-- Stores node/edge/error/diagnostic counts.
-- Stores `max_importance_level` so frontend can size slider without loading full
-  graph.
+- Edges are causal links, not hierarchy owners.
+- Edge projection resolves each endpoint through that endpoint node's
+  `ancestryPath`.
+- Storing ancestry on edges would duplicate derived state and would need updates
+  whenever node parentage changes.
+- Add edge ancestry only when a future query needs path-aware edge analytics
+  that cannot be answered through endpoint node joins.
 
-## Flow Projection
+## Graph Projection
 
 Read API:
 
 ```http
-GET /telemetry/traces
-GET /telemetry/traces/:traceId/summary
-GET /telemetry/traces/:traceId/graph?maxImportance=1&limit=250&cursor=...
+GET  /telemetry/traces
+GET  /telemetry/traces/:traceId/summary
+GET  /telemetry/traces/:traceId/graph?maxImportance=1&limit=250&cursor=...
 POST /telemetry/events
 POST /telemetry/materialize
 ```
 
-Local development uses:
-
-- Backend: `http://localhost:3999`
-- Frontend: Vite dev server, usually `http://localhost:5173`
-- Frontend override: `VITE_API_BASE_URL=http://localhost:3999`
-- SDK/seed override: `TOPO_TRACER_URL=http://localhost:3999`
-
-Backend enables CORS with `origins: "*"`. If browser says
-`CORS request did not succeed` with status `(null)`, first check that backend is
-actually listening on `3999`; browsers often show that message for connection
-refused or stopped local servers.
-
 Projection steps:
 
-1. Load materialized nodes, edges, and summary for one trace.
-2. Keep visible nodes where `importanceLevel <= maxImportance`.
-3. Group hidden nodes under nearest visible ancestor using `ancestryPath`.
-4. Create ghost nodes with timing/error summaries.
-5. Lift edges so hidden endpoints connect through visible or ghost nodes.
-6. Sort by `flowOrder`.
-7. Apply cursor pagination.
+1. Load latest summary for one trace.
+2. Ask `ReadModelRepository.getProjectedGraph` for one graph window.
+3. ClickHouse groups latest read rows by logical ids with `argMax`.
+4. ClickHouse builds visible ids from `importanceLevel <= maxImportance`.
+5. Hidden nodes use `ancestry_path Array(String)` to find nearest visible
+   ancestor and aggregate ghost rows.
+6. ClickHouse windows projected nodes by `flowOrder`.
+7. ClickHouse resolves/lifts edges through visible or ghost endpoints, then only
+   returns edges whose resolved endpoints are in the node window.
 
-Cursor pagination is offset-based over projected causal order. API returns:
-
-- `hasBefore`
-- `hasAfter`
-- `previousCursor`
-- `nextCursor`
-- `returnedNodeCount`
-- `hiddenNodeCount`
-- `ghostNodeCount`
-
-Hard cap is 500 nodes per response. No API returns unbounded graph data by
-default.
+Hard response cap is 500 nodes.
 
 ## Frontend View
 
-Frontend has a trace list page and a dedicated graph page at
-`/traces/:traceId/graph`.
+Frontend is one workspace:
 
-The graph page uses a **structural flow column** layout:
+- Left rail: traces.
+- Center: free-form graph canvas.
+- Right: inspector.
 
-- X axis is structural indent from backend `indentLevel`, capped for readability.
-- Y axis is causal flow order. Sibling work stays in one vertical column.
-- Nested work moves one column right and continues vertically there.
-- True `indentLevel` still appears on node cards when deep nesting exceeds the
-  visual lane cap.
-- Parent/child structure renders as quiet scope lines, not labeled arrows.
-- Downward or rightward relationships render as arrows.
-- Return-to-parent, backward, or cross-window relationships render as compact
-  edge chips on the target node so the view never draws faraway comeback arrows.
-- SDK-created parent/child `continues` edges are structural and hidden as
-  operation arrows. Column position plus scope lines show that relationship.
-  Explicit work edges like `writes`, `schedules`, `publishes`, and
-  `fire-and-forget` remain visible.
+Graph layout:
 
-- Nodes are cards with name, importance, duration, start/end time, status, and
-  diagnostics.
-- Edges are arrows with labels and timing in inspector.
-- Completed edges are solid green.
-- Open async/fire-and-forget edges are solid amber and include `open` in the
-  edge label.
-- Ghost edges are dashed gray and appear only when hidden nodes are collapsed.
-- Horizontal indentation comes from backend-computed `indentLevel`; importance
-  controls show/hide only.
-- Importance slider controls detail level.
-- Ghost nodes show hidden count, error count, and hidden time.
-- Inspector shows full id, status, start time, end time, duration, diagnostics,
-  and metadata JSON.
+- X axis is importance level: `i0`, `i1`, `i2`, etc.
+- Y axis is causal order inside each importance level.
+- Nodes are compact cards with status, importance, title, duration, time range,
+  ghost summary, and diagnostics.
+- Edges are labeled curves.
+- Completed edges are blue.
+- Open edges are amber.
+- Ghost/back edges are muted dashed curves.
 
-This view supports monolith and distributed traces because service calls,
-function calls, database work, queue work, and async work are all just nodes and
-edges.
-
-## SDK Guidance
-
-Use named importance constants:
-
-```ts
-Importance.CRITICAL // 0
-Importance.SERVICE  // 1
-Importance.OPERATION // 2
-Importance.DETAIL   // 3
-Importance.NOISE    // 4
-```
-
-Set service boundary nodes to `CRITICAL` or `SERVICE` when you want distributed
-flow visible at low slider values. Set deeply nested implementation details to
-`DETAIL` or `NOISE` so they collapse into ghost summaries.
-
-Child nodes default to parent importance. This keeps traces quiet unless caller
-chooses more detail.
+The UI does not use structural indentation for placement. `indentLevel` still
+exists in the read model because projection uses ancestry for ghost grouping and
+diagnostics.
 
 ## Future Work
 
-- Query ghost summaries directly from `node_read_node_ancestry` for very
-  large traces instead of loading all nodes first.
-- Add search anchors so graph can jump to node id/name and page around it.
-- Add richer async/pubsub layout lanes, while keeping same primitive node-edge
-  data model.
+- Kafka-backed `EventBus`.
+- Dirty-trace durable queue for multi-process workers.
+- Search/jump-to-node.

@@ -46,6 +46,7 @@ export class Tracer {
   ): string {
     const edgeId = uuidv4();
     this.exportEvent({
+      eventId: uuidv4(),
       traceId,
       entityId: edgeId,
       entityType: "edge",
@@ -63,6 +64,7 @@ export class Tracer {
 
   static endEdge(traceId: string, edgeId: string, status: "ok" | "error" | "warning" = "ok") {
     this.exportEvent({
+      eventId: uuidv4(),
       traceId,
       entityId: edgeId,
       entityType: "edge",

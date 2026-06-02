@@ -22,6 +22,8 @@ export type TracerConfig = {
   baseUrl: string;
   batchSize?: number;
   flushIntervalMs?: number;
+  maxRetries?: number;
+  maxQueueSize?: number;
 };
 
 export type NodeConfig = {

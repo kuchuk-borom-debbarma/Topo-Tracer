@@ -131,3 +131,11 @@ export type GraphWindowResponse = {
   nodes: Array<ReadNode | GhostNode>;
   edges: GraphEdge[];
 };
+
+export type GraphProjectionResult = {
+  nodes: Array<ReadNode | GhostNode>;
+  edges: GraphEdge[];
+  hiddenNodeCount: number;
+  ghostNodeCount: number;
+  projectedNodeCount: number;
+};
