@@ -77,6 +77,12 @@ Read queries do not use `FINAL` on hot paths. They group by logical ids and use
 `argMax(..., materialized_at_ms)` so latest materialization wins even if old rows
 have different `flow_order`.
 
+ClickHouse query aliases are intentionally private inside aggregate stages.
+Aggregate outputs use names like `latest_materialized_at_ms`, `group_status`,
+and `edge_status`, then outer selects map them back to response field names.
+This avoids ClickHouse alias substitution creating illegal nested aggregates in
+expressions such as `argMax(...)`, `countIf(...)`, and `any(...)`.
+
 Materializer computes:
 
 - lifecycle status and duration

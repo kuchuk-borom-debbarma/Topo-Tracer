@@ -164,12 +164,21 @@ SELECT
   argMax(flow_order, materialized_at_ms) AS flow_order,
   argMax(diagnostics, materialized_at_ms) AS diagnostics,
   argMax(data, materialized_at_ms) AS data,
-  max(materialized_at_ms) AS materialized_at_ms
+  max(materialized_at_ms) AS latest_materialized_at_ms
 FROM topo_tracer.node_read_nodes
 WHERE trace_id = {traceId:String}
 GROUP BY trace_id, id
 ORDER BY flow_order ASC, id ASC
 ```
+
+ClickHouse alias rule:
+
+- Do not alias aggregate outputs back to source column names inside the same
+  aggregate `SELECT`.
+- Use private aggregate aliases such as `latest_materialized_at_ms`, then map
+  them to API field names from an outer non-aggregate `SELECT`.
+- This avoids alias substitution turning expressions like
+  `argMax(..., materialized_at_ms)` into nested aggregates.
 
 Why no `FINAL`:
 
@@ -242,6 +251,27 @@ ORDER BY (trace_id, id);
 
 Read query groups by `(trace_id, id)` and uses `argMax` for latest fields.
 
+Read query:
+
+```sql
+SELECT
+  trace_id,
+  id,
+  argMax(from_node_id, materialized_at_ms) AS from_node_id,
+  argMax(to_node_id, materialized_at_ms) AS to_node_id,
+  argMax(label, materialized_at_ms) AS label,
+  argMax(status, materialized_at_ms) AS status,
+  argMax(started_at_ms, materialized_at_ms) AS started_at_ms,
+  argMax(ended_at_ms, materialized_at_ms) AS ended_at_ms,
+  argMax(duration_ms, materialized_at_ms) AS duration_ms,
+  argMax(diagnostics, materialized_at_ms) AS diagnostics,
+  argMax(data, materialized_at_ms) AS data,
+  max(materialized_at_ms) AS latest_materialized_at_ms
+FROM topo_tracer.node_read_edges
+WHERE trace_id = {traceId:String}
+GROUP BY trace_id, id
+```
+
 ## Trace Summary
 
 Table: `topo_tracer.node_trace_summary`
@@ -273,7 +303,7 @@ SELECT
   error_count,
   diagnostic_count,
   max_importance_level,
-  materialized_at_ms
+  latest_materialized_at_ms AS materialized_at_ms
 FROM (
   SELECT
     trace_id,
@@ -284,13 +314,16 @@ FROM (
     argMax(error_count, materialized_at_ms) AS error_count,
     argMax(diagnostic_count, materialized_at_ms) AS diagnostic_count,
     argMax(max_importance_level, materialized_at_ms) AS max_importance_level,
-    max(materialized_at_ms) AS materialized_at_ms
+    max(materialized_at_ms) AS latest_materialized_at_ms
   FROM topo_tracer.node_trace_summary
   GROUP BY trace_id
 )
 ORDER BY updated_at_ms DESC
 LIMIT {limit:UInt32} OFFSET {offset:UInt32}
 ```
+
+Summary reads follow the same alias rule: the inner aggregate query emits
+`latest_materialized_at_ms`; the outer select exposes `materialized_at_ms`.
 
 Count query:
 
@@ -343,6 +376,22 @@ materializations never tie.
 8. Query latest edges, join endpoint nodes, resolve hidden endpoints to ghost
    ids, group lifted duplicate edges, and return only edges whose resolved
    endpoints are inside the returned node window.
+
+Projection query alias rules:
+
+- Hidden-node aggregate fields use private aliases such as `group_status`.
+- Lifted-edge grouping uses explicit raw edge aliases such as `edge_source_id`
+  and `edge_row_status`.
+- Grouped-edge aggregate outputs use private aliases such as `edge_status`,
+  `min_started_at_ms`, `max_ended_at_ms`, `grouped_diagnostics`, and
+  `edge_hidden_edge_count`.
+- A final outer select maps those private aliases back to response names:
+  `id`, `trace_id`, `status`, `started_at_ms`, `ended_at_ms`, `diagnostics`,
+  and `hidden_edge_count`.
+
+This shape avoids ClickHouse treating aliases like `status`, `id`, or
+`materialized_at_ms` as replacements inside other aggregate expressions such as
+`countIf(...)`, `any(...)`, or `argMax(...)`.
 
 The frontend chooses visual layout. Backend already returns a projected graph
 window: real nodes, ghost nodes, lifted edges, counts, cursors, and metadata.

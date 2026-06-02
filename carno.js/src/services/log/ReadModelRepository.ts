@@ -27,7 +27,7 @@ const LATEST_NODES_SQL = `
     argMax(flow_order, materialized_at_ms) AS flow_order,
     argMax(diagnostics, materialized_at_ms) AS diagnostics,
     argMax(data, materialized_at_ms) AS data,
-    max(materialized_at_ms) AS materialized_at_ms
+    max(materialized_at_ms) AS latest_materialized_at_ms
   FROM topo_tracer.node_read_nodes
   WHERE trace_id = {traceId:String}
   GROUP BY trace_id, id
@@ -46,7 +46,7 @@ const LATEST_EDGES_SQL = `
     argMax(duration_ms, materialized_at_ms) AS duration_ms,
     argMax(diagnostics, materialized_at_ms) AS diagnostics,
     argMax(data, materialized_at_ms) AS data,
-    max(materialized_at_ms) AS materialized_at_ms
+    max(materialized_at_ms) AS latest_materialized_at_ms
   FROM topo_tracer.node_read_edges
   WHERE trace_id = {traceId:String}
   GROUP BY trace_id, id
@@ -117,7 +117,7 @@ const PROJECTED_GRAPH_NODES_SQL = `
           countIf(status = 'error') > 0, 'error',
           countIf(status = 'warning') > 0, 'warning',
           'ok'
-        ) AS status,
+        ) AS group_status,
         min(started_at_ms) AS started_at_ms,
         max(ended_at_ms) AS ended_at_ms,
         min(flow_order) AS flow_order,
@@ -165,7 +165,7 @@ const PROJECTED_GRAPH_NODES_SQL = `
           if(hidden_groups.hidden_node_count = 1, '', 's')
         ) AS name,
         {maxImportance:Int32} + 1 AS importance_level,
-        hidden_groups.status AS status,
+        hidden_groups.group_status AS status,
         hidden_groups.started_at_ms AS started_at_ms,
         hidden_groups.ended_at_ms AS ended_at_ms,
         if(
@@ -258,7 +258,17 @@ const PROJECTED_GRAPH_EDGES_SQL = `
           ) AS resolved_to
         FROM (
           SELECT
-            latest_edges.*,
+            latest_edges.trace_id AS edge_trace_id,
+            latest_edges.id AS edge_source_id,
+            latest_edges.from_node_id AS from_node_id,
+            latest_edges.to_node_id AS to_node_id,
+            latest_edges.label AS label,
+            latest_edges.status AS edge_row_status,
+            latest_edges.started_at_ms AS edge_started_at_ms,
+            latest_edges.ended_at_ms AS edge_ended_at_ms,
+            latest_edges.duration_ms AS edge_duration_ms,
+            latest_edges.diagnostics AS edge_diagnostics,
+            latest_edges.data AS edge_data,
             from_node.importance_level AS from_importance_level,
             to_node.importance_level AS to_importance_level,
             arrayFirst(
@@ -283,36 +293,53 @@ const PROJECTED_GRAPH_EDGES_SQL = `
         has({nodeIds:Array(String)}, resolved_from)
         AND has({nodeIds:Array(String)}, resolved_to)
         AND resolved_from != resolved_to
+    ),
+    grouped_edges AS (
+      SELECT
+        if(
+          max(is_ghost_edge) = 1,
+          concat('ghost-edge:', resolved_from, '->', resolved_to, ':', label),
+          any(edge_source_id)
+        ) AS edge_id,
+        any(edge_trace_id) AS grouped_trace_id,
+        resolved_from AS edge_from_node_id,
+        resolved_to AS edge_to_node_id,
+        label AS edge_label,
+        multiIf(
+          countIf(edge_row_status = 'error') > 0, 'error',
+          countIf(edge_row_status = 'warning') > 0, 'warning',
+          countIf(edge_row_status = 'open') > 0, 'open',
+          'ok'
+        ) AS edge_status,
+        min(edge_started_at_ms) AS min_started_at_ms,
+        max(edge_ended_at_ms) AS max_ended_at_ms,
+        if(
+          isNull(min(edge_started_at_ms)) OR isNull(max(edge_ended_at_ms)),
+          NULL,
+          max(edge_ended_at_ms) - min(edge_started_at_ms)
+        ) AS edge_duration_ms,
+        arrayDistinct(arrayFlatten(groupArray(edge_diagnostics))) AS grouped_diagnostics,
+        any(edge_data) AS grouped_data,
+        max(is_ghost_edge) AS edge_is_ghost,
+        if(max(is_ghost_edge) = 1, count(), 0) AS edge_hidden_edge_count
+      FROM resolved_edges
+      GROUP BY resolved_from, resolved_to, label
     )
   SELECT
-    if(
-      max(is_ghost_edge) = 1,
-      concat('ghost-edge:', resolved_from, '->', resolved_to, ':', label),
-      any(id)
-    ) AS id,
-    any(trace_id) AS trace_id,
-    resolved_from AS from_node_id,
-    resolved_to AS to_node_id,
-    label,
-    multiIf(
-      countIf(status = 'error') > 0, 'error',
-      countIf(status = 'warning') > 0, 'warning',
-      countIf(status = 'open') > 0, 'open',
-      'ok'
-    ) AS status,
-    min(started_at_ms) AS started_at_ms,
-    max(ended_at_ms) AS ended_at_ms,
-    if(
-      isNull(min(started_at_ms)) OR isNull(max(ended_at_ms)),
-      NULL,
-      max(ended_at_ms) - min(started_at_ms)
-    ) AS duration_ms,
-    arrayDistinct(arrayFlatten(groupArray(diagnostics))) AS diagnostics,
-    any(data) AS data,
-    max(is_ghost_edge) AS is_ghost,
-    if(max(is_ghost_edge) = 1, count(), 0) AS hidden_edge_count
-  FROM resolved_edges
-  GROUP BY resolved_from, resolved_to, label
+    edge_id AS id,
+    grouped_trace_id AS trace_id,
+    edge_from_node_id AS from_node_id,
+    edge_to_node_id AS to_node_id,
+    edge_label AS label,
+    edge_status AS status,
+    min_started_at_ms AS started_at_ms,
+    max_ended_at_ms AS ended_at_ms,
+    edge_duration_ms AS duration_ms,
+    grouped_diagnostics AS diagnostics,
+    grouped_data AS data,
+    edge_is_ghost AS is_ghost,
+    edge_hidden_edge_count AS hidden_edge_count
+  FROM grouped_edges
 `;
 
 @Service()
@@ -392,17 +419,29 @@ export class ReadModelRepository implements TraceReadModelStore {
     const rows = await this.queryRows<any>(`
       SELECT
         trace_id,
-        argMax(created_at_ms, materialized_at_ms) AS created_at_ms,
-        argMax(updated_at_ms, materialized_at_ms) AS updated_at_ms,
-        argMax(node_count, materialized_at_ms) AS node_count,
-        argMax(edge_count, materialized_at_ms) AS edge_count,
-        argMax(error_count, materialized_at_ms) AS error_count,
-        argMax(diagnostic_count, materialized_at_ms) AS diagnostic_count,
-        argMax(max_importance_level, materialized_at_ms) AS max_importance_level,
-        max(materialized_at_ms) AS materialized_at_ms
-      FROM topo_tracer.node_trace_summary
-      WHERE trace_id = {traceId:String}
-      GROUP BY trace_id
+        created_at_ms,
+        updated_at_ms,
+        node_count,
+        edge_count,
+        error_count,
+        diagnostic_count,
+        max_importance_level,
+        latest_materialized_at_ms AS materialized_at_ms
+      FROM (
+        SELECT
+          trace_id,
+          argMax(created_at_ms, materialized_at_ms) AS created_at_ms,
+          argMax(updated_at_ms, materialized_at_ms) AS updated_at_ms,
+          argMax(node_count, materialized_at_ms) AS node_count,
+          argMax(edge_count, materialized_at_ms) AS edge_count,
+          argMax(error_count, materialized_at_ms) AS error_count,
+          argMax(diagnostic_count, materialized_at_ms) AS diagnostic_count,
+          argMax(max_importance_level, materialized_at_ms) AS max_importance_level,
+          max(materialized_at_ms) AS latest_materialized_at_ms
+        FROM topo_tracer.node_trace_summary
+        WHERE trace_id = {traceId:String}
+        GROUP BY trace_id
+      )
     `, { traceId });
     return rows[0] ? mapSummary(rows[0]) : null;
   }
@@ -420,7 +459,7 @@ export class ReadModelRepository implements TraceReadModelStore {
           error_count,
           diagnostic_count,
           max_importance_level,
-          materialized_at_ms
+          latest_materialized_at_ms AS materialized_at_ms
         FROM (
           SELECT
             trace_id,
@@ -431,7 +470,7 @@ export class ReadModelRepository implements TraceReadModelStore {
             argMax(error_count, materialized_at_ms) AS error_count,
             argMax(diagnostic_count, materialized_at_ms) AS diagnostic_count,
             argMax(max_importance_level, materialized_at_ms) AS max_importance_level,
-            max(materialized_at_ms) AS materialized_at_ms
+            max(materialized_at_ms) AS latest_materialized_at_ms
           FROM topo_tracer.node_trace_summary
           GROUP BY trace_id
         )
