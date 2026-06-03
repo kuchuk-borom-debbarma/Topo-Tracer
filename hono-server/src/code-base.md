@@ -522,14 +522,25 @@ The event bus should handle:
 - publishing one or more events as a batch;
 - routing events by topic;
 - idempotency through `idempotencyId`;
-- batch correlation through optional `batchId`;
+- batch correlation through optional `batchId`, which is not a dedupe key;
 - durable delivery where the implementation supports it;
 - ordered delivery per event `key` where the implementation supports it;
+- coalescing or dedupe windows where the implementation supports or emulates it;
 - subscription and handler registration by consumer name;
 - subscriber batch sizing where the implementation supports it.
 
 Services should publish events through the `IEventBus` contract, not through a
 specific implementation.
+
+Services should provide stable event metadata. The implementation is responsible
+for translating that metadata into the selected broker's real primitives. If a
+broker does not support idempotency, ordering, durability, or coalescing
+natively, the implementation should add the needed storage, lock, TTL, or dedupe
+layer.
+
+For trace read-model rebuild requests, prefer an event `key` such as
+`userId:traceId` so repeated ingests for the same trace can be ordered or
+coalesced by the implementation.
 
 Event payloads should be intentionally shaped. Avoid sending huge raw objects
 when a small event payload is enough.

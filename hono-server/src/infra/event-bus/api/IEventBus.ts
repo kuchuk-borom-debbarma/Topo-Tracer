@@ -6,11 +6,14 @@ import {
 } from "./types";
 
 /**
- * Event bus should handle idempotency, durability, and per-key ordering.
+ * Event bus implementations translate this small contract into broker-specific
+ * guarantees: batching, idempotency, durability, per-key ordering, and any
+ * coalescing/dedupe window needed by the chosen backend.
  */
 export abstract class IEventBus {
   /**
-   * Publish one or more events as a batch.
+   * Publish one or more events as a batch. Publishers provide stable event
+   * metadata; the implementation decides how to enforce those semantics.
    * @param events events to publish
    * @param options batch-level publishing options
    */
