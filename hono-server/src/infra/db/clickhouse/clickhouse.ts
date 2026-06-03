@@ -4,7 +4,11 @@ import {
   type ClickHouseClientConfigOptions,
 } from "@clickhouse/client-web";
 import type { Context, MiddlewareHandler } from "hono";
-import { getStringEnvValue, type AppEnv } from "../../../common/env";
+import {
+  getStringEnvValue,
+  type AppBindings,
+  type AppEnv,
+} from "../../../common/env";
 
 export type ClickHouseEnvConfig = {
   url: string;
@@ -21,14 +25,22 @@ export type ClickHouseContext = Context<ClickHouseEnv>;
 // Workers keep it when the isolate is reused. A cold Worker isolate starts empty.
 let clickHouseClient: ClickHouseClient | undefined;
 
+const getClickHouseStringEnv = (
+  c: ClickHouseContext,
+  key: keyof AppBindings,
+  fallback: string,
+): string => {
+  return getStringEnvValue(c, key) ?? fallback;
+};
+
 export const getClickHouseEnvConfig = (
   c: ClickHouseContext,
 ): ClickHouseEnvConfig => {
   return {
-    url: getStringEnvValue(c, "CLICKHOUSE_URL") ?? "http://localhost:8123",
-    username: getStringEnvValue(c, "CLICKHOUSE_USERNAME") ?? "default",
-    password: getStringEnvValue(c, "CLICKHOUSE_PASSWORD") ?? "",
-    database: getStringEnvValue(c, "CLICKHOUSE_DATABASE") ?? "default",
+    url: getClickHouseStringEnv(c, "CLICKHOUSE_URL", "http://localhost:8123"),
+    username: getClickHouseStringEnv(c, "CLICKHOUSE_USERNAME", "default"),
+    password: getClickHouseStringEnv(c, "CLICKHOUSE_PASSWORD", ""),
+    database: getClickHouseStringEnv(c, "CLICKHOUSE_DATABASE", "default"),
   };
 };
 
@@ -48,6 +60,15 @@ export const createClickHouseClient = (
 // After that, use the singleton whenever the runtime keeps this module alive.
 export const getClickHouseClient = (c: ClickHouseContext): ClickHouseClient => {
   clickHouseClient ??= createClickHouseClient(getClickHouseClientConfig(c));
+  return clickHouseClient;
+};
+
+// Repositories run below route/middleware code, so they should not know about
+// Hono context. initClickHouse() must run first and populate this singleton.
+export const getInitializedClickHouseClient = (): ClickHouseClient => {
+  if (!clickHouseClient) {
+    throw new Error("ClickHouse client has not been initialized.");
+  }
   return clickHouseClient;
 };
 
