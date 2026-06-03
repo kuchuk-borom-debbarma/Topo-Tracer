@@ -643,6 +643,19 @@ When an AI agent works in this codebase, it should follow these rules:
   patching around the architecture.
 - Preserve loose coupling, readability, and simple dependency flow.
 
+After every code change, run Fallow before finishing:
+
+```txt
+bun run fallow
+```
+
+The default script runs `fallow audit --base HEAD`, which checks the current
+uncommitted change set for dead code, duplication, complexity, and architecture
+drift. Use `bun run fallow:full` for a full-repo advisory scan and
+`bun run fallow:health` for report-only health output. Use `bun run fallow:fix`
+only to preview automatic cleanup; do not apply fixes without reviewing the
+diff.
+
 If there are multiple reasonable approaches, choose the one that is easiest for
 another developer to read and change later.
 
@@ -659,6 +672,7 @@ Before finishing a change, check:
 - Is the logger passed through and named clearly?
 - Are sensitive values excluded from logs?
 - Are errors explicit and useful?
+- Has `bun run fallow` been run after the change?
 - Is the code simple enough to explain without a diagram?
 - Would a new developer know where to extend this feature?
 
