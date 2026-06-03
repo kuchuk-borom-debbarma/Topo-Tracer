@@ -1,5 +1,6 @@
 import {
   EventBusHandler,
+  EventBusPublishedEvent,
   EventBusPublishEvent,
   EventBusPublishOptions,
   EventBusSubscribeOptions,
@@ -7,17 +8,33 @@ import {
 import { IEventBus } from "../api/IEventBus";
 
 export class DevEventBus extends IEventBus {
-  publish(
+  private readonly handlersByTopic = new Map<string, EventBusHandler[]>();
+
+  async publish(
     events: EventBusPublishEvent[],
     options?: EventBusPublishOptions,
   ): Promise<void> {
-    throw new Error("Method not implemented.");
+    const publishedAt = Date.now();
+
+    for (const event of events) {
+      const handlers = this.handlersByTopic.get(event.topic) ?? [];
+      const publishedEvent: EventBusPublishedEvent = {
+        ...event,
+        publishedAt,
+      };
+
+      // Dev bus keeps fanout in-process so local publishing exercises the same
+      // service path without pretending to provide broker durability.
+      await Promise.all(handlers.map((handler) => handler(publishedEvent)));
+    }
   }
 
-  subscribe(
+  async subscribe(
     options: EventBusSubscribeOptions,
     handler: EventBusHandler,
   ): Promise<void> {
-    throw new Error("Method not implemented.");
+    const handlers = this.handlersByTopic.get(options.topic) ?? [];
+    handlers.push(handler);
+    this.handlersByTopic.set(options.topic, handlers);
   }
 }
