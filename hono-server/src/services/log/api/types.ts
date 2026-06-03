@@ -28,6 +28,7 @@ export type IngestEdgeEnd = {
 
 export type ReadNode = {
   id: string;
+  userId: string;
   traceId: string;
   data: Record<string, string>;
   startedAt: number;
@@ -38,6 +39,7 @@ export type ReadNode = {
 
 export type ReadEdge = {
   id: string;
+  userId: string;
   traceId: string;
   startedAt: number;
   endedAt?: number;

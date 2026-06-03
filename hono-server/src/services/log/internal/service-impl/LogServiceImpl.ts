@@ -17,6 +17,7 @@ export class LogServiceImpl extends ILogService {
     this.writeRepo = writeRepo;
   }
   ingestNodesNEdges(data: {
+    userId: string;
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
     nodeEnds: IngestNodeEnd[];

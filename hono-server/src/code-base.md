@@ -180,6 +180,18 @@ called `DevEventBus`.
 Infrastructure code should not contain feature-specific business rules. It
 should provide capabilities that services can use.
 
+Database clients live under `src/infra/db`. ClickHouse setup lives in
+`infra/db/clickhouse` and uses a simple module-level singleton. The client is
+created from Hono environment bindings on first use, then reused while the
+runtime keeps the module alive. This works for long-lived Node/Bun servers and
+for reused Cloudflare Worker isolates, while cold Worker starts naturally create
+a fresh client.
+
+Keep this singleton simple. Do not add per-request client construction,
+config-key maps, or custom query builders unless there is a measured need.
+Repositories should call the ClickHouse helper instead of constructing clients
+directly.
+
 ### `src/services`
 
 Use `services` for business modules.
@@ -494,6 +506,12 @@ A route handler should not:
 If a route needs several steps, create a service method that represents the
 workflow.
 
+Authenticated routes should pass the resolved `userId` into service contracts
+that operate on user-owned data. For example, log ingestion receives `userId`
+from auth/request context and persists it with trace events. The log service
+should store that ownership reference, but it should not import auth internals
+or decide how authentication works.
+
 ## Event Bus
 
 The event bus is an infrastructure capability. Its contract lives in
@@ -501,10 +519,14 @@ The event bus is an infrastructure capability. Its contract lives in
 
 The event bus should handle:
 
-- publishing events by topic;
+- publishing one or more events as a batch;
+- routing events by topic;
 - idempotency through `idempotencyId`;
+- batch correlation through optional `batchId`;
 - durable delivery where the implementation supports it;
-- subscription and handler registration.
+- ordered delivery per event `key` where the implementation supports it;
+- subscription and handler registration by consumer name;
+- subscriber batch sizing where the implementation supports it.
 
 Services should publish events through the `IEventBus` contract, not through a
 specific implementation.
@@ -651,7 +673,8 @@ Current major areas:
   exception type.
 - `src/infra/event-bus` defines the event bus contract and a development
   implementation.
-- `src/infra/db` is reserved for shared database setup.
+- `src/infra/db` contains shared database setup, including the ClickHouse
+  singleton client and append-only event table schema.
 - `src/services/auth` owns authentication contracts and implementation.
 - `src/services/log` owns trace/log ingestion contracts and implementation.
 

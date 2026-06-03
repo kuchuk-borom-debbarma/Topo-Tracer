@@ -7,6 +7,7 @@ import {
 
 export abstract class ILogService {
   abstract ingestNodesNEdges(data: {
+    userId: string;
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
     nodeEnds: IngestNodeEnd[];

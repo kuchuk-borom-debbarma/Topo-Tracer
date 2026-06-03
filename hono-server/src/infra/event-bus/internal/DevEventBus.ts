@@ -1,20 +1,23 @@
+import {
+  EventBusHandler,
+  EventBusPublishEvent,
+  EventBusPublishOptions,
+  EventBusSubscribeOptions,
+} from "../api/types";
 import { IEventBus } from "../api/IEventBus";
 
 export class DevEventBus extends IEventBus {
   publish(
-    data: {
-      topic: string;
-      idempotencyId: string;
-      key?: string;
-      data: unknown;
-    }[],
+    events: EventBusPublishEvent[],
+    options?: EventBusPublishOptions,
   ): Promise<void> {
     throw new Error("Method not implemented.");
   }
-  subscribe(data: {
-    topicToSubscriptTo: string;
-    handler: () => Promise<void>;
-  }): Promise<void> {
+
+  subscribe(
+    options: EventBusSubscribeOptions,
+    handler: EventBusHandler,
+  ): Promise<void> {
     throw new Error("Method not implemented.");
   }
 }

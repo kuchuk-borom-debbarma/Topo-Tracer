@@ -1,22 +1,26 @@
+import {
+  EventBusHandler,
+  EventBusPublishEvent,
+  EventBusPublishOptions,
+  EventBusSubscribeOptions,
+} from "./types";
+
 /**
- * Event bus should handle idempotency and durability.
+ * Event bus should handle idempotency, durability, and per-key ordering.
  */
 export abstract class IEventBus {
   /**
-   * Publish an event
-   * @param data array of events to publish
+   * Publish one or more events as a batch.
+   * @param events events to publish
+   * @param options batch-level publishing options
    */
   abstract publish(
-    data: {
-      topic: string;
-      idempotencyId: string;
-      key?: string;
-      data: unknown;
-    }[],
+    events: EventBusPublishEvent[],
+    options?: EventBusPublishOptions,
   ): Promise<void>;
 
-  abstract subscribe(data: {
-    topicToSubscriptTo: string;
-    handler: () => Promise<void>;
-  }): Promise<void>;
+  abstract subscribe(
+    options: EventBusSubscribeOptions,
+    handler: EventBusHandler,
+  ): Promise<void>;
 }
