@@ -38,9 +38,9 @@ created: 2026-06-05
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 02-01-01 | 01 | 1 | RSCH-03, RSCH-04, RSCH-05, RSCH-06, RSCH-07, RSCH-08, RSCH-09 | T-02-TYPE / T-02-SCOPE | Plain read-model and checkpoint contracts exist without projection or route creep. | unit/static | `cd hono-server && bun test && bun x tsc --noEmit --project tsconfig.json` | W0 | pending |
-| 02-02-01 | 02 | 2 | RSCH-03, RSCH-04, RSCH-05, RSCH-06, RSCH-07, RSCH-08 | T-02-SCHEMA / T-02-DOCS | Commented ClickHouse DDL defines read nodes, read edges, summaries, and exact checkpoints. | unit/static | `cd hono-server && bun test && bun x tsc --noEmit --project tsconfig.json` | W0 | pending |
-| 02-03-01 | 03 | 3 | RSCH-03, RSCH-05, RSCH-07, RSCH-08, RSCH-09 | T-02-REPO / T-02-ORDER | Read repository skeleton maps typed rows to ClickHouse inserts and stays contract-bound. | unit | `cd hono-server && bun test && bun x tsc --noEmit --project tsconfig.json && bun run fallow` | W0 | pending |
+| 02-01-01 | 01 | 1 | RSCH-03, RSCH-04, RSCH-05, RSCH-06, RSCH-07, RSCH-08, RSCH-09 | T-02-TYPE / T-02-SCOPE | Plain read-model and checkpoint contracts exist without projection or route creep. | unit/static | `cd hono-server && bun test && bun x tsc --noEmit --project tsconfig.json` | W0 | green |
+| 02-02-01 | 02 | 2 | RSCH-03, RSCH-04, RSCH-05, RSCH-06, RSCH-07, RSCH-08 | T-02-SCHEMA / T-02-DOCS | Commented ClickHouse DDL defines read nodes, read edges, summaries, and exact checkpoints. | unit/static | `cd hono-server && bun test && bun x tsc --noEmit --project tsconfig.json` | W0 | green |
+| 02-03-01 | 03 | 3 | RSCH-03, RSCH-05, RSCH-07, RSCH-08, RSCH-09 | T-02-REPO / T-02-ORDER | Read repository skeleton maps typed rows to ClickHouse inserts and stays contract-bound. | unit | `cd hono-server && bun test && bun x tsc --noEmit --project tsconfig.json && bun run fallow` | W0 | green |
 
 *Status: pending · green · red · flaky*
 
@@ -48,9 +48,9 @@ created: 2026-06-05
 
 ## Wave 0 Requirements
 
-- [ ] Schema tests or source assertions that every new read-table column has a ClickHouse `COMMENT`.
-- [ ] Contract tests or static assertions that `ILogReadRepo` exposes materialization-facing methods and no projection threshold/window methods.
-- [ ] Repository mapping tests using a fake ClickHouse client for read nodes, read edges, summaries, and checkpoints.
+- [x] Schema tests or source assertions that every new read-table column has a ClickHouse `COMMENT`.
+- [x] Contract tests or static assertions that `ILogReadRepo` exposes materialization-facing methods and no projection threshold/window methods.
+- [x] Repository mapping tests using a fake ClickHouse client for read nodes, read edges, summaries, and checkpoints.
 
 ---
 
