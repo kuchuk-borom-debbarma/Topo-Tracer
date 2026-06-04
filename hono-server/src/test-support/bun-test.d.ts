@@ -9,6 +9,10 @@ declare module "bun:test" {
     toBe(expected: unknown): void;
     toHaveLength(expected: number): void;
     toMatchObject(expected: unknown): void;
+    toBeDefined(): void;
+    toContain(expected: unknown): void;
+    toMatch(expected: string | RegExp): void;
+    not: ValueMatchers;
   };
 
   type FunctionMatchers = ValueMatchers & {

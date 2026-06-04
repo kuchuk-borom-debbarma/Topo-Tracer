@@ -24,9 +24,11 @@ describe("ClickHouse Read Model Schema", () => {
   });
 
   function assertEveryColumnHasComment(ddl: string, tableName: string) {
-    // Find the block between the first '(' and the last ')'
+    // Find the block between the first '(' and the ')' before 'ENGINE'
     const start = ddl.indexOf("(");
-    const end = ddl.lastIndexOf(")");
+    const engineIndex = ddl.indexOf("ENGINE");
+    const end = ddl.lastIndexOf(")", engineIndex);
+    
     if (start === -1 || end === -1) {
       throw new Error(`Could not find column block in DDL for ${tableName}`);
     }
@@ -38,9 +40,10 @@ describe("ClickHouse Read Model Schema", () => {
       .filter((l) => l.length > 0 && !l.startsWith("--"));
 
     lines.forEach((line) => {
-      // Ignore constraints or special lines if they don't look like column definitions
-      // For ClickHouse CREATE TABLE, columns usually look like: name Type [other] COMMENT '...'
-      if (line.includes(",") || lines.indexOf(line) === lines.length - 1) {
+      // Column lines in these DDLs should all have COMMENT
+      // We skip lines that are just closing parens if they somehow got in, 
+      // but trim() and filter() above should handle most cases.
+      if (line.length > 5) { // Simple heuristic for a column line
         expect(line).toContain("COMMENT");
       }
     });
