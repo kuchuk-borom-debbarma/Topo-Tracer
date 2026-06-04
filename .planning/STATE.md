@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 planned
-last_updated: "2026-06-04T21:45:08.397Z"
-last_activity: 2026-06-04 -- Phase 03 planning complete
+last_updated: "2026-06-04T21:49:04.620Z"
+last_activity: 2026-06-04
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 33
 ---
 
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 3 of 6 (checkpointed materialization)
-Plan: Not started
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-04 -- Phase 03 planning complete
+Last activity: 2026-06-04
 
-Progress: [██████████] 100% (of current milestone)
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100% (of current milestone)
 | Phase 02 P01 | 15min | 3 tasks | 5 files |
 | Phase 02 P02 | 15min | 2 tasks | 2 files |
 | Phase 02 P03 | 15min | 3 tasks | 4 files |
+| Phase 03 P01 | 25min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Progress: [██████████] 100% (of current milestone)
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [Log]: Use grouped latest-version selection (argMax) instead of ReplacingMergeTree FINAL for read-model loads. (2026-06-04)
+- [Log]: Use explicit tuple bookmarks (time, id, type) for deterministic raw event resume. (2026-06-04)
+- [Log]: Removed 'scope' column from read_nodes as it was not supported by source artifacts. (2026-06-04)
 - [Log]: Read repository factory `createLogReadRepo` replaces static singleton (2026-06-05)
 - [Log]: Read model uses versioned replacement rows with `materialized_at_ms` (2026-06-04)
 - [Log]: Checkpoints store exact node/edge bookmarks for deterministic resume (2026-06-04)
@@ -89,6 +93,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-04T21:45:08.391Z
+Last session: 2026-06-04T21:48:54.235Z
 Stopped at: Phase 3 planned
-Resume file: .planning/phases/03-checkpointed-materialization/03-01-PLAN.md
+Resume file: None

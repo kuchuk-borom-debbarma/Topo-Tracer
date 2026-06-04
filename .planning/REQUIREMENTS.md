@@ -20,14 +20,14 @@
 ### Materialization
 
 - [ ] **MAT-01**: `ReadOptimisedAggregator` delegates trace rebuilding to a materialization component instead of keeping rebuild logic inline.
-- [ ] **MAT-02**: Materialization loads the current checkpoint for `userId` and `traceId` before reading raw node and edge events.
-- [ ] **MAT-03**: Materialization reads only raw events after the stored checkpoint, with deterministic ordering and tie breakers.
-- [ ] **MAT-04**: Materialization merges new raw events into existing latest read node and read edge state without requiring a full trace replay for every ingest.
+- [x] **MAT-02**: Materialization loads the current checkpoint for `userId` and `traceId` before reading raw node and edge events.
+- [x] **MAT-03**: Materialization reads only raw events after the stored checkpoint, with deterministic ordering and tie breakers.
+- [x] **MAT-04**: Materialization merges new raw events into existing latest read node and read edge state without requiring a full trace replay for every ingest.
 - [ ] **MAT-05**: Materialization computes or updates deterministic `flow_order` for read nodes.
-- [ ] **MAT-06**: Materialization writes replacement read node, read edge, and trace summary rows through `ILogReadRepo`, not through direct ClickHouse client access in the worker or service.
-- [ ] **MAT-07**: Materialization advances the checkpoint only after all related read rows and summary rows are written successfully.
-- [ ] **MAT-08**: Duplicate `log.trace.ingested` delivery does not duplicate latest read state or regress the checkpoint.
-- [ ] **MAT-09**: Materialization records diagnostics for malformed graph data such as missing edge starts, missing node endpoints, invalid importance levels, or orphaned edges.
+- [x] **MAT-06**: Materialization writes replacement read node, read edge, and trace summary rows through `ILogReadRepo`, not through direct ClickHouse client access in the worker or service.
+- [x] **MAT-07**: Materialization advances the checkpoint only after all related read rows and summary rows are written successfully.
+- [x] **MAT-08**: Duplicate `log.trace.ingested` delivery does not duplicate latest read state or regress the checkpoint.
+- [x] **MAT-09**: Materialization records diagnostics for malformed graph data such as missing edge starts, missing node endpoints, invalid importance levels, or orphaned edges.
 
 ### Ghost Projection
 
@@ -100,14 +100,14 @@ Populated during roadmap creation.
 | RSCH-08 | Phase 2 | Complete |
 | RSCH-09 | Phase 2 | Complete |
 | MAT-01 | Phase 3 | Pending |
-| MAT-02 | Phase 3 | Pending |
-| MAT-03 | Phase 3 | Pending |
-| MAT-04 | Phase 3 | Pending |
+| MAT-02 | Phase 3 | Complete |
+| MAT-03 | Phase 3 | Complete |
+| MAT-04 | Phase 3 | Complete |
 | MAT-05 | Phase 3 | Pending |
-| MAT-06 | Phase 3 | Pending |
-| MAT-07 | Phase 3 | Pending |
-| MAT-08 | Phase 3 | Pending |
-| MAT-09 | Phase 3 | Pending |
+| MAT-06 | Phase 3 | Complete |
+| MAT-07 | Phase 3 | Complete |
+| MAT-08 | Phase 3 | Complete |
+| MAT-09 | Phase 3 | Complete |
 | GPRJ-01 | Phase 5 | Pending |
 | GPRJ-02 | Phase 5 | Pending |
 | GPRJ-03 | Phase 5 | Pending |

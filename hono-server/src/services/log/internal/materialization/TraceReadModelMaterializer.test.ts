@@ -1,0 +1,168 @@
+import { describe, expect, it, mock } from "bun:test";
+import { TraceReadModelMaterializer } from "./TraceReadModelMaterializer";
+import { ILogReadRepo } from "../repo/ILogReadRepo";
+import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary } from "../../api/types";
+import { NodeEventRow, EdgeEventRow } from "../repo/types";
+import { Logger } from "../../../../common/logger";
+
+class FakeRepo extends ILogReadRepo {
+  loadCheckpoint = mock(async () => null as ReadCheckpoint | null);
+  loadLatestReadModel = mock(async () => ({ nodes: [], edges: [], summary: null }));
+  loadRawEventsAfterCheckpoint = mock(async () => ({ nodeEvents: [], edgeEvents: [] }));
+  saveReadModel = mock(async () => {});
+  saveCheckpoint = mock(async () => {});
+}
+
+const mockLogger = {
+  info: mock(() => {}),
+  error: mock(() => {}),
+  warn: mock(() => {}),
+  debug: mock(() => {}),
+  child: mock(() => mockLogger),
+} as unknown as Logger<unknown>;
+
+describe("TraceReadModelMaterializer", () => {
+  it("performs no writes when there are no raw events", async () => {
+    const repo = new FakeRepo();
+    const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
+
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+
+    expect(repo.loadCheckpoint).toHaveBeenCalled();
+    expect(repo.loadRawEventsAfterCheckpoint).toHaveBeenCalled();
+    expect(repo.saveReadModel).not.toHaveBeenCalled();
+    expect(repo.saveCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it("calls saveReadModel then saveCheckpoint in order", async () => {
+    const repo = new FakeRepo();
+    const callOrder: string[] = [];
+    repo.saveReadModel.mockImplementation(async () => { callOrder.push("saveReadModel"); });
+    repo.saveCheckpoint.mockImplementation(async () => { callOrder.push("saveCheckpoint"); });
+    
+    repo.loadRawEventsAfterCheckpoint.mockResolvedValue({
+      nodeEvents: [{
+        id: "n1", user_id: "u1", trace_id: "t1", event_type: 0,
+        started_at_ms: 100, node_type: "span", data: {}, message: "start",
+        importance_level: 1, ended_at_ms: null
+      }],
+      edgeEvents: []
+    });
+
+    const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+
+    expect(callOrder).toEqual(["saveReadModel", "saveCheckpoint"]);
+  });
+
+  it("merges raw events into existing state and increments diagnostics", async () => {
+    const repo = new FakeRepo();
+    
+    // Existing node n1 (started but not ended)
+    const existingNode: ReadNode = {
+      id: "n1", userId: "u1", traceId: "t1", nodeType: "span", data: {},
+      startedAt: 100, endedAt: null, startMessage: "start", endMessage: null,
+      importanceLevel: 1, flowOrder: 0, materializedAt: 500
+    };
+    
+    repo.loadLatestReadModel.mockResolvedValue({
+      nodes: [existingNode],
+      edges: [],
+      summary: null
+    });
+
+    repo.loadRawEventsAfterCheckpoint.mockResolvedValue({
+      nodeEvents: [
+        // n1 end
+        {
+          id: "n1", user_id: "u1", trace_id: "t1", event_type: 1,
+          ended_at_ms: 200, message: "end", data: {},
+          started_at_ms: null, node_type: null, importance_level: null
+        },
+        // n2 start
+        {
+          id: "n2", user_id: "u1", trace_id: "t1", event_type: 0,
+          started_at_ms: 150, node_type: "span", importance_level: 2, data: {}, message: "n2 start",
+          ended_at_ms: null
+        },
+        // n3 end without start (diagnostic)
+        {
+          id: "n3", user_id: "u1", trace_id: "t1", event_type: 1,
+          ended_at_ms: 300, message: "n3 end", data: {},
+          started_at_ms: null, node_type: null, importance_level: null
+        }
+      ],
+      edgeEvents: []
+    });
+
+    const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+
+    const savedNodes = repo.saveReadModel.mock.calls[0][0].nodes as ReadNode[];
+    const savedSummary = repo.saveReadModel.mock.calls[0][0].summary as ReadTraceSummary;
+
+    expect(savedNodes).toHaveLength(2); // n1, n2. n3 is ignored because missing start.
+    
+    const n1 = savedNodes.find(n => n.id === "n1");
+    expect(n1?.endedAt).toBe(200);
+    expect(n1?.endMessage).toBe("end");
+
+    const n2 = savedNodes.find(n => n.id === "n2");
+    expect(n2?.startedAt).toBe(150);
+    expect(n2?.importanceLevel).toBe(2);
+
+    expect(savedSummary.diagMissingStarts).toBe(1); // n3
+  });
+
+  it("handles checkpoint advancement correctly", async () => {
+    const repo = new FakeRepo();
+    
+    repo.loadRawEventsAfterCheckpoint.mockResolvedValue({
+      nodeEvents: [
+        { id: "n1", user_id: "u1", trace_id: "t1", event_type: 0, started_at_ms: 100, node_type: "span", data: {}, message: "s", importance_level: 1, ended_at_ms: null },
+        { id: "n1", user_id: "u1", trace_id: "t1", event_type: 1, ended_at_ms: 200, message: "e", data: {}, started_at_ms: null, node_type: null, importance_level: null }
+      ],
+      edgeEvents: [
+        { id: "e1", user_id: "u1", trace_id: "t1", event_type: 0, started_at_ms: 110, edge_type: "c", from_node_id: "n1", to_node_id: "n1", data: {}, ended_at_ms: null }
+      ]
+    });
+
+    const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+
+    const savedCheckpoint = repo.saveCheckpoint.mock.calls[0][0].checkpoint as ReadCheckpoint;
+    
+    expect(savedCheckpoint.lastNodeEventTime).toBe(200);
+    expect(savedCheckpoint.lastNodeEventId).toBe("n1");
+    expect(savedCheckpoint.lastNodeEventType).toBe(1);
+
+    expect(savedCheckpoint.lastEdgeEventTime).toBe(110);
+    expect(savedCheckpoint.lastEdgeEventId).toBe("e1");
+    expect(savedCheckpoint.lastEdgeEventType).toBe(0);
+  });
+
+  it("retries and rewrites if saveCheckpoint fails", async () => {
+    // This test is tricky because materializer doesn't have internal retry loop, 
+    // but the plan says "A retry with the same old checkpoint rewrites replacement rows".
+    // This probably means calling materializer twice with same initial state.
+    
+    const repo = new FakeRepo();
+    repo.saveCheckpoint.mockImplementationOnce(async () => { throw new Error("checkpoint fail"); });
+
+    repo.loadRawEventsAfterCheckpoint.mockResolvedValue({
+      nodeEvents: [{ id: "n1", user_id: "u1", trace_id: "t1", event_type: 0, started_at_ms: 100, node_type: "span", data: {}, message: "s", importance_level: 1, ended_at_ms: null }],
+      edgeEvents: []
+    });
+
+    const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
+    
+    // First attempt fails at checkpoint
+    await expect(materializer.materializeTrace({ userId: "u1", traceId: "t1" })).rejects.toThrow("checkpoint fail");
+    
+    // Second attempt should still work from same checkpoint
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+    
+    expect(repo.saveReadModel).toHaveBeenCalledTimes(2);
+    expect(repo.saveCheckpoint).toHaveBeenCalledTimes(2);
+  });
+});
