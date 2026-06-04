@@ -105,6 +105,7 @@ describe("LogReadRepoClickHouse row mapping", () => {
 
     expect(nodeInsert).toBeDefined();
     expect(nodeInsert?.format).toBe("JSONEachRow");
+    expect(nodeInsert?.values[0]).not.toHaveProperty("scope");
     expect(nodeInsert?.values[0]).toMatchObject({
       id: "node-1",
       user_id: "user-1",

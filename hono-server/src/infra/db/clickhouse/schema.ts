@@ -53,7 +53,6 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_READ_NODES_TABLE}
   id String COMMENT 'Node id from the traced system',
   user_id String COMMENT 'User id that owns the trace event',
   trace_id String COMMENT 'Trace id that groups related node and edge events',
-  scope String COMMENT 'Contextual scope or service name for the node',
   importance_level Int32 COMMENT 'Node importance level (higher is more important)',
   flow_order Int32 COMMENT 'Deterministic execution order within the trace',
   started_at_ms UInt64 COMMENT 'UTC start timestamp in milliseconds',

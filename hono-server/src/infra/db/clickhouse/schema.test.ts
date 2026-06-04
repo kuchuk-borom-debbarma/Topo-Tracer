@@ -69,6 +69,11 @@ describe("ClickHouse Read Model Schema", () => {
     expect(schema.CLICKHOUSE_CREATE_READ_EDGES_TABLE).toContain("to_flow_order");
   });
 
+  test("Read node DDL does not contain scope column", () => {
+    // Phase 3 materialization does not provide a scope field, resolving Research R-03-scope
+    expect(schema.CLICKHOUSE_CREATE_READ_NODES_TABLE).not.toContain("scope String");
+  });
+
   test("Trace summary DDL includes named diagnostics and no Map", () => {
     expect(schema.CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE).not.toContain("Map(");
     // RSCH-07 mentions counts, bounds, materialization time, and named diagnostics.
