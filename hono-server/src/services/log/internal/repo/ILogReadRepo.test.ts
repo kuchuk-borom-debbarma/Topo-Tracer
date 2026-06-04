@@ -1,74 +1,83 @@
-import { describe, it, expect } from "bun:test";
-import * as fs from "fs";
-import * as path from "path";
+import { describe, expect, test } from "bun:test";
+// @ts-ignore
+import { readFileSync } from "node:fs";
+// @ts-ignore
+import { resolve } from "node:path";
 
 // We use string-based source assertions to check for contract presence and absence
 // without causing compilation errors before the types are actually implemented.
+// We use .toBe(true/false) to stay compatible with the minimal bun-test.d.ts.
 
-const API_TYPES_PATH = path.resolve(__dirname, "../../api/types.ts");
-const REPO_TYPES_PATH = path.resolve(__dirname, "./types.ts");
-const REPO_CONTRACT_PATH = path.resolve(__dirname, "./ILogReadRepo.ts");
+// @ts-ignore
+const currentDir = import.meta.dir;
+
+const API_TYPES_PATH = resolve(currentDir, "../../api/types.ts");
+const REPO_TYPES_PATH = resolve(currentDir, "./types.ts");
+const REPO_CONTRACT_PATH = resolve(currentDir, "./ILogReadRepo.ts");
 
 describe("ILogReadRepo Contract Assertions", () => {
   describe("Public API Types (api/types.ts)", () => {
-    const content = fs.readFileSync(API_TYPES_PATH, "utf-8");
+    // @ts-ignore
+    const content = readFileSync(API_TYPES_PATH, "utf-8") as string;
 
-    it("should export ReadNode", () => {
-      expect(content).toContain("export type ReadNode");
+    test("should export ReadNode", () => {
+      expect(content.includes("export type ReadNode")).toBe(true);
     });
 
-    it("should export ReadEdge", () => {
-      expect(content).toContain("export type ReadEdge");
+    test("should export ReadEdge", () => {
+      expect(content.includes("export type ReadEdge")).toBe(true);
     });
 
-    it("should export ReadTraceSummary", () => {
-      expect(content).toContain("export type ReadTraceSummary");
+    test("should export ReadTraceSummary", () => {
+      expect(content.includes("export type ReadTraceSummary")).toBe(true);
     });
 
-    it("should export ReadCheckpoint", () => {
-      expect(content).toContain("export type ReadCheckpoint");
+    test("should export ReadCheckpoint", () => {
+      expect(content.includes("export type ReadCheckpoint")).toBe(true);
     });
   });
 
   describe("Internal Repo Types (internal/repo/types.ts)", () => {
-    const content = fs.readFileSync(REPO_TYPES_PATH, "utf-8");
+    // @ts-ignore
+    const content = readFileSync(REPO_TYPES_PATH, "utf-8") as string;
 
-    it("should export ReadNodeRow", () => {
-      expect(content).toContain("export type ReadNodeRow");
+    test("should export ReadNodeRow", () => {
+      expect(content.includes("export type ReadNodeRow")).toBe(true);
     });
 
-    it("should export ReadEdgeRow", () => {
-      expect(content).toContain("export type ReadEdgeRow");
+    test("should export ReadEdgeRow", () => {
+      expect(content.includes("export type ReadEdgeRow")).toBe(true);
     });
 
-    it("should export TraceSummaryRow", () => {
-      expect(content).toContain("export type TraceSummaryRow");
+    test("should export TraceSummaryRow", () => {
+      expect(content.includes("export type TraceSummaryRow")).toBe(true);
     });
 
-    it("should export ReadCheckpointRow", () => {
-      expect(content).toContain("export type ReadCheckpointRow");
+    test("should export ReadCheckpointRow", () => {
+      expect(content.includes("export type ReadCheckpointRow")).toBe(true);
     });
   });
 
   describe("ILogReadRepo Contract (internal/repo/ILogReadRepo.ts)", () => {
-    const content = fs.readFileSync(REPO_CONTRACT_PATH, "utf-8");
+    // @ts-ignore
+    const content = readFileSync(REPO_CONTRACT_PATH, "utf-8") as string;
 
-    it("should contain loadCheckpoint method", () => {
-      expect(content).toContain("loadCheckpoint");
+    test("should contain loadCheckpoint method", () => {
+      expect(content.includes("loadCheckpoint")).toBe(true);
     });
 
-    it("should contain saveReadModel method", () => {
-      expect(content).toContain("saveReadModel");
+    test("should contain saveReadModel method", () => {
+      expect(content.includes("saveReadModel")).toBe(true);
     });
 
-    it("should contain saveCheckpoint method", () => {
-      expect(content).toContain("saveCheckpoint");
+    test("should contain saveCheckpoint method", () => {
+      expect(content.includes("saveCheckpoint")).toBe(true);
     });
 
-    it("should NOT contain projection-facing names", () => {
+    test("should NOT contain projection-facing names", () => {
       const forbidden = ["threshold", "visible", "window", "ghost", "projected"];
       for (const name of forbidden) {
-        expect(content).not.toContain(name);
+        expect(content.includes(name)).toBe(false);
       }
     });
   });
