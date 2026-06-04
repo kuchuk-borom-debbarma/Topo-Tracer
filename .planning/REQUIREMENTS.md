@@ -9,13 +9,13 @@
 
 - [x] **RSCH-01**: Hono edge start ingestion data includes `fromNodeId` and `toNodeId` so read edges can connect two explicit graph nodes.
 - [x] **RSCH-02**: Raw ClickHouse edge event rows persist `from_node_id` and `to_node_id` for edge start events.
-- [ ] **RSCH-03**: ClickHouse read node rows store latest node state scoped by `user_id`, `trace_id`, and node id.
-- [ ] **RSCH-04**: ClickHouse read node rows store `importance_level` and `flow_order` for threshold projection.
-- [ ] **RSCH-05**: ClickHouse read edge rows store latest edge state scoped by `user_id`, `trace_id`, and edge id.
-- [ ] **RSCH-06**: ClickHouse read edge rows store `from_node_id`, `to_node_id`, `from_flow_order`, and `to_flow_order` so projection can avoid joining every edge back to every node.
-- [ ] **RSCH-07**: ClickHouse trace summary rows store node counts, edge counts, importance bounds, time bounds, materialization time, and diagnostic counts.
-- [ ] **RSCH-08**: ClickHouse materialization checkpoint rows store per-trace raw source progress separately from latest read node and read edge rows.
-- [ ] **RSCH-09**: Hono read-model types are plain explicit types and live in the correct `api` or `internal` `types.ts` files according to `hono-server/src/code-base.md`.
+- [x] **RSCH-03**: ClickHouse read node rows store latest node state scoped by `user_id`, `trace_id`, and node id.
+- [x] **RSCH-04**: ClickHouse read node rows store `importance_level` and `flow_order` for threshold projection.
+- [x] **RSCH-05**: ClickHouse read edge rows store latest edge state scoped by `user_id`, `trace_id`, and edge id.
+- [x] **RSCH-06**: ClickHouse read edge rows store `from_node_id`, `to_node_id`, `from_flow_order`, and `to_flow_order` so projection can avoid joining every edge back to every node.
+- [x] **RSCH-07**: ClickHouse trace summary rows store node counts, edge counts, importance bounds, time bounds, materialization time, and diagnostic counts.
+- [x] **RSCH-08**: ClickHouse materialization checkpoint rows store per-trace raw source progress separately from latest read node and read edge rows.
+- [x] **RSCH-09**: Hono read-model types are plain explicit types and live in the correct `api` or `internal` `types.ts` files according to `hono-server/src/code-base.md`.
 
 ### Materialization
 
@@ -92,13 +92,13 @@ Populated during roadmap creation.
 |-------------|-------|--------|
 | RSCH-01 | Phase 1 | Complete |
 | RSCH-02 | Phase 1 | Complete |
-| RSCH-03 | Phase 2 | Pending |
-| RSCH-04 | Phase 2 | Pending |
-| RSCH-05 | Phase 2 | Pending |
-| RSCH-06 | Phase 2 | Pending |
-| RSCH-07 | Phase 2 | Pending |
-| RSCH-08 | Phase 2 | Pending |
-| RSCH-09 | Phase 2 | Pending |
+| RSCH-03 | Phase 2 | Complete |
+| RSCH-04 | Phase 2 | Complete |
+| RSCH-05 | Phase 2 | Complete |
+| RSCH-06 | Phase 2 | Complete |
+| RSCH-07 | Phase 2 | Complete |
+| RSCH-08 | Phase 2 | Complete |
+| RSCH-09 | Phase 2 | Complete |
 | MAT-01 | Phase 3 | Pending |
 | MAT-02 | Phase 3 | Pending |
 | MAT-03 | Phase 3 | Pending |

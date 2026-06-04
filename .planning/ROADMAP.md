@@ -67,7 +67,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Define read-model public/internal types and materialization-facing `ILogReadRepo` contract.
+- [x] 02-01-PLAN.md — Define read-model public/internal types and materialization-facing `ILogReadRepo` contract.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -143,8 +143,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Edge Endpoint Raw Contract | 2/2 | Complete   | 2026-06-04 |
-| 2. Read Schema And Repository Contracts | 0/3 | Planned    | - |
+| 2. Read Schema And Repository Contracts | 3/3 | Complete   | 2026-06-05 |
 | 3. Checkpointed Materialization | 0/TBD | Not started | - |
 | 4. Bounded Projection Data Access | 0/TBD | Not started | - |
 | 5. Ghost Projection Logic | 0/TBD | Not started | - |
 | 6. Verification And Safe Observability | 0/TBD | Not started | - |
+tarted | - |
