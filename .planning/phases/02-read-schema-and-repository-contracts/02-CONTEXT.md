@@ -66,16 +66,31 @@ materialization logic, projection logic, HTTP routes, frontend behavior, or
 - **D-11:** Services and workers must depend on repository contracts, not direct
   ClickHouse clients, matching `hono-server/src/code-base.md`.
 
+### Schema Documentation And Comments
+
+- **D-12:** Every read-optimized ClickHouse table column introduced in Phase 2
+  must have a column-level `COMMENT` explaining what the column stores and how
+  downstream materialization or reads use it.
+- **D-13:** Each read-optimized table DDL constant must be preceded by a concise
+  TypeScript comment explaining what the table represents, why it exists, and
+  how it participates in the read-model pipeline.
+- **D-14:** Comments should explain the design intent of the read-optimized
+  tables: latest-state replacement/version rows, exact per-trace checkpoints,
+  summary rows for fast trace overviews, and denormalized edge endpoint flow
+  order for later bounded projection.
+- **D-15:** These comments are part of the acceptance criteria. The planner and
+  executor should not treat comments as optional polish.
+
 ### Scope Locks
 
-- **D-12:** Do not add Hono HTTP routes in this phase. v1 read routes remain out
+- **D-16:** Do not add Hono HTTP routes in this phase. v1 read routes remain out
   of scope.
-- **D-13:** Do not implement read-model materialization in this phase. The phase
+- **D-17:** Do not implement read-model materialization in this phase. The phase
   may create repository contracts and ClickHouse DDL needed by materialization,
   but Phase 3 owns the folding/rebuild behavior.
-- **D-14:** Do not add graph projection or ghost-node logic in this phase. Phase
+- **D-18:** Do not add graph projection or ghost-node logic in this phase. Phase
   4 and Phase 5 own bounded projection reads and ghost projection behavior.
-- **D-15:** Do not touch `carno.js`, frontend, or SDK code for this phase.
+- **D-19:** Do not touch `carno.js`, frontend, or SDK code for this phase.
 
 ### the agent's Discretion
 
@@ -198,6 +213,9 @@ materialization logic, projection logic, HTTP routes, frontend behavior, or
 - The user chose named diagnostic columns over a flexible diagnostics map.
 - The user chose to define only next-phase materialization needs, keeping
   projection-facing repository methods for later phases.
+- The user explicitly asked for the schema to be heavily commented: every table
+  column should explain its purpose, and the read-optimized table design should
+  be explained where it is defined.
 
 </specifics>
 

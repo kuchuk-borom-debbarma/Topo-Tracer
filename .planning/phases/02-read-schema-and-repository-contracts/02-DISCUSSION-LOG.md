@@ -5,7 +5,7 @@
 
 **Date:** 2026-06-05
 **Phase:** 2-Read Schema And Repository Contracts
-**Areas discussed:** Checkpoint progress shape, Latest state storage, Diagnostics shape, Repository boundary depth
+**Areas discussed:** Checkpoint progress shape, Latest state storage, Diagnostics shape, Repository boundary depth, Schema documentation
 
 ---
 
@@ -59,6 +59,19 @@
 
 **User's choice:** Only next-phase needs.
 **Notes:** Phase 2 should not overreach into projection data-access contracts.
+
+---
+
+## Schema Documentation
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Comment every schema field | Every ClickHouse read-table column gets an explanatory `COMMENT`; table DDL gets nearby comments explaining design intent. | ✓ |
+| Minimal comments | Only non-obvious columns get comments. | |
+| External docs only | Explain schema design in planning/docs, not in the schema code itself. | |
+
+**User's choice:** Comment every schema field.
+**Notes:** The user explicitly requested comments explaining every column and how the read-optimized tables are designed to work.
 
 ---
 
