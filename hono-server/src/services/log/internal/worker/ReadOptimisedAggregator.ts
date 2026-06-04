@@ -6,8 +6,15 @@ type TraceIngestedPayload = {
   traceId: string;
 };
 
+export interface ITraceReadModelMaterializer {
+  materializeTrace(params: { userId: string; traceId: string }): Promise<void>;
+}
+
 export class ReadOptimisedAggregator {
-  constructor(private readonly eventBus: IEventBus) {}
+  constructor(
+    private readonly eventBus: IEventBus,
+    private readonly materializer: ITraceReadModelMaterializer
+  ) {}
 
   async init(): Promise<void> {
     await this.eventBus.subscribe(
@@ -65,6 +72,9 @@ export class ReadOptimisedAggregator {
   }
 
   private async rebuildTrace(data: TraceIngestedPayload): Promise<void> {
-    // Read-model building will live here once the read-optimised tables exist.
+    await this.materializer.materializeTrace({
+      userId: data.userId,
+      traceId: data.traceId,
+    });
   }
 }
