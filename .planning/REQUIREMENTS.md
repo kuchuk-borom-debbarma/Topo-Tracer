@@ -90,46 +90,46 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RSCH-01 | TBD | Pending |
-| RSCH-02 | TBD | Pending |
-| RSCH-03 | TBD | Pending |
-| RSCH-04 | TBD | Pending |
-| RSCH-05 | TBD | Pending |
-| RSCH-06 | TBD | Pending |
-| RSCH-07 | TBD | Pending |
-| RSCH-08 | TBD | Pending |
-| RSCH-09 | TBD | Pending |
-| MAT-01 | TBD | Pending |
-| MAT-02 | TBD | Pending |
-| MAT-03 | TBD | Pending |
-| MAT-04 | TBD | Pending |
-| MAT-05 | TBD | Pending |
-| MAT-06 | TBD | Pending |
-| MAT-07 | TBD | Pending |
-| MAT-08 | TBD | Pending |
-| MAT-09 | TBD | Pending |
-| GPRJ-01 | TBD | Pending |
-| GPRJ-02 | TBD | Pending |
-| GPRJ-03 | TBD | Pending |
-| GPRJ-04 | TBD | Pending |
-| GPRJ-05 | TBD | Pending |
-| GPRJ-06 | TBD | Pending |
-| GPRJ-07 | TBD | Pending |
-| GPRJ-08 | TBD | Pending |
-| GPRJ-09 | TBD | Pending |
-| SAFE-01 | TBD | Pending |
-| SAFE-02 | TBD | Pending |
-| SAFE-03 | TBD | Pending |
-| SAFE-04 | TBD | Pending |
-| SAFE-05 | TBD | Pending |
-| SAFE-06 | TBD | Pending |
-| SAFE-07 | TBD | Pending |
-| SAFE-08 | TBD | Pending |
+| RSCH-01 | Phase 1 | Pending |
+| RSCH-02 | Phase 1 | Pending |
+| RSCH-03 | Phase 2 | Pending |
+| RSCH-04 | Phase 2 | Pending |
+| RSCH-05 | Phase 2 | Pending |
+| RSCH-06 | Phase 2 | Pending |
+| RSCH-07 | Phase 2 | Pending |
+| RSCH-08 | Phase 2 | Pending |
+| RSCH-09 | Phase 2 | Pending |
+| MAT-01 | Phase 3 | Pending |
+| MAT-02 | Phase 3 | Pending |
+| MAT-03 | Phase 3 | Pending |
+| MAT-04 | Phase 3 | Pending |
+| MAT-05 | Phase 3 | Pending |
+| MAT-06 | Phase 3 | Pending |
+| MAT-07 | Phase 3 | Pending |
+| MAT-08 | Phase 3 | Pending |
+| MAT-09 | Phase 3 | Pending |
+| GPRJ-01 | Phase 5 | Pending |
+| GPRJ-02 | Phase 5 | Pending |
+| GPRJ-03 | Phase 5 | Pending |
+| GPRJ-04 | Phase 5 | Pending |
+| GPRJ-05 | Phase 5 | Pending |
+| GPRJ-06 | Phase 5 | Pending |
+| GPRJ-07 | Phase 5 | Pending |
+| GPRJ-08 | Phase 5 | Pending |
+| GPRJ-09 | Phase 5 | Pending |
+| SAFE-01 | Phase 4 | Pending |
+| SAFE-02 | Phase 4 | Pending |
+| SAFE-03 | Phase 4 | Pending |
+| SAFE-04 | Phase 4 | Pending |
+| SAFE-05 | Phase 6 | Pending |
+| SAFE-06 | Phase 6 | Pending |
+| SAFE-07 | Phase 6 | Pending |
+| SAFE-08 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 35 total
-- Mapped to phases: 0
-- Unmapped: 35
+- Mapped to phases: 35
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-04*
