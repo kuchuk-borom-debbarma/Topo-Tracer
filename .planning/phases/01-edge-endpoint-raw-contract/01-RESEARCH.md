@@ -445,20 +445,20 @@ Bun docs describe a built-in TypeScript-capable test runner, and local `bun test
 | A5 | Storing endpoint values only inside edge `data` is a possible alternative shape. | Alternatives Considered | If wrong, no impact because context explicitly requires endpoint columns. |
 | A6 | Tests that only compile types can miss malformed runtime edge-start objects. | Common Pitfalls | Planner might under-test runtime validation; mitigate with negative service tests. |
 | A7 | A single row type can encourage filling every column on every lifecycle row. | Common Pitfalls | Planner might incorrectly add endpoint fields to end inputs; mitigate by keeping end rows lifecycle-only. |
-| A8 | Bun module mocking may be an alternative to constructor injection for insert-value tests. | Open Questions | Planner may need to choose the simpler test seam during implementation. |
+| A8 | Bun module mocking may be an alternative to constructor injection for insert-value tests. | Open Questions (RESOLVED) | Planner chose constructor injection with the current singleton as the default production path. |
 | A9 | Research validity windows are estimates. | Metadata | Planner may need to re-check npm versions if planning happens after the listed validity window. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Exact `ORDER BY` expression after timestamp split**
    - What we know: Context requires nullable lifecycle timestamp columns, and ClickHouse docs define `ORDER BY` as the MergeTree sorting key. [VERIFIED: .planning/phases/01-edge-endpoint-raw-contract/01-CONTEXT.md] [CITED: https://clickhouse.com/docs/engines/table-engines/mergetree-family/mergetree]
    - What's unclear: A live ClickHouse instance was not available to verify whether the final chosen expression over nullable lifecycle columns is accepted. [VERIFIED: local command]
-   - Recommendation: Use `ORDER BY (user_id, trace_id, id, event_type)` unless planner has a verified non-null event-time expression, and require a DDL smoke test before marking implementation complete. [VERIFIED: codebase grep]
+   - RESOLVED: Use `ORDER BY (user_id, trace_id, id, event_type)` for the Phase 1 development DDL so nullable lifecycle columns are not part of the sorting key. Keep a conditional live ClickHouse DDL smoke test in Plan 02 before marking execution complete. [VERIFIED: .planning/phases/01-edge-endpoint-raw-contract/01-02-PLAN.md]
 
 2. **Whether to add an optional ClickHouse client dependency to `LogWriteRepoClickHouse` for tests**
    - What we know: Current repository gets the singleton client internally, while the Hono guide says repository implementations should inject infrastructure dependencies through constructors. [VERIFIED: codebase grep] [VERIFIED: hono-server/src/code-base.md]
    - What's unclear: The planner may prefer Bun module mocking instead of constructor injection for insert-value tests. [ASSUMED]
-   - Recommendation: Prefer a small optional constructor dependency with the current singleton as default, because it makes JSONEachRow row assertions possible without a running ClickHouse server. [VERIFIED: hono-server/src/code-base.md]
+   - RESOLVED: Prefer a small optional constructor-injected ClickHouse client or client provider for repository tests, while preserving `getInitializedClickHouseClient()` as the default production path. This makes JSONEachRow row assertions possible without requiring a live ClickHouse server. [VERIFIED: .planning/phases/01-edge-endpoint-raw-contract/01-02-PLAN.md]
 
 ## Environment Availability
 
