@@ -90,7 +90,19 @@ Plans:
   4. Checkpoints advance only after related read rows and summaries are written successfully.
   5. Duplicate delivery, malformed graph data, and invalid ordering inputs produce idempotent state plus diagnostic counts instead of duplicate latest rows or checkpoint regression.
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Align ClickHouse schema and repository load surfaces for scoped checkpointed materialization inputs.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — Implement checkpointed materialization fold, deterministic flow order, diagnostics, and checkpoint-last writes.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-03-PLAN.md — Delegate worker trace rebuilds to the materializer and document Phase 3 technical behavior.
 
 ### Phase 4: Bounded Projection Data Access
 
