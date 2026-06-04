@@ -74,6 +74,11 @@ source and target node ids, which blocks real graph projection. The event bus
 contract is batch-native, and the read-optimized aggregator exists as a listener
 scaffold.
 
+Implementation work must follow `hono-server/src/code-base.md`. That guide is
+the local architecture contract for Hono service boundaries, environment access,
+repository usage, event bus semantics, ClickHouse setup, logging, and type
+organization.
+
 The read model must support very large single traces. The first user-facing
 query is not general pagination; it is importance-threshold projection. Lower
 importance numbers are more important. If the UI selects threshold `2`, nodes
@@ -94,6 +99,8 @@ they are not a reliable record of which raw events have been processed.
 
 - **Backend scope**: Work only in `hono-server` — prevents divergence and avoids
   reviving the older backend.
+- **Architecture guide**: Read and follow `hono-server/src/code-base.md` before
+  planning or implementing Hono changes.
 - **Storage**: Use ClickHouse read-optimized tables — the system is append-heavy
   and trace reads need aggregation over large telemetry datasets.
 - **Graph model**: Edges are the only graph links — do not infer graph structure
