@@ -2,15 +2,14 @@ import { describe, expect, it, mock } from "bun:test";
 import { TraceReadModelMaterializer } from "./TraceReadModelMaterializer";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary } from "../../api/types";
-import { NodeEventRow, EdgeEventRow } from "../repo/types";
-import { Logger } from "../../../../common/logger";
+import { Logger } from "tslog";
 
 class FakeRepo extends ILogReadRepo {
-  loadCheckpoint = mock(async () => null as ReadCheckpoint | null);
-  loadLatestReadModel = mock(async () => ({ nodes: [], edges: [], summary: null }));
-  loadRawEventsAfterCheckpoint = mock(async () => ({ nodeEvents: [], edgeEvents: [] }));
-  saveReadModel = mock(async () => {});
-  saveCheckpoint = mock(async () => {});
+  loadCheckpoint = mock(async () => null as ReadCheckpoint | null) as any;
+  loadLatestReadModel = mock(async () => ({ nodes: [], edges: [], summary: null })) as any;
+  loadRawEventsAfterCheckpoint = mock(async () => ({ nodeEvents: [], edgeEvents: [] })) as any;
+  saveReadModel = mock(async () => {}) as any;
+  saveCheckpoint = mock(async () => {}) as any;
 }
 
 const mockLogger = {
@@ -18,7 +17,7 @@ const mockLogger = {
   error: mock(() => {}),
   warn: mock(() => {}),
   debug: mock(() => {}),
-  child: mock(() => mockLogger),
+  getSubLogger: mock(() => mockLogger),
 } as unknown as Logger<unknown>;
 
 describe("TraceReadModelMaterializer", () => {
@@ -98,8 +97,8 @@ describe("TraceReadModelMaterializer", () => {
     const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
     await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
 
-    const savedNodes = repo.saveReadModel.mock.calls[0][0].nodes as ReadNode[];
-    const savedSummary = repo.saveReadModel.mock.calls[0][0].summary as ReadTraceSummary;
+    const savedNodes = (repo.saveReadModel as any).mock.calls[0][0].nodes as ReadNode[];
+    const savedSummary = (repo.saveReadModel as any).mock.calls[0][0].summary as ReadTraceSummary;
 
     expect(savedNodes).toHaveLength(2); // n1, n2. n3 is ignored because missing start.
     
@@ -130,7 +129,7 @@ describe("TraceReadModelMaterializer", () => {
     const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
     await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
 
-    const savedCheckpoint = repo.saveCheckpoint.mock.calls[0][0].checkpoint as ReadCheckpoint;
+    const savedCheckpoint = (repo.saveCheckpoint as any).mock.calls[0][0].checkpoint as ReadCheckpoint;
     
     expect(savedCheckpoint.lastNodeEventTime).toBe(200);
     expect(savedCheckpoint.lastNodeEventId).toBe("n1");

@@ -1,9 +1,9 @@
 ---
 phase: 03
 slug: checkpointed-materialization
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-05
 ---
 
@@ -38,11 +38,11 @@ created: 2026-06-05
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 03-01-01 | 01 | 1 | MAT-03 | T-03-01 | Repository reads stay scoped by `userId` and `traceId` | unit/fake client | `cd hono-server && bun test src/services/log/internal/repo/impl/LogReadRepoClickHouse.test.ts` | ✅ existing, needs new cases | ⬜ pending |
-| 03-01-02 | 01 | 1 | MAT-02, MAT-04, MAT-06, MAT-07, MAT-08, MAT-09 | T-03-02 / T-03-03 | Materializer uses repo contracts, diagnoses malformed graph data, and saves checkpoint last | unit/fake repo | `cd hono-server && bun test src/services/log/internal/materialization/TraceReadModelMaterializer.test.ts` | ❌ W0 | ⬜ pending |
-| 03-01-03 | 01 | 1 | MAT-05 | T-03-03 | Malformed graph input cannot block stable `flowOrder` for the entire trace | unit | `cd hono-server && bun test src/services/log/internal/materialization/flowOrder.test.ts` | ❌ W0 | ⬜ pending |
-| 03-02-01 | 02 | 2 | MAT-01, MAT-08 | T-03-02 | Duplicate event-bus delivery delegates idempotent trace materialization without raw payload logging | unit/fake bus | `cd hono-server && bun test src/services/log/internal/worker/ReadOptimisedAggregator.test.ts` | ❌ W0 | ⬜ pending |
-| 03-02-02 | 02 | 2 | MAT-01 through MAT-09 | T-03-01 / T-03-02 / T-03-03 | Integrated source assertions confirm no direct ClickHouse access from worker/materializer and docs explain the flow | source/docs | `cd hono-server && bun test && bun run fallow` | ✅ command available | ⬜ pending |
+| 03-01-01 | 01 | 1 | MAT-03 | T-03-01 | Repository reads stay scoped by `userId` and `traceId` | unit/fake client | `cd hono-server && bun test src/services/log/internal/repo/impl/LogReadRepoClickHouse.test.ts` | ✅ | ✅ green |
+| 03-01-02 | 02 | 1 | MAT-02, MAT-04, MAT-06, MAT-07, MAT-08, MAT-09 | T-03-02 / T-03-03 | Materializer uses repo contracts, diagnoses malformed graph data, and saves checkpoint last | unit/fake repo | `cd hono-server && bun test src/services/log/internal/materialization/TraceReadModelMaterializer.test.ts` | ✅ | ✅ green |
+| 03-01-03 | 02 | 1 | MAT-05 | T-03-03 | Malformed graph input cannot block stable `flowOrder` for the entire trace | unit | `cd hono-server && bun test src/services/log/internal/materialization/flowOrder.test.ts` | ✅ | ✅ green |
+| 03-02-01 | 03 | 2 | MAT-01, MAT-08 | T-03-02 | Duplicate event-bus delivery delegates idempotent trace materialization without raw payload logging | unit/fake bus | `cd hono-server && bun test src/services/log/internal/worker/ReadOptimisedAggregator.test.ts` | ✅ | ✅ green |
+| 03-02-02 | 03 | 2 | MAT-01 through MAT-09 | T-03-01 / T-03-02 / T-03-03 | Integrated source assertions confirm no direct ClickHouse access from worker/materializer and docs explain the flow | source/docs | `cd hono-server && bun test && bun run fallow` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -50,11 +50,11 @@ created: 2026-06-05
 
 ## Wave 0 Requirements
 
-- [ ] `hono-server/src/services/log/internal/materialization/TraceReadModelMaterializer.test.ts` — stubs and fixtures for MAT-02, MAT-04, MAT-06, MAT-07, MAT-08, and MAT-09.
-- [ ] `hono-server/src/services/log/internal/materialization/flowOrder.test.ts` — branch, disconnected-node, cycle, self-edge, and orphan-edge cases for MAT-05.
-- [ ] `hono-server/src/services/log/internal/worker/ReadOptimisedAggregator.test.ts` — delegation and trace coalescing coverage for MAT-01.
-- [ ] `hono-server/src/services/log/internal/repo/impl/LogReadRepoClickHouse.test.ts` — extend existing fake-client tests for checkpoint/latest/raw-after-checkpoint query construction and row mapping.
-- [ ] Schema/type/mapper assertion for `read_nodes.scope` mismatch discovered during research.
+- [x] `hono-server/src/services/log/internal/materialization/TraceReadModelMaterializer.test.ts` — stubs and fixtures for MAT-02, MAT-04, MAT-06, MAT-07, MAT-08, and MAT-09.
+- [x] `hono-server/src/services/log/internal/materialization/flowOrder.test.ts` — branch, disconnected-node, cycle, self-edge, and orphan-edge cases for MAT-05.
+- [x] `hono-server/src/services/log/internal/worker/ReadOptimisedAggregator.test.ts` — delegation and trace coalescing coverage for MAT-01.
+- [x] `hono-server/src/services/log/internal/repo/impl/LogReadRepoClickHouse.test.ts` — extend existing fake-client tests for checkpoint/latest/raw-after-checkpoint query construction and row mapping.
+- [x] Schema/type/mapper assertion for `read_nodes.scope` mismatch discovered during research.
 
 ---
 
@@ -66,11 +66,11 @@ All Phase 3 behaviors have automated verification. Human review should focus on 
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-06-05

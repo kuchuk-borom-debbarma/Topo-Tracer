@@ -9,7 +9,7 @@ import {
 } from "../../../../../infra/db/clickhouse";
 import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary } from "../../../api/types";
 import { ILogReadRepo } from "../ILogReadRepo";
-import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow } from "../types";
+import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEventRow, EdgeEventRow } from "../types";
 
 export class LogReadRepoClickHouse extends ILogReadRepo {
   readonly logger: Logger<unknown>;
@@ -39,7 +39,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         LIMIT 1
       `,
       format: "JSONEachRow",
-      params: {
+      query_params: {
         userId: params.userId,
         traceId: params.traceId,
       },
@@ -96,7 +96,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           GROUP BY id
         `,
         format: "JSONEachRow",
-        params: commonParams,
+        query_params: commonParams,
       }),
       client.query({
         query: `
@@ -118,7 +118,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           GROUP BY id
         `,
         format: "JSONEachRow",
-        params: commonParams,
+        query_params: commonParams,
       }),
       client.query({
         query: `
@@ -128,7 +128,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           LIMIT 1
         `,
         format: "JSONEachRow",
-        params: commonParams,
+        query_params: commonParams,
       }),
     ]);
 
@@ -187,68 +187,69 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       } : null,
     };
   }
-async loadRawEventsAfterCheckpoint(params: {
-  userId: string;
-  traceId: string;
-  checkpoint: ReadCheckpoint | null;
-}): Promise<{
-  nodeEvents: NodeEventRow[];
-  edgeEvents: EdgeEventRow[];
-}> {
-  const client = this.getClient();
-  const nodeCheckpoint = params.checkpoint || {
-    lastNodeEventTime: 0,
-    lastNodeEventId: "",
-    lastNodeEventType: 0,
-  };
-  const edgeCheckpoint = params.checkpoint || {
-    lastEdgeEventTime: 0,
-    lastEdgeEventId: "",
-    lastEdgeEventType: 0,
-  };
 
-  const [nodeResult, edgeResult] = await Promise.all([
-    client.query({
-      query: `
-        SELECT * FROM node_events
-        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
-        AND tuple(if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type) > 
-            tuple({lastNodeEventTime:UInt64}, {lastNodeEventId:String}, {lastNodeEventType:UInt8})
-        ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
-      `,
-      format: "JSONEachRow",
-      params: {
-        userId: params.userId,
-        traceId: params.traceId,
-        lastNodeEventTime: nodeCheckpoint.lastNodeEventTime,
-        lastNodeEventId: nodeCheckpoint.lastNodeEventId,
-        lastNodeEventType: nodeCheckpoint.lastNodeEventType,
-      },
-    }),
-    client.query({
-      query: `
-        SELECT * FROM edge_events
-        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
-        AND tuple(if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type) > 
-            tuple({lastEdgeEventTime:UInt64}, {lastEdgeEventId:String}, {lastEdgeEventType:UInt8})
-        ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
-      `,
-      format: "JSONEachRow",
-      params: {
-        userId: params.userId,
-        traceId: params.traceId,
-        lastEdgeEventTime: edgeCheckpoint.lastEdgeEventTime,
-        lastEdgeEventId: edgeCheckpoint.lastEdgeEventId,
-        lastEdgeEventType: edgeCheckpoint.lastEdgeEventType,
-      },
-    }),
-  ]);
+  async loadRawEventsAfterCheckpoint(params: {
+    userId: string;
+    traceId: string;
+    checkpoint: ReadCheckpoint | null;
+  }): Promise<{
+    nodeEvents: NodeEventRow[];
+    edgeEvents: EdgeEventRow[];
+  }> {
+    const client = this.getClient();
+    const nodeCheckpoint = params.checkpoint || {
+      lastNodeEventTime: 0,
+      lastNodeEventId: "",
+      lastNodeEventType: 0,
+    };
+    const edgeCheckpoint = params.checkpoint || {
+      lastEdgeEventTime: 0,
+      lastEdgeEventId: "",
+      lastEdgeEventType: 0,
+    };
 
-  return {
-    nodeEvents: await nodeResult.json<NodeEventRow>(),
-    edgeEvents: await edgeResult.json<EdgeEventRow>(),
-  };
-}
+    const [nodeResult, edgeResult] = await Promise.all([
+      client.query({
+        query: `
+          SELECT * FROM node_events
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          AND tuple(if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type) > 
+              tuple({lastNodeEventTime:UInt64}, {lastNodeEventId:String}, {lastNodeEventType:UInt8})
+          ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
+        `,
+        format: "JSONEachRow",
+        query_params: {
+          userId: params.userId,
+          traceId: params.traceId,
+          lastNodeEventTime: nodeCheckpoint.lastNodeEventTime,
+          lastNodeEventId: nodeCheckpoint.lastNodeEventId,
+          lastNodeEventType: nodeCheckpoint.lastNodeEventType,
+        },
+      }),
+      client.query({
+        query: `
+          SELECT * FROM edge_events
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          AND tuple(if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type) > 
+              tuple({lastEdgeEventTime:UInt64}, {lastEdgeEventId:String}, {lastEdgeEventType:UInt8})
+          ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
+        `,
+        format: "JSONEachRow",
+        query_params: {
+          userId: params.userId,
+          traceId: params.traceId,
+          lastEdgeEventTime: edgeCheckpoint.lastEdgeEventTime,
+          lastEdgeEventId: edgeCheckpoint.lastEdgeEventId,
+          lastEdgeEventType: edgeCheckpoint.lastEdgeEventType,
+        },
+      }),
+    ]);
+
+    return {
+      nodeEvents: await nodeResult.json<NodeEventRow>(),
+      edgeEvents: await edgeResult.json<EdgeEventRow>(),
+    };
+  }
 
   async saveReadModel(params: {
     userId: string;

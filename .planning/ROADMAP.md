@@ -21,8 +21,8 @@ organization, and verification expectations for this project.
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Edge Endpoint Raw Contract** - Hono edge ingestion and raw edge storage carry explicit `fromNodeId` and `toNodeId` endpoint data. (completed 2026-06-04)
-- [ ] **Phase 2: Read Schema And Repository Contracts** - ClickHouse read tables, plain read-model types, and repository contracts exist for latest state, summaries, and checkpoints.
-- [ ] **Phase 3: Checkpointed Materialization** - Read-model materialization incrementally folds raw events through checkpoints and writes latest read rows through repositories.
+- [x] **Phase 2: Read Schema And Repository Contracts** - ClickHouse read tables, plain read-model types, and repository contracts exist for latest state, summaries, and checkpoints. (completed 2026-06-05)
+- [x] **Phase 3: Checkpointed Materialization** - Read-model materialization incrementally folds raw events through checkpoints and writes latest read rows through repositories. (completed 2026-06-05)
 - [ ] **Phase 4: Bounded Projection Data Access** - Projection repository methods are trace-scoped and enforce hard node, edge, and scan caps before projection logic depends on them.
 - [ ] **Phase 5: Ghost Projection Logic** - Importance-threshold projection returns visible nodes, deterministic ghost nodes, snapped edges, aggregate edges, and response metadata.
 - [ ] **Phase 6: Verification And Safe Observability** - Tests and logs lock down idempotency, late-event ordering, ghost edge cases, safety caps, and safe runtime summaries.
@@ -71,11 +71,11 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Add fully commented ClickHouse read-model DDL for latest nodes, latest edges, summaries, and checkpoints.
+- [x] 02-02-PLAN.md — Add fully commented ClickHouse read-model DDL for latest nodes, latest edges, summaries, and checkpoints.
 
 **Wave 3** *(blocked on Wave 1 and Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — Add ClickHouse read repository skeleton, fake-client mapping tests, and repository factory wiring.
+- [x] 02-03-PLAN.md — Add ClickHouse read repository skeleton, fake-client mapping tests, and repository factory wiring.
 
 ### Phase 3: Checkpointed Materialization
 
@@ -98,11 +98,11 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — Implement checkpointed materialization fold, deterministic flow order, diagnostics, and checkpoint-last writes.
+- [x] 03-02-PLAN.md — Implement checkpointed materialization fold, deterministic flow order, diagnostics, and checkpoint-last writes.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 03-03-PLAN.md — Delegate worker trace rebuilds to the materializer and document Phase 3 technical behavior.
+- [x] 03-03-PLAN.md — Delegate worker trace rebuilds to the materializer and document Phase 3 technical behavior.
 
 ### Phase 4: Bounded Projection Data Access
 
@@ -156,8 +156,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Edge Endpoint Raw Contract | 2/2 | Complete   | 2026-06-04 |
 | 2. Read Schema And Repository Contracts | 3/3 | Complete   | 2026-06-05 |
-| 3. Checkpointed Materialization | 1/3 | In Progress|  |
+| 3. Checkpointed Materialization | 3/3 | Complete   | 2026-06-05 |
 | 4. Bounded Projection Data Access | 0/TBD | Not started | - |
 | 5. Ghost Projection Logic | 0/TBD | Not started | - |
-| 6. Verification And Safe Observability | 0/TBD | Not started | - |
-tarted | - |
+| 6. Verification And Safe Survivability | 0/TBD | Not started | - |

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, mock } from "bun:test";
 import { Logger } from "tslog";
 import {
   CLICKHOUSE_READ_NODES_TABLE,
@@ -17,7 +17,7 @@ type InsertOptions = {
 type QueryOptions = {
   query: string;
   format: "JSONEachRow";
-  params?: Record<string, string | number>;
+  query_params?: Record<string, string | number>;
 };
 
 type ClickHouseClientProvider = () => {
@@ -49,6 +49,15 @@ class FakeClickHouseClient {
     };
   }
 }
+
+const createRepo = (fakeClient: FakeClickHouseClient): LogReadRepoClickHouse => {
+  const logger = {
+    getSubLogger: mock((options: any) => logger),
+    trace: mock(() => {}),
+    info: mock(() => {}),
+  } as unknown as Logger<unknown>;
+  return new RepoWithProvider(logger, () => fakeClient as any);
+};
 
 describe("LogReadRepoClickHouse row mapping", () => {
   test("saveReadModel inserts nodes, edges, and summary with correct snake_case mapping", async () => {
@@ -249,7 +258,7 @@ describe("LogReadRepoClickHouse load methods", () => {
     });
 
     const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE));
-    expect(query?.params).toMatchObject({
+    expect(query?.query_params).toMatchObject({
       userId: "user-1",
       traceId: "trace-1",
     });
@@ -299,13 +308,13 @@ describe("LogReadRepoClickHouse load methods", () => {
     expect(nodeQuery?.query).toContain("tuple(");
     expect(nodeQuery?.query).toContain("started_at_ms");
     expect(nodeQuery?.query).toContain("ORDER BY");
-    expect(nodeQuery?.params).toMatchObject({
+    expect(nodeQuery?.query_params).toMatchObject({
       lastNodeEventTime: 1000,
       lastNodeEventId: "n1",
       lastNodeEventType: 0,
     });
 
-    expect(edgeQuery?.params).toMatchObject({
+    expect(edgeQuery?.query_params).toMatchObject({
       lastEdgeEventTime: 1100,
       lastEdgeEventId: "e1",
       lastEdgeEventType: 1,
@@ -319,15 +328,10 @@ describe("LogReadRepoClickHouse load methods", () => {
     await repo.loadRawEventsAfterCheckpoint({ userId: "u1", traceId: "t1", checkpoint: null });
 
     const nodeQuery = fakeClient.queries.find(q => q.query.includes("node_events"));
-    expect(nodeQuery?.params).toMatchObject({
+    expect(nodeQuery?.query_params).toMatchObject({
       lastNodeEventTime: 0,
       lastNodeEventId: "",
       lastNodeEventType: 0,
     });
   });
 });
-
-const createRepo = (fakeClient: FakeClickHouseClient): LogReadRepoClickHouse => {
-  const logger = new Logger({ name: "LogReadRepoClickHouseTest" });
-  return new RepoWithProvider(logger, () => fakeClient);
-};

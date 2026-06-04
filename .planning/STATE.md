@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 3 planned
-last_updated: "2026-06-04T21:49:04.620Z"
-last_activity: 2026-06-04
+status: completed
+stopped_at: Phase 3 complete
+last_updated: "2026-06-05T02:30:00.000Z"
+last_activity: 2026-06-05 -- Phase 3 complete
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 6
-  percent: 33
+  completed_plans: 8
+  percent: 100
 ---
 
 # State: Topo Tracer Hono Read Models
@@ -22,20 +22,20 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 3 of 6 (checkpointed materialization)
-Plan: 2 of 3
-Status: Ready to execute
-Last activity: 2026-06-04
+Phase: 4 of 6 (bounded projection data access)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-05 -- Phase 3 complete
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100% (of current milestone)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
-- Average duration: 12.0 min
-- Total execution time: 1.0 hours
+- Total plans completed: 8
+- Average duration: 15.0 min
+- Total execution time: 2.0 hours
 
 **By Phase:**
 
@@ -43,19 +43,19 @@ Progress: [████████░░] 75%
 |-------|-------|-------|----------|
 | 01 | 2 | 17min | 8.5min |
 | 02 | 3 | 45min | 15min |
+| 03 | 3 | 70min | 23.3min |
 
 **Recent Trend:**
 
-- Last 5 plans: Phase 01 P01, Phase 01 P02, Phase 02 P01, Phase 02 P02, Phase 02 P03
-- Trend: Phase 02 completed on schedule with full contract and repository coverage.
+- Last 5 plans: Phase 02 P02, Phase 02 P03, Phase 03 P01, Phase 03 P02, Phase 03 P03
+- Trend: Phase 03 involved complex materialization logic and deterministic flow order, resulting in slightly longer durations but robust test coverage.
 
 *Updated after each plan completion*
-| Phase 01 P01 | 11min | 2 tasks | 4 files |
-| Phase 01 P02 | 6min | 3 tasks | 4 files |
-| Phase 02 P01 | 15min | 3 tasks | 5 files |
 | Phase 02 P02 | 15min | 2 tasks | 2 files |
 | Phase 02 P03 | 15min | 3 tasks | 4 files |
-| Phase 03 P01 | 25min | 2 tasks | 4 files |
+| Phase 03 P01 | 15min | 3 tasks | 3 files |
+| Phase 03 P02 | 30min | 2 tasks | 5 files |
+| Phase 03 P03 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -64,35 +64,28 @@ Progress: [████████░░] 75%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Log]: Use grouped latest-version selection (argMax) instead of ReplacingMergeTree FINAL for read-model loads. (2026-06-04)
-- [Log]: Use explicit tuple bookmarks (time, id, type) for deterministic raw event resume. (2026-06-04)
-- [Log]: Removed 'scope' column from read_nodes as it was not supported by source artifacts. (2026-06-04)
-- [Log]: Read repository factory `createLogReadRepo` replaces static singleton (2026-06-05)
-- [Log]: Read model uses versioned replacement rows with `materialized_at_ms` (2026-06-04)
-- [Log]: Checkpoints store exact node/edge bookmarks for deterministic resume (2026-06-04)
-- [Project]: v1 targets only `hono-server`; `carno.js` implementation work is out of scope.
-- [Project]: v1 excludes new HTTP endpoints/routes; graph endpoint fields refer to edge data endpoints, not HTTP APIs.
-- [Project]: Read logic must follow `hono-server/src/code-base.md`: services own business logic, repositories own ClickHouse access, and logs stay payload-safe.
+- [Log]: Materializer uses Kahn's algorithm for deterministic topological flow order (2026-06-05)
+- [Log]: Checkpointed materializer follows "checkpoint-last" write order for consistency (2026-06-05)
+- [Log]: Read model merging handles lifecycle (start/end) and graph (edge) folding (2026-06-05)
+- [Project]: Phase 3 completed with 47 passing tests, validating the full materialization chain from repo to worker.
 
 ### Technical Debt / Concerns
 
 See: .planning/codebase/CONCERNS.md
 
-- [Medium]: Fallow identifies unused read repo exports; expected until Phase 3 integration.
-- [Low]: `DevLogReadRepo` removed in favor of factory pattern.
+- [Low]: Fallow identifies unused materializer/worker files; expected until Phase 4/5 integration.
+- [Medium]: Raw table sort key is not optimized for large trace-local lifecycle sorting (D-04).
 
 ## Milestone Status
 
 ### milestone (v1.0)
-
 Hono-only read model pipeline for large trace inspection.
 
 Items acknowledged and carried forward from previous milestone close:
-
 - None
 
 ## Session Continuity
 
-Last session: 2026-06-04T21:48:54.235Z
-Stopped at: Phase 3 planned
-Resume file: None
+Last session: 2026-06-05T02:30:00.000Z
+Stopped at: Phase 3 complete
+Resume file: .planning/phases/04-bounded-projection-data-access/04-CONTEXT.md (placeholder)

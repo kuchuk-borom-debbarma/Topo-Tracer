@@ -1,4 +1,4 @@
-import { Logger } from "../../../../common/logger";
+import { Logger } from "tslog";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { ReadNode, ReadEdge, ReadTraceSummary, ReadCheckpoint } from "../../api/types";
 import { computeFlowOrder } from "./flowOrder";
@@ -12,7 +12,7 @@ export class TraceReadModelMaterializer {
 
   async materializeTrace(params: { userId: string; traceId: string }): Promise<void> {
     const { userId, traceId } = params;
-    const logger = this.parentLogger.child({ userId, traceId, component: "TraceReadModelMaterializer" });
+    const logger = this.parentLogger.getSubLogger({ name: `Materializer:${userId}:${traceId}` });
 
     const checkpoint = await this.readRepo.loadCheckpoint({ userId, traceId });
     const { nodes: existingNodes, edges: existingEdges, summary: _existingSummary } = 
@@ -175,14 +175,14 @@ export class TraceReadModelMaterializer {
     }
 
     // Build summary
-    let minImportance = Infinity;
-    let maxImportance = -Infinity;
+    let minImportanceLevel = Infinity;
+    let maxImportanceLevel = -Infinity;
     let minTime = Infinity;
     let maxTime = -Infinity;
 
     for (const node of nodesArray) {
-      minImportance = Math.min(minImportance, node.importanceLevel);
-      maxImportance = Math.max(maxImportance, node.importanceLevel);
+      minImportanceLevel = Math.min(minImportanceLevel, node.importanceLevel);
+      maxImportanceLevel = Math.max(maxImportanceLevel, node.importanceLevel);
       minTime = Math.min(minTime, node.startedAt, node.endedAt ?? node.startedAt);
       maxTime = Math.max(maxTime, node.startedAt, node.endedAt ?? node.startedAt);
     }
@@ -192,10 +192,10 @@ export class TraceReadModelMaterializer {
       traceId,
       nodeCount: nodesArray.length,
       edgeCount: savedEdges.length,
-      minImportance: nodesArray.length ? minImportance : 0,
-      maxImportance: nodesArray.length ? maxImportance : 0,
-      minTime: nodesArray.length ? minTime : 0,
-      maxTime: nodesArray.length ? maxTime : 0,
+      minImportanceLevel: nodesArray.length ? minImportanceLevel : 0,
+      maxImportanceLevel: nodesArray.length ? maxImportanceLevel : 0,
+      startedAt: nodesArray.length ? minTime : 0,
+      endedAt: nodesArray.length ? maxTime : 0,
       materializedAt: this.now(),
       diagMissingStarts,
       diagMissingEnds,
