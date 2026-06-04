@@ -1,4 +1,5 @@
 import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary } from "../../api/types";
+import { NodeEventRow, EdgeEventRow } from "./types";
 
 export abstract class ILogReadRepo {
   abstract loadCheckpoint(params: {
@@ -13,6 +14,15 @@ export abstract class ILogReadRepo {
     nodes: ReadNode[];
     edges: ReadEdge[];
     summary: ReadTraceSummary | null;
+  }>;
+
+  abstract loadRawEventsAfterCheckpoint(params: {
+    userId: string;
+    traceId: string;
+    checkpoint: ReadCheckpoint | null;
+  }): Promise<{
+    nodeEvents: NodeEventRow[];
+    edgeEvents: EdgeEventRow[];
   }>;
 
   abstract saveReadModel(params: {

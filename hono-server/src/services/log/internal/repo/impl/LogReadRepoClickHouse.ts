@@ -13,11 +13,11 @@ import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow } from "..
 
 export class LogReadRepoClickHouse extends ILogReadRepo {
   readonly logger: Logger<unknown>;
-  private readonly getClient: () => Pick<ClickHouseClient, "insert">;
+  private readonly getClient: () => Pick<ClickHouseClient, "insert" | "query">;
 
   constructor(
     parentLogger: Logger<unknown>,
-    getClient: () => Pick<ClickHouseClient, "insert"> = getInitializedClickHouseClient,
+    getClient: () => Pick<ClickHouseClient, "insert" | "query"> = getInitializedClickHouseClient,
   ) {
     super();
     this.logger = parentLogger.getSubLogger({
@@ -26,14 +26,45 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     this.getClient = getClient;
   }
 
-  async loadCheckpoint(_params: {
+  async loadCheckpoint(params: {
     userId: string;
     traceId: string;
   }): Promise<ReadCheckpoint | null> {
-    throw new Error("loadCheckpoint not implemented until Phase 3 materialization.");
+    const client = this.getClient();
+    const result = await client.query({
+      query: `
+        SELECT * FROM ${CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE}
+        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+        ORDER BY updated_at_ms DESC
+        LIMIT 1
+      `,
+      format: "JSONEachRow",
+      params: {
+        userId: params.userId,
+        traceId: params.traceId,
+      },
+    });
+
+    const rows = await result.json<ReadCheckpointRow>();
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const row = rows[0];
+    return {
+      userId: row.user_id,
+      traceId: row.trace_id,
+      lastNodeEventTime: row.node_progress_timestamp,
+      lastNodeEventId: row.node_progress_id,
+      lastNodeEventType: row.node_progress_event_type,
+      lastEdgeEventTime: row.edge_progress_timestamp,
+      lastEdgeEventId: row.edge_progress_id,
+      lastEdgeEventType: row.edge_progress_event_type,
+      checkpointedAt: row.updated_at_ms,
+    };
   }
 
-  async loadLatestReadModel(_params: {
+  async loadLatestReadModel(params: {
     userId: string;
     traceId: string;
   }): Promise<{
@@ -41,8 +72,183 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     edges: ReadEdge[];
     summary: ReadTraceSummary | null;
   }> {
-    throw new Error("loadLatestReadModel not implemented until Phase 3 materialization.");
+    const client = this.getClient();
+    const commonParams = { userId: params.userId, traceId: params.traceId };
+
+    const [nodesResult, edgesResult, summaryResult] = await Promise.all([
+      client.query({
+        query: `
+          SELECT 
+            id,
+            argMax(user_id, materialized_at_ms) as user_id,
+            argMax(trace_id, materialized_at_ms) as trace_id,
+            argMax(node_type, materialized_at_ms) as node_type,
+            argMax(data, materialized_at_ms) as data,
+            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
+            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+            argMax(start_message, materialized_at_ms) as start_message,
+            argMax(end_message, materialized_at_ms) as end_message,
+            argMax(importance_level, materialized_at_ms) as importance_level,
+            argMax(flow_order, materialized_at_ms) as flow_order,
+            max(materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_NODES_TABLE}
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          GROUP BY id
+        `,
+        format: "JSONEachRow",
+        params: commonParams,
+      }),
+      client.query({
+        query: `
+          SELECT 
+            id,
+            argMax(user_id, materialized_at_ms) as user_id,
+            argMax(trace_id, materialized_at_ms) as trace_id,
+            argMax(edge_type, materialized_at_ms) as edge_type,
+            argMax(from_node_id, materialized_at_ms) as from_node_id,
+            argMax(to_node_id, materialized_at_ms) as to_node_id,
+            argMax(from_flow_order, materialized_at_ms) as from_flow_order,
+            argMax(to_flow_order, materialized_at_ms) as to_flow_order,
+            argMax(data, materialized_at_ms) as data,
+            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
+            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+            max(materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_EDGES_TABLE}
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          GROUP BY id
+        `,
+        format: "JSONEachRow",
+        params: commonParams,
+      }),
+      client.query({
+        query: `
+          SELECT * FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          ORDER BY materialized_at_ms DESC
+          LIMIT 1
+        `,
+        format: "JSONEachRow",
+        params: commonParams,
+      }),
+    ]);
+
+    const [nodeRows, edgeRows, summaryRows] = await Promise.all([
+      nodesResult.json<ReadNodeRow>(),
+      edgesResult.json<ReadEdgeRow>(),
+      summaryResult.json<TraceSummaryRow>(),
+    ]);
+
+    return {
+      nodes: nodeRows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        traceId: row.trace_id,
+        nodeType: row.node_type,
+        data: row.data,
+        startedAt: row.started_at_ms,
+        endedAt: row.ended_at_ms,
+        startMessage: row.start_message,
+        endMessage: row.end_message,
+        importanceLevel: row.importance_level,
+        flowOrder: row.flow_order,
+        materializedAt: row.materialized_at_ms,
+      })),
+      edges: edgeRows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        traceId: row.trace_id,
+        edgeType: row.edge_type,
+        fromNodeId: row.from_node_id,
+        toNodeId: row.to_node_id,
+        fromFlowOrder: row.from_flow_order,
+        toFlowOrder: row.to_flow_order,
+        data: row.data,
+        startedAt: row.started_at_ms,
+        endedAt: row.ended_at_ms,
+        materializedAt: row.materialized_at_ms,
+      })),
+      summary: summaryRows.length > 0 ? {
+        userId: summaryRows[0].user_id,
+        traceId: summaryRows[0].trace_id,
+        nodeCount: summaryRows[0].node_count,
+        edgeCount: summaryRows[0].edge_count,
+        minImportanceLevel: summaryRows[0].min_importance_level,
+        maxImportanceLevel: summaryRows[0].max_importance_level,
+        startedAt: summaryRows[0].started_at_ms,
+        endedAt: summaryRows[0].ended_at_ms,
+        materializedAt: summaryRows[0].materialized_at_ms,
+        diagMissingStarts: summaryRows[0].diagnostic_missing_starts_count,
+        diagMissingEnds: summaryRows[0].diagnostic_missing_ends_count,
+        diagNegativeDurations: summaryRows[0].diagnostic_negative_duration_count,
+        diagCycles: summaryRows[0].diagnostic_cycle_count,
+        diagOrphanEdges: summaryRows[0].diagnostic_orphan_edge_count,
+        diagInvalidImportance: summaryRows[0].diagnostic_invalid_importance_count,
+        diagClockSkew: summaryRows[0].diagnostic_clock_skew_count,
+      } : null,
+    };
   }
+async loadRawEventsAfterCheckpoint(params: {
+  userId: string;
+  traceId: string;
+  checkpoint: ReadCheckpoint | null;
+}): Promise<{
+  nodeEvents: NodeEventRow[];
+  edgeEvents: EdgeEventRow[];
+}> {
+  const client = this.getClient();
+  const nodeCheckpoint = params.checkpoint || {
+    lastNodeEventTime: 0,
+    lastNodeEventId: "",
+    lastNodeEventType: 0,
+  };
+  const edgeCheckpoint = params.checkpoint || {
+    lastEdgeEventTime: 0,
+    lastEdgeEventId: "",
+    lastEdgeEventType: 0,
+  };
+
+  const [nodeResult, edgeResult] = await Promise.all([
+    client.query({
+      query: `
+        SELECT * FROM node_events
+        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+        AND tuple(if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type) > 
+            tuple({lastNodeEventTime:UInt64}, {lastNodeEventId:String}, {lastNodeEventType:UInt8})
+        ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
+      `,
+      format: "JSONEachRow",
+      params: {
+        userId: params.userId,
+        traceId: params.traceId,
+        lastNodeEventTime: nodeCheckpoint.lastNodeEventTime,
+        lastNodeEventId: nodeCheckpoint.lastNodeEventId,
+        lastNodeEventType: nodeCheckpoint.lastNodeEventType,
+      },
+    }),
+    client.query({
+      query: `
+        SELECT * FROM edge_events
+        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+        AND tuple(if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type) > 
+            tuple({lastEdgeEventTime:UInt64}, {lastEdgeEventId:String}, {lastEdgeEventType:UInt8})
+        ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
+      `,
+      format: "JSONEachRow",
+      params: {
+        userId: params.userId,
+        traceId: params.traceId,
+        lastEdgeEventTime: edgeCheckpoint.lastEdgeEventTime,
+        lastEdgeEventId: edgeCheckpoint.lastEdgeEventId,
+        lastEdgeEventType: edgeCheckpoint.lastEdgeEventType,
+      },
+    }),
+  ]);
+
+  return {
+    nodeEvents: await nodeResult.json<NodeEventRow>(),
+    edgeEvents: await edgeResult.json<EdgeEventRow>(),
+  };
+}
 
   async saveReadModel(params: {
     userId: string;

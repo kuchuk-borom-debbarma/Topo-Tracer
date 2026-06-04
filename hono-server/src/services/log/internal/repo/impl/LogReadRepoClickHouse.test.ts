@@ -14,8 +14,15 @@ type InsertOptions = {
   format: "JSONEachRow";
 };
 
+type QueryOptions = {
+  query: string;
+  format: "JSONEachRow";
+  params?: Record<string, string | number>;
+};
+
 type ClickHouseClientProvider = () => {
   insert(options: InsertOptions): Promise<void>;
+  query(options: QueryOptions): Promise<{ json<T>(): Promise<T[]> }>;
 };
 
 // Use type casting for testing with a fake provider
@@ -26,9 +33,20 @@ const RepoWithProvider = LogReadRepoClickHouse as unknown as new (
 
 class FakeClickHouseClient {
   inserts: InsertOptions[] = [];
+  queries: QueryOptions[] = [];
+  queryResults: Record<string, unknown[]> = {};
 
   async insert(options: InsertOptions): Promise<void> {
     this.inserts.push(options);
+  }
+
+  async query(options: QueryOptions): Promise<{ json<T>(): Promise<T[]> }> {
+    this.queries.push(options);
+    // Find a result by matching query string partially or using a default
+    const result = Object.entries(this.queryResults).find(([key]) => options.query.includes(key))?.[1] || [];
+    return {
+      json: async <T>() => result as T[],
+    };
   }
 }
 
@@ -192,6 +210,119 @@ describe("LogReadRepoClickHouse row mapping", () => {
       edge_progress_id: "edge-1",
       edge_progress_event_type: 1,
       updated_at_ms: 4000,
+    });
+  });
+});
+
+describe("LogReadRepoClickHouse load methods", () => {
+  test("loadCheckpoint queries materialization_checkpoints and returns mapped checkpoint", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE] = [
+      {
+        user_id: "user-1",
+        trace_id: "trace-1",
+        node_progress_timestamp: 1500,
+        node_progress_id: "node-a",
+        node_progress_event_type: 0,
+        edge_progress_timestamp: 1600,
+        edge_progress_id: "edge-1",
+        edge_progress_event_type: 1,
+        updated_at_ms: 4000,
+      },
+    ];
+
+    const cp = await repo.loadCheckpoint({ userId: "user-1", traceId: "trace-1" });
+
+    expect(cp).not.toBeNull();
+    expect(cp).toMatchObject({
+      userId: "user-1",
+      traceId: "trace-1",
+      lastNodeEventTime: 1500,
+      lastNodeEventId: "node-a",
+      lastNodeEventType: 0,
+      lastEdgeEventTime: 1600,
+      lastEdgeEventId: "edge-1",
+      lastEdgeEventType: 1,
+      checkpointedAt: 4000,
+    });
+
+    const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE));
+    expect(query?.params).toMatchObject({
+      userId: "user-1",
+      traceId: "trace-1",
+    });
+    expect(query?.query).toContain("ORDER BY updated_at_ms DESC");
+  });
+
+  test("loadLatestReadModel loads grouped latest state", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = [{ id: "n1", user_id: "u1", trace_id: "t1", node_type: "t", data: {}, started_at_ms: 100, importance_level: 1, flow_order: 1, materialized_at_ms: 1000 }];
+    fakeClient.queryResults[CLICKHOUSE_READ_EDGES_TABLE] = [{ id: "e1", user_id: "u1", trace_id: "t1", edge_type: "t", from_node_id: "n1", to_node_id: "n2", from_flow_order: 1, to_flow_order: 2, data: {}, started_at_ms: 100, materialized_at_ms: 1000 }];
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_TABLE] = [{ user_id: "u1", trace_id: "t1", node_count: 1, edge_count: 1, min_importance_level: 1, max_importance_level: 1, started_at_ms: 100, materialized_at_ms: 1000 }];
+
+    const result = await repo.loadLatestReadModel({ userId: "u1", traceId: "t1" });
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.edges).toHaveLength(1);
+    expect(result.summary).not.toBeNull();
+
+    const nodeQuery = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
+    expect(nodeQuery?.query).toContain("argMax");
+    expect(nodeQuery?.query).toContain("GROUP BY id");
+  });
+
+  test("loadRawEventsAfterCheckpoint queries node and edge events with tuple bookmarks", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    const checkpoint = {
+      userId: "u1",
+      traceId: "t1",
+      lastNodeEventTime: 1000,
+      lastNodeEventId: "n1",
+      lastNodeEventType: 0,
+      lastEdgeEventTime: 1100,
+      lastEdgeEventId: "e1",
+      lastEdgeEventType: 1,
+      checkpointedAt: 2000,
+    };
+
+    await repo.loadRawEventsAfterCheckpoint({ userId: "u1", traceId: "t1", checkpoint });
+
+    const nodeQuery = fakeClient.queries.find(q => q.query.includes("node_events"));
+    const edgeQuery = fakeClient.queries.find(q => q.query.includes("edge_events"));
+
+    expect(nodeQuery?.query).toContain("tuple(");
+    expect(nodeQuery?.query).toContain("started_at_ms");
+    expect(nodeQuery?.query).toContain("ORDER BY");
+    expect(nodeQuery?.params).toMatchObject({
+      lastNodeEventTime: 1000,
+      lastNodeEventId: "n1",
+      lastNodeEventType: 0,
+    });
+
+    expect(edgeQuery?.params).toMatchObject({
+      lastEdgeEventTime: 1100,
+      lastEdgeEventId: "e1",
+      lastEdgeEventType: 1,
+    });
+  });
+
+  test("loadRawEventsAfterCheckpoint handles null checkpoint with defaults", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    await repo.loadRawEventsAfterCheckpoint({ userId: "u1", traceId: "t1", checkpoint: null });
+
+    const nodeQuery = fakeClient.queries.find(q => q.query.includes("node_events"));
+    expect(nodeQuery?.params).toMatchObject({
+      lastNodeEventTime: 0,
+      lastNodeEventId: "",
+      lastNodeEventType: 0,
     });
   });
 });
