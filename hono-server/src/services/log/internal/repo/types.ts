@@ -65,26 +65,26 @@ export type TraceSummaryRow = {
   ended_at_ms: number | null;
   materialized_at_ms: number;
 
-  diag_missing_starts: number;
-  diag_missing_ends: number;
-  diag_negative_durations: number;
-  diag_cycles: number;
-  diag_orphan_edges: number;
-  diag_invalid_importance: number;
-  diag_clock_skew: number;
+  diagnostic_missing_starts_count: number;
+  diagnostic_missing_ends_count: number;
+  diagnostic_negative_duration_count: number;
+  diagnostic_cycle_count: number;
+  diagnostic_orphan_edge_count: number;
+  diagnostic_invalid_importance_count: number;
+  diagnostic_clock_skew_count: number;
 };
 
 export type ReadCheckpointRow = {
   user_id: string;
   trace_id: string;
 
-  last_node_event_time: number;
-  last_node_event_id: string;
-  last_node_event_type: number;
+  node_progress_timestamp: number;
+  node_progress_id: string;
+  node_progress_event_type: number;
 
-  last_edge_event_time: number;
-  last_edge_event_id: string;
-  last_edge_event_type: number;
+  edge_progress_timestamp: number;
+  edge_progress_id: string;
+  edge_progress_event_type: number;
 
-  checkpointed_at_ms: number;
+  updated_at_ms: number;
 };
