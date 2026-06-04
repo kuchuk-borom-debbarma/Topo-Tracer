@@ -1,109 +1,20 @@
 # Hono Server Codebase Guide
 
-This document explains how this server codebase should be shaped. It is meant
-for both human developers and AI agents so that new code follows the same
-architecture, naming, dependency direction, and quality bar.
+This guide explains how the Hono server should be shaped. It is for humans and
+AI agents working in this repo, so the rules should stay practical, explicit,
+and easy to follow.
 
-The short version:
+## Principles
 
-- Keep the code loosely coupled.
-- Keep the design simple and readable.
-- Prefer contracts over concrete dependencies.
-- Keep modules small, focused, and easy to replace.
-- Make extension cheap without making today's code abstract for no reason.
-- Keep business logic in services, infrastructure in infra, and shared basics in
-  common.
+- Keep business logic in services.
+- Keep persistence behind repository contracts.
+- Keep infrastructure in `infra`.
+- Keep shared primitives in `common`.
+- Depend on contracts instead of concrete implementations.
+- Prefer boring, readable TypeScript over clever abstractions.
+- Add comments for intent and tradeoffs, not for obvious code.
 
-## Core Principles
-
-### Contract-driven code
-
-The main architectural rule is: code should depend on contracts, not concrete
-implementations.
-
-Contracts are defined as abstract classes. A service, repository, event bus, or
-other module exposes the behavior it promises through an abstract class such as
-`IAuthService`, `IAuthRepo`, `ILogService`, or `IEventBus`.
-
-Concrete implementations live behind those contracts, for example
-`AuthServiceImpl`, `AuthRepoPg`, or `DevEventBus`.
-
-This keeps modules loosely coupled:
-
-- service callers do not need to know how a service is implemented;
-- service implementations do not need to know which database implementation is
-  being used beyond the repository contract;
-- repository implementations can be swapped without rewriting business logic;
-- development implementations can exist beside production implementations;
-- tests can use fake or in-memory implementations without touching app code.
-
-### KISS
-
-Keep the design simple. Do not add layers, factories, registries, decorators, or
-generic abstractions unless they solve a real problem in this codebase.
-
-Good code here should be boring in the best way:
-
-- one obvious place for each concept;
-- plain TypeScript types;
-- small classes with clear dependencies;
-- explicit constructor arguments;
-- minimal magic;
-- clear names instead of clever names.
-
-If a function or class is hard to explain, simplify it before adding comments.
-
-### Readability first
-
-Readable code is the default performance optimization for a growing codebase.
-
-Prefer:
-
-- descriptive method names;
-- small methods with one job;
-- named data objects instead of long positional argument lists;
-- direct control flow;
-- clear error messages;
-- files that are short enough to scan;
-- comments only when they explain intent, tradeoffs, or non-obvious behavior.
-
-Avoid:
-
-- hidden side effects;
-- overly broad utility functions;
-- deeply nested conditionals;
-- implicit global state;
-- mixing routing, validation, business logic, persistence, and external calls in
-  the same function.
-
-### Modular by default
-
-Each feature area should live in its own module. A module owns its public API,
-internal implementation, repositories, private types, and module-level wiring.
-
-For example, `services/auth` owns authentication behavior. Other code should use
-the public `authService` export or the `IAuthService` contract. Other modules
-should not reach into `services/auth/internal`.
-
-### Extensible without overengineering
-
-The codebase should make future changes easy, but not by adding speculative
-complexity.
-
-Extensibility here means:
-
-- clear contracts that can gain new implementations;
-- isolated modules that can grow without leaking internals;
-- dependency injection through constructors;
-- public types that describe stable boundaries;
-- internal types that can change freely;
-- infrastructure adapters that can be swapped when the platform changes.
-
-It does not mean creating an abstraction for every small helper.
-
-## Top-level Folder Responsibilities
-
-The current source tree is organized under `src`.
+## Source Layout
 
 ```txt
 src/
@@ -116,100 +27,66 @@ src/
 
 ### `src/index.ts`
 
-This is the Hono app entry point.
+`index.ts` is the Hono app entry point. It should create the app, register
+routes, wire middleware, call services, and translate service results or errors
+into HTTP responses.
 
-Use it for:
-
-- creating the Hono app;
-- registering routes;
-- wiring request-level middleware;
-- translating HTTP requests into service calls;
-- translating service results or errors into HTTP responses.
-
-Do not put business logic here. Route handlers should be thin. If a route starts
-making domain decisions, move that behavior into a service.
+Route handlers should stay thin. Do not put business workflows, repository
+calls, database clients, or platform-specific environment access in routes.
 
 ### `src/common`
 
-Use `common` only for very small, broadly shared primitives.
-
-Good examples:
+Use `common` for small shared primitives only:
 
 - root logger setup;
-- environment binding types and Hono adapter helpers;
+- environment helpers and binding types;
 - common exception types;
 - timestamp helpers;
-- small shared utility types.
+- tiny shared utility types.
 
-Bad examples:
+Do not put business rules, service-specific types, database helpers, or large
+utility dumping grounds in `common`.
 
-- business rules;
-- feature-specific validation;
-- service-specific data shapes;
-- database-specific helpers;
-- large utility modules that become a dumping ground.
-
-If a helper is only used by one service, keep it inside that service's
-`internal` folder.
-
-Environment access belongs in `common/env.ts`. Hono can run on different
-runtimes, and its adapter helper knows how to read environment values from the
-current platform, such as `process.env` on Node/Bun or `c.env` on Cloudflare
-Workers. Define application binding names in `AppBindings`, type the app with
-`AppEnv`, and use `getEnv`, `getEnvValue`, or `getStringEnvValue` instead of
-reading platform globals directly.
+Environment access belongs in `common/env.ts`. Hono can run on Node, Bun,
+Cloudflare Workers, and other runtimes. Use the Hono adapter helpers through
+`getEnv`, `getEnvValue`, or `getStringEnvValue` instead of reading
+`process.env`, `Deno.env`, or Cloudflare globals directly. Define runtime
+binding names in `AppBindings` and type the app with `AppEnv`.
 
 ### `src/infra`
 
-Use `infra` for infrastructure concerns that are not owned by one business
-service.
+Use `infra` for capabilities that are not owned by one business service:
 
-Examples:
-
-- database connection setup;
+- database client setup;
 - event bus implementations;
 - queue adapters;
 - external platform clients;
 - Cloudflare Worker bindings;
 - durable infrastructure services.
 
-Infrastructure modules can expose contracts the same way services do. For
-example, the event bus exposes `IEventBus` and has a development implementation
-called `DevEventBus`.
+Infrastructure may expose contracts, such as `IEventBus`, and implementations,
+such as `DevEventBus`. Infrastructure code should not contain feature-specific
+business rules.
 
-Infrastructure code should not contain feature-specific business rules. It
-should provide capabilities that services can use.
-
-Database clients live under `src/infra/db`. ClickHouse setup lives in
-`infra/db/clickhouse` and uses a simple module-level singleton. The client is
-created from Hono environment bindings on first use, then reused while the
-runtime keeps the module alive. This works for long-lived Node/Bun servers and
-for reused Cloudflare Worker isolates, while cold Worker starts naturally create
-a fresh client.
-
-Keep this singleton simple. Do not add per-request client construction,
-config-key maps, or custom query builders unless there is a measured need.
-Repositories should call the ClickHouse helper instead of constructing clients
-directly.
+ClickHouse setup lives in `infra/db/clickhouse`. Repositories use the
+initialized ClickHouse singleton helper instead of constructing clients
+directly. The singleton should stay simple: create the client from Hono
+environment bindings on first use, then reuse it while the runtime keeps the
+module alive. This works for long-lived Node/Bun servers and reused Worker
+isolates, while cold Worker starts naturally create a fresh client.
 
 ### `src/services`
 
-Use `services` for business modules.
+Use `services` for business modules such as auth, logging, billing, or tracing.
 
-Each service should represent a coherent business capability, such as auth,
-logging, billing, notification, tracing, or project management.
+A service module should expose its public contract and public types through
+`api`, keep implementation details under `internal`, keep persistence behind
+repository contracts, and export the ready-to-use service from module
+`index.ts`.
 
-Service modules should:
+## Service Module Shape
 
-- expose public contracts in `api`;
-- expose public data types in `api/types.ts`;
-- keep implementation details in `internal`;
-- keep persistence details behind repository contracts;
-- export the ready-to-use service from the module-level `index.ts`.
-
-## Standard Module Structure
-
-Use this structure for service modules:
+Use this structure when a service needs all parts:
 
 ```txt
 services/example/
@@ -228,21 +105,14 @@ services/example/
         ExampleRepoPg.ts
 ```
 
-Not every module needs every folder on day one. Add folders when there is a real
-need. For example, a service with no persistence does not need `repo`.
+Add folders when they are needed. A service with no persistence does not need a
+repository folder yet.
 
 ### Module `index.ts`
 
-The module-level `index.ts` is the public wiring point.
-
-It should:
-
-- import the public service contract;
-- import the concrete service implementation;
-- pass required dependencies into the implementation;
-- export the service as the public contract type.
-
-Example:
+The module `index.ts` is the public wiring point. It should import the service
+contract, import the implementation, pass dependencies into the implementation,
+and export the service as the contract type.
 
 ```ts
 import { rootLogger } from "../../common/logger";
@@ -252,36 +122,19 @@ import { AuthServiceImpl } from "./internal/service-impl/AuthServiceImpl";
 export const authService: IAuthService = new AuthServiceImpl(rootLogger);
 ```
 
-Consumers should import from the module root when they need the ready-to-use
-service:
-
-```ts
-import { authService } from "./services/auth";
-```
-
-They should import the contract only when they are declaring dependencies or
-types:
-
-```ts
-import { IAuthService } from "./services/auth/api/IAuthService";
-```
-
-They should not import from `internal`.
+Consumers should import ready-to-use services from the module root. Consumers
+should import contracts only when declaring dependencies or types. Consumers
+should not import from another module's `internal` folder.
 
 ### `api`
 
-The `api` folder defines the public surface of the module.
-
-It should contain:
-
-- the abstract service contract;
-- public request and response types;
-- domain types that external callers are allowed to know about.
+The `api` folder is the public surface of a module. It contains the abstract
+service contract and public request/response types.
 
 Keep `api` stable and intentional. Anything placed here becomes part of the
-module's public contract.
+module contract.
 
-Example:
+Use object parameters for public methods:
 
 ```ts
 export abstract class IAuthService {
@@ -293,21 +146,14 @@ export abstract class IAuthService {
 }
 ```
 
-Use data objects for method inputs. This keeps calls readable and makes it easy
-to add optional fields later.
-
 ### `internal`
 
-The `internal` folder contains private implementation details. Code outside the
-module should not import from it.
-
-This folder may contain:
+The `internal` folder contains private implementation details:
 
 - service implementations;
 - repository contracts and implementations;
 - private module types;
-- module-specific utility functions;
-- validation helpers;
+- module-specific helpers;
 - mappers between public types and persistence types.
 
 Internal code can change freely as long as the public `api` contract remains
@@ -315,25 +161,22 @@ compatible.
 
 ### `internal/service-impl`
 
-This folder contains concrete service implementations.
+Service implementations own business orchestration:
 
-Service implementations are responsible for business orchestration:
+- validate business preconditions;
+- call repositories;
+- call other services through contracts;
+- publish events;
+- handle domain-level errors;
+- log useful trace points.
 
-- validating business preconditions;
-- calling repositories;
-- calling other services through their contracts;
-- publishing events;
-- handling domain-level errors;
-- logging useful trace points.
-
-Service implementations should not directly contain SQL, database client calls,
+Service implementations should not contain SQL, direct database client calls,
 Cloudflare-specific code, or HTTP response formatting.
 
 ### `internal/repo`
 
-Use repositories for persistence access.
-
-The repository folder should contain:
+Repositories represent persistence behavior needed by a service, not raw tables
+or database clients.
 
 ```txt
 repo/
@@ -344,63 +187,76 @@ repo/
     ExampleRepoPg.ts
 ```
 
-The repository contract defines what the service needs from persistence. The
-implementation defines how a specific database provides that behavior.
+Repository contracts define what the service needs. Repository implementations
+define how a database provides it. Services depend on repository contracts;
+repository implementations may depend on infrastructure database clients.
 
-Keep service code dependent on the repository contract:
-
-```ts
-import { IAuthRepo } from "../repo/IAuthRepo";
-
-export class AuthServiceImpl extends IAuthService {
-  readonly authRepo: IAuthRepo;
-}
-```
-
-Repository implementations may depend on infrastructure database clients.
-Services should not.
-
-### `internal/repo/index.ts`
-
-The repository `index.ts` wires the default repository implementation.
-
-Example:
-
-```ts
-import { IAuthRepo } from "./IAuthRepo";
-import { AuthRepoPg } from "./impl/AuthRepoPg";
-
-export const authRepo: IAuthRepo = new AuthRepoPg();
-```
-
-When dependencies are required, prefer constructor injection instead of hidden
-imports.
+Repository implementation details and row types belong in repo-local `types.ts`,
+not in service public API types.
 
 ## Dependency Direction
 
-Dependency direction should stay simple and predictable.
-
 Allowed:
 
-- `index.ts` route handlers can call service public exports.
-- service implementations can depend on service contracts, repository contracts,
-  event bus contracts, and common primitives.
-- repository implementations can depend on database infrastructure.
-- infra implementations can depend on external libraries or platform clients.
-- shared common code can be imported by any layer.
+- routes call service public exports;
+- service implementations depend on contracts, repository contracts, event bus
+  contracts, and `common` primitives;
+- repository implementations depend on infrastructure database clients;
+- infrastructure implementations depend on external libraries or platform
+  clients;
+- shared `common` code can be imported by any layer.
 
 Avoid:
 
-- route handlers importing repositories directly;
+- routes importing repositories directly;
 - services importing database clients directly;
-- repositories importing Hono route code;
+- repositories importing route code;
 - one module importing another module's `internal` files;
-- common importing from services or infra;
+- `common` importing from services or infra;
 - circular dependencies between modules.
 
-As a rule of thumb, dependencies should point inward toward contracts and
-downward toward lower-level capabilities, not sideways into another module's
-private internals.
+Dependencies should point toward contracts and lower-level capabilities, not
+sideways into private internals.
+
+## Types
+
+Use TypeScript types to make boundaries obvious.
+
+- Public types belong in `api/types.ts`.
+- Private implementation types belong in `internal/.../types.ts`.
+- Use object parameters for public methods.
+- Prefer explicit return types on contracts and public methods.
+- Avoid `any`; use `unknown` when a shape is intentionally not known yet.
+- Keep public types stable and minimal.
+- Do not leak database-only shapes through public APIs.
+
+Prefer plain, readable types over clever composed types. If a type is part of a
+contract, write its fields directly instead of making readers chase intersections
+or utility types.
+
+Good:
+
+```ts
+export type EventBusPublishedEvent = {
+  topic: string;
+  idempotencyId: string;
+  key?: string;
+  data: unknown;
+  publishedAt: number;
+};
+```
+
+Avoid for public contracts:
+
+```ts
+export type EventBusPublishedEvent = EventBusPublishEvent & {
+  publishedAt: number;
+};
+```
+
+For timestamps, be consistent. The log service uses UTC milliseconds for trace
+timing. If a module needs another representation, document it in the type or
+helper.
 
 ## Logging
 
@@ -412,8 +268,7 @@ The root logger lives in `common/logger.ts`:
 export const rootLogger = new Logger({ name: "ROOT" });
 ```
 
-When creating a service, pass the appropriate parent logger into the
-implementation. The implementation should create a child logger:
+Implementations should create child loggers:
 
 ```ts
 this.logger = parentLogger.getSubLogger({
@@ -421,22 +276,18 @@ this.logger = parentLogger.getSubLogger({
 });
 ```
 
-When a service creates or receives lower-level dependencies, those dependencies
-should also receive an appropriate child logger. This gives the system traceable
-logs that show the path from the root, to the service, to the repository or
-infra adapter.
+When a service creates lower-level dependencies, those dependencies should
+receive the service logger and create their own child logger. This gives logs a
+clear path from root, to service, to repository or infrastructure adapter.
 
-Logging guidelines:
+Logging rules:
 
 - log method entry at `trace` when useful;
-- include enough context to debug a flow;
-- do not log passwords, tokens, OTPs, secrets, or raw credentials;
-- log caught errors before rethrowing when the caller needs to handle them;
-- prefer structured context when possible;
+- include safe context such as IDs and counts;
+- do not log passwords, tokens, OTPs, secrets, raw credentials, or raw payloads
+  that may contain sensitive data;
+- log caught errors before rethrowing when useful;
 - keep logger names aligned with class names.
-
-Current development code may still contain rough trace messages. New code should
-treat sensitive data carefully.
 
 ## Errors
 
@@ -449,47 +300,21 @@ code:
 throw new TopoTraceException("OTP Mismatch", 403);
 ```
 
-Guidelines:
+Services should throw domain errors when business rules fail. Repositories
+should throw persistence errors when storage fails. Routes should translate
+expected errors into HTTP responses.
 
-- throw domain errors from services when business rules fail;
-- translate errors into HTTP responses at the route boundary;
-- do not return `null`, `undefined`, or magic strings to represent failures;
-- preserve original errors where useful for debugging;
-- keep user-facing error messages clear and safe.
+Do not return `null`, `undefined`, or magic strings to represent failures.
 
-Repositories should throw persistence errors when storage fails. Services should
-decide whether to convert those errors into domain-level errors.
+## Route Rules
 
-## Types
-
-Use TypeScript types to make boundaries obvious.
-
-Public types belong in `api/types.ts` when callers outside the module need them.
-Private implementation types belong in `internal/.../types.ts`.
-
-Guidelines:
-
-- keep public types stable and minimal;
-- avoid leaking database-only shapes through public APIs;
-- use object parameters for public methods;
-- prefer explicit return types on contract methods and public methods;
-- use narrow union types when they describe real states;
-- avoid `any`;
-- use `unknown` when the shape is intentionally not known yet.
-
-For timestamps, be consistent. The log service currently uses UTC milliseconds
-for trace timing. If a module needs another time representation, document that
-choice in the type or helper.
-
-## Route Handler Rules
-
-Hono route handlers should be adapters between HTTP and services.
+Hono route handlers are adapters between HTTP and services.
 
 A good route handler:
 
 - reads request input;
 - reads runtime configuration through `common/env.ts` helpers when needed;
-- performs request-shape validation when needed;
+- validates request shape when needed;
 - calls one service method;
 - maps the result to a response;
 - maps expected errors to status codes.
@@ -500,52 +325,59 @@ A route handler should not:
 - publish events directly unless the route itself is an infrastructure endpoint;
 - contain long business workflows;
 - know about repository implementations;
-- construct service internals inline.
-- read directly from `process.env`, `Deno.env`, or Cloudflare-specific globals.
-
-If a route needs several steps, create a service method that represents the
-workflow.
+- construct service internals inline;
+- read directly from platform environment globals.
 
 Authenticated routes should pass the resolved `userId` into service contracts
-that operate on user-owned data. For example, log ingestion receives `userId`
-from auth/request context and persists it with trace events. The log service
-should store that ownership reference, but it should not import auth internals
-or decide how authentication works.
+that operate on user-owned data. The log service stores user ownership with
+trace events, but it should not import auth internals or decide how
+authentication works.
 
 ## Event Bus
 
 The event bus is an infrastructure capability. Its contract lives in
 `infra/event-bus/api/IEventBus.ts`.
 
-The event bus should handle:
+The event bus contract is batch-native:
 
-- publishing one or more events as a batch;
-- routing events by topic;
+- `publish(events, options)` accepts one or more events;
+- `subscribe(options, handler)` delivers arrays to the handler;
+- `batchSize` is a requested maximum or hint, not a guarantee;
+- handlers must work for any non-empty batch size;
+- implementations should avoid invoking handlers with empty batches.
+
+The event bus should handle or emulate:
+
+- routing by `topic`;
 - idempotency through `idempotencyId`;
-- batch correlation through optional `batchId`, which is not a dedupe key;
-- durable delivery where the implementation supports it;
-- ordered delivery per event `key` where the implementation supports it;
-- coalescing or dedupe windows where the implementation supports or emulates it;
-- subscription and handler registration by consumer name;
-- subscriber batch sizing where the implementation supports it.
+- batch correlation through optional `batchId`;
+- durable delivery where the backend supports it;
+- ordered delivery per event `key`;
+- coalescing or dedupe windows where needed;
+- subscription and handler registration by `consumerName`.
 
-Services should publish events through the `IEventBus` contract, not through a
-specific implementation.
+Services publish through the `IEventBus` contract, not through a specific
+implementation. Services provide stable event metadata; the implementation
+translates that metadata into the selected broker's real primitives. If a broker
+does not support idempotency, ordering, durability, or coalescing natively, the
+implementation should add the needed storage, lock, TTL, or dedupe layer.
 
-Services should provide stable event metadata. The implementation is responsible
-for translating that metadata into the selected broker's real primitives. If a
-broker does not support idempotency, ordering, durability, or coalescing
-natively, the implementation should add the needed storage, lock, TTL, or dedupe
-layer.
+Use event fields this way:
 
-For trace read-model rebuild requests, prefer an event `key` such as
-`userId:traceId` so repeated ingests for the same trace can be ordered or
-coalesced by the implementation.
+- `topic`: stable event name, such as `log.trace.ingested`;
+- `idempotencyId`: stable identity for the same logical work;
+- `key`: ordering lane, such as a `traceId`;
+- `data`: intentionally small payload;
+- `batchId`: observability correlation for one publish call, not a dedupe key.
 
-Event payloads should be intentionally shaped. Avoid sending huge raw objects
-when a small event payload is enough.
+For trace read-model rebuild requests, use `traceId` as the event `key` so work
+inside one trace can stay ordered. The listener should still coalesce repeated
+events for the same trace within a received batch.
 
-Event naming should be clear and stable. Prefer names like:
+Listeners should be idempotent because real brokers may retry full batches or
+redeliver individual events.
+
+Prefer clear event names:
 
 ```txt
 auth.signup.started
@@ -553,13 +385,9 @@ auth.signup.completed
 log.trace.ingested
 ```
 
-We will define stricter publisher and listener conventions when the system has
-real event publishers and subscribers.
-
 ## Repository Rules
 
-Repositories should represent persistence behavior needed by a service, not raw
-database tables.
+Repositories should represent persistence behavior needed by a service.
 
 Good repository method names:
 
@@ -568,91 +396,73 @@ Good repository method names:
 - `upsertUserTokenOTP`
 - `getUserByFilter`
 
-Avoid repository methods that expose database implementation details to service
-code, such as:
+Avoid repository methods that expose database implementation details:
 
 - `runSql`
 - `queryUsersTable`
 - `selectFromAuthSchema`
 
-Repository implementations should:
+Repository implementations should map database rows to module types, keep SQL
+or client-specific query code out of services, throw useful errors when records
+are missing or invalid, and avoid returning raw database client responses.
 
-- map database rows to module types;
-- keep SQL or client-specific query code out of services;
-- throw useful errors when records are missing or invalid;
-- handle database-specific constraints close to the database layer;
-- avoid returning raw database client responses.
-
-## Implementation Naming
+## Naming
 
 Use consistent names:
 
-- service contract: `IAuthService`
-- service implementation: `AuthServiceImpl`
-- repository contract: `IAuthRepo`
-- postgres repository implementation: `AuthRepoPg`
-- development implementation: `DevEventBus`
-- module public export: `authService`
+- service contract: `IAuthService`;
+- service implementation: `AuthServiceImpl`;
+- repository contract: `IAuthRepo`;
+- postgres repository implementation: `AuthRepoPg`;
+- ClickHouse repository implementation: `LogWriteRepoClickHouse`;
+- development implementation: `DevEventBus`;
+- module public export: `authService`.
 
-The `I` prefix is used here because contracts are abstract classes and the
-existing codebase has already chosen that convention.
+The `I` prefix is used because contracts are abstract classes and the codebase
+already follows that convention.
 
-## Adding a New Service
+## Adding Code
 
-When adding a new business service:
+When adding a new service:
 
 1. Create `services/<name>/api/I<Name>Service.ts`.
-2. Add public request and response types in `services/<name>/api/types.ts` if
+2. Add public request and response types in `services/<name>/api/types.ts` when
    needed.
 3. Create `services/<name>/internal/service-impl/<Name>ServiceImpl.ts`.
-4. Add a repository contract under `internal/repo` if the service needs
-   persistence.
-5. Add a concrete repository implementation under `internal/repo/impl` if
+4. Add a repository contract under `internal/repo` if persistence is needed.
+5. Add a concrete repository implementation under `internal/repo/impl` when
    persistence is ready.
 6. Wire the implementation in `services/<name>/index.ts`.
 7. Use the service from routes through the module-level export.
-8. Keep tests and examples focused on the public contract.
 
-Before adding cross-service dependencies, ask whether the dependency should be:
+When adding a repository implementation:
 
-- a direct service contract dependency;
-- an event published through the event bus;
-- a shared primitive in `common`;
-- a separate infrastructure capability.
-
-## Adding a New Repository Implementation
-
-When adding a new repository implementation:
-
-1. Keep the existing repository contract stable if possible.
+1. Keep the repository contract stable if possible.
 2. Add the implementation under `internal/repo/impl`.
 3. Inject infrastructure dependencies through the constructor.
 4. Map database shapes to module types inside the repository.
 5. Update `internal/repo/index.ts` to choose the default implementation.
-6. Do not change service logic unless the business behavior itself changed.
+6. Do not change service logic unless business behavior changed.
 
-Example implementation names:
+Before adding a cross-service dependency, consider whether it should be a direct
+service contract dependency, an event published through the event bus, a shared
+primitive in `common`, or a separate infrastructure capability.
 
-- `AuthRepoPg` for Postgres;
-- `LogWriteRepoClickHouse` for ClickHouse;
-- `AuthRepoMemory` for tests or development.
+## AI Agent Rules
 
-## AI Agent Instructions
+When an AI agent works in this codebase:
 
-When an AI agent works in this codebase, it should follow these rules:
-
-- Read this document before making architectural changes.
-- Inspect the existing module before adding new files.
-- Prefer the existing module structure over inventing a new one.
-- Keep changes scoped to the requested behavior.
-- Do not import from another module's `internal` folder.
-- Do not place business logic in route handlers.
-- Do not bypass service or repository contracts.
-- Do not add new global state unless it is a deliberate infrastructure singleton.
-- Do not make broad refactors while implementing a focused change.
-- If current code is incomplete, extend it in the intended direction instead of
-  patching around the architecture.
-- Preserve loose coupling, readability, and simple dependency flow.
+- read this guide before architectural changes;
+- inspect the existing module before adding files;
+- prefer existing structure over inventing a new one;
+- keep changes scoped to the requested behavior;
+- do not import from another module's `internal` folder;
+- do not put business logic in routes;
+- do not bypass service or repository contracts;
+- do not add global state unless it is a deliberate infrastructure singleton;
+- do not make broad refactors while implementing focused behavior;
+- extend incomplete code in the intended direction instead of patching around
+  the architecture.
 
 After every code change, run Fallow before finishing:
 
@@ -667,42 +477,34 @@ drift. Use `bun run fallow:full` for a full-repo advisory scan and
 only to preview automatic cleanup; do not apply fixes without reviewing the
 diff.
 
-If there are multiple reasonable approaches, choose the one that is easiest for
-another developer to read and change later.
-
 ## Quality Checklist
 
 Before finishing a change, check:
 
-- Does the code depend on contracts instead of concrete implementations where it
-  matters?
-- Is the business logic inside a service, not a route or repository?
-- Are infrastructure details isolated in `infra` or repository implementations?
+- Does code depend on contracts where it matters?
+- Is business logic inside a service?
+- Are infrastructure details isolated in `infra` or repositories?
 - Are public types in `api` and private types in `internal`?
-- Are imports avoiding other modules' internal folders?
-- Is the logger passed through and named clearly?
-- Are sensitive values excluded from logs?
-- Are errors explicit and useful?
-- Has `bun run fallow` been run after the change?
-- Is the code simple enough to explain without a diagram?
+- Are imports avoiding another module's `internal` folder?
+- Is logging safe and useful?
+- Are errors explicit?
+- Has `bun run fallow` been run?
+- Is the code simple enough to explain quickly?
 - Would a new developer know where to extend this feature?
 
-## Current Architecture Summary
+## Current State
 
 The server is a Hono app intended to run on Cloudflare Workers through Wrangler.
 
 Current major areas:
 
 - `src/index.ts` creates the Hono app.
-- `src/common` contains shared primitives such as the root logger and common
-  exception type.
-- `src/infra/event-bus` defines the event bus contract and a development
-  implementation.
-- `src/infra/db` contains shared database setup, including the ClickHouse
-  singleton client and append-only event table schema.
-- `src/services/auth` owns authentication contracts and implementation.
-- `src/services/log` owns trace/log ingestion contracts and implementation.
+- `src/common` contains shared primitives.
+- `src/infra/event-bus` defines the event bus contract and development bus.
+- `src/infra/db` contains shared database setup, including ClickHouse.
+- `src/services/auth` owns authentication.
+- `src/services/log` owns trace/log ingestion and read-model aggregation.
 
-The codebase is still early. Some implementations are placeholders. As the
-server grows, new work should complete those placeholders while preserving this
-contract-driven, modular structure.
+The codebase is still early. Some implementations are placeholders. New work
+should complete those placeholders while preserving the contract-driven,
+modular structure.

@@ -13,7 +13,11 @@ export type EventBusPublishEvent = {
   data: unknown;
 };
 
-export type EventBusPublishedEvent = EventBusPublishEvent & {
+export type EventBusPublishedEvent = {
+  topic: string;
+  idempotencyId: string;
+  key?: string;
+  data: unknown;
   publishedAt: number;
 };
 
@@ -32,5 +36,5 @@ export type EventBusSubscribeOptions = {
 };
 
 export type EventBusHandler = (
-  event: EventBusPublishedEvent,
+  events: EventBusPublishedEvent[],
 ) => Promise<void>;

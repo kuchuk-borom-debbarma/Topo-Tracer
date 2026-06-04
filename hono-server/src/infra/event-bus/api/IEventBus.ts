@@ -22,6 +22,10 @@ export abstract class IEventBus {
     options?: EventBusPublishOptions,
   ): Promise<void>;
 
+  /**
+   * Subscribe a consumer to a topic. Handlers receive event arrays because real
+   * brokers often deliver batches even when publishers send one event at a time.
+   */
   abstract subscribe(
     options: EventBusSubscribeOptions,
     handler: EventBusHandler,
