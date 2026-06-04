@@ -36,7 +36,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Edge start ingestion accepts `fromNodeId` and `toNodeId` as required graph endpoint fields.
   2. Raw ClickHouse edge event rows persist endpoint values as `from_node_id` and `to_node_id`.
   3. Existing append-only edge ingestion continues to publish read-model work only after persistence succeeds.
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 01-01-PLAN.md — Add public edge-start endpoint contract and service validation for RSCH-01.
+- [ ] 01-02-PLAN.md — Persist explicit endpoint and lifecycle columns in raw ClickHouse edge rows for RSCH-02.
 
 ### Phase 2: Read Schema And Repository Contracts
 **Goal**: The read side has stable ClickHouse tables, plain TypeScript contracts, and repository boundaries for latest nodes, latest edges, summaries, and checkpoints.
