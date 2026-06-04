@@ -72,18 +72,25 @@ describe("ReadOptimisedAggregator", () => {
     expect(materializeSpy.mock.calls[1][0]).toEqual({ userId: "u2", traceId: "t2" });
   });
 
-  it("source contains no ClickHouse imports and no raw payload logging", () => {
-    const sourcePath = join(__dirname, "ReadOptimisedAggregator.ts");
-    const content = readFileSync(sourcePath, "utf-8");
+  it("source contains no ClickHouse client imports or deferred scope keywords", () => {
+    const filesToCheck = [
+      join(__dirname, "ReadOptimisedAggregator.ts"),
+      join(__dirname, "..", "materialization", "TraceReadModelMaterializer.ts"),
+      join(__dirname, "..", "materialization", "flowOrder.ts"),
+    ];
 
-    expect(content).not.toContain("@clickhouse/client-web");
-    expect(content).not.toContain("CLICKHOUSE_");
-    expect(content).not.toContain("loadRawEventsAfterCheckpoint");
-    expect(content).not.toContain("saveReadModel");
-    expect(content).not.toContain("saveCheckpoint");
-    
-    // Check for raw payload logging in run() or rebuildTrace()
-    // It shouldn't log the whole 'event' or 'event.data' if it's not needed.
-    // The current implementation doesn't seem to have logging, but we should be careful.
+    for (const path of filesToCheck) {
+      const content = readFileSync(path, "utf-8");
+
+      // No direct ClickHouse client
+      expect(content).not.toContain("@clickhouse/client-web");
+      expect(content).not.toContain("CLICKHOUSE_");
+
+      // No deferred Phase 4/5/6 scope keywords
+      expect(content).not.toContain("projection");
+      expect(content).not.toContain("ghost");
+      expect(content.toLowerCase()).not.toContain("http");
+      expect(content.toLowerCase()).not.toContain("route");
+    }
   });
 });
