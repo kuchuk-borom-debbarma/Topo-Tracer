@@ -40,6 +40,7 @@ export class LogServiceImpl extends ILogService {
     });
 
     try {
+      this.validateEdgeStarts(data.edgeStarts);
       // Service owns orchestration; persistence stays behind the repo contract.
       await this.writeRepo.ingestNodesNEdges(data);
 
@@ -76,6 +77,21 @@ export class LogServiceImpl extends ILogService {
       this.logger.error(err);
       throw err;
     }
+  }
+
+  private validateEdgeStarts(edgeStarts: IngestEdgeStart[]): void {
+    for (const edge of edgeStarts) {
+      if (
+        !this.isNonEmptyString(edge.fromNodeId) ||
+        !this.isNonEmptyString(edge.toNodeId)
+      ) {
+        throw new Error("Edge start requires fromNodeId and toNodeId.");
+      }
+    }
+  }
+
+  private isNonEmptyString(value: unknown): value is string {
+    return typeof value === "string" && value.trim().length > 0;
   }
 
   private getTraceIds(data: {

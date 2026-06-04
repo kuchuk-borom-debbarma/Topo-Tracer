@@ -18,6 +18,9 @@ export type IngestEdgeStart = {
   id: string;
   traceId: string;
   edgeType: string;
+  fromNodeId: string;
+  toNodeId: string;
+  data: Record<string, string>;
   startedAt: number; //UTC Milisecond
 };
 export type IngestEdgeEnd = {
