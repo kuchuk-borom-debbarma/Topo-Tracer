@@ -20,7 +20,7 @@ organization, and verification expectations for this project.
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Edge Endpoint Raw Contract** - Hono edge ingestion and raw edge storage carry explicit `fromNodeId` and `toNodeId` endpoint data.
+- [x] **Phase 1: Edge Endpoint Raw Contract** - Hono edge ingestion and raw edge storage carry explicit `fromNodeId` and `toNodeId` endpoint data. (completed 2026-06-04)
 - [ ] **Phase 2: Read Schema And Repository Contracts** - ClickHouse read tables, plain read-model types, and repository contracts exist for latest state, summaries, and checkpoints.
 - [ ] **Phase 3: Checkpointed Materialization** - Read-model materialization incrementally folds raw events through checkpoints and writes latest read rows through repositories.
 - [ ] **Phase 4: Bounded Projection Data Access** - Projection repository methods are trace-scoped and enforce hard node, edge, and scan caps before projection logic depends on them.
@@ -48,7 +48,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Persist explicit endpoint and lifecycle columns in raw ClickHouse edge rows for RSCH-02.
+- [x] 01-02-PLAN.md — Persist explicit endpoint and lifecycle columns in raw ClickHouse edge rows for RSCH-02.
 
 ### Phase 2: Read Schema And Repository Contracts
 
@@ -130,7 +130,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Edge Endpoint Raw Contract | 1/2 | In Progress|  |
+| 1. Edge Endpoint Raw Contract | 2/2 | Complete   | 2026-06-04 |
 | 2. Read Schema And Repository Contracts | 0/TBD | Not started | - |
 | 3. Checkpointed Materialization | 0/TBD | Not started | - |
 | 4. Bounded Projection Data Access | 0/TBD | Not started | - |

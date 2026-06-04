@@ -8,7 +8,7 @@
 ### Read Schema
 
 - [x] **RSCH-01**: Hono edge start ingestion data includes `fromNodeId` and `toNodeId` so read edges can connect two explicit graph nodes.
-- [ ] **RSCH-02**: Raw ClickHouse edge event rows persist `from_node_id` and `to_node_id` for edge start events.
+- [x] **RSCH-02**: Raw ClickHouse edge event rows persist `from_node_id` and `to_node_id` for edge start events.
 - [ ] **RSCH-03**: ClickHouse read node rows store latest node state scoped by `user_id`, `trace_id`, and node id.
 - [ ] **RSCH-04**: ClickHouse read node rows store `importance_level` and `flow_order` for threshold projection.
 - [ ] **RSCH-05**: ClickHouse read edge rows store latest edge state scoped by `user_id`, `trace_id`, and edge id.
@@ -91,7 +91,7 @@ Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | RSCH-01 | Phase 1 | Complete |
-| RSCH-02 | Phase 1 | Pending |
+| RSCH-02 | Phase 1 | Complete |
 | RSCH-03 | Phase 2 | Pending |
 | RSCH-04 | Phase 2 | Pending |
 | RSCH-05 | Phase 2 | Pending |
