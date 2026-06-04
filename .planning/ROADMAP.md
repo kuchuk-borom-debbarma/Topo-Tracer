@@ -44,7 +44,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Add public edge-start endpoint contract and service validation for RSCH-01.
+- [x] 01-01-PLAN.md — Add public edge-start endpoint contract and service validation for RSCH-01.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -130,7 +130,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Edge Endpoint Raw Contract | 0/TBD | Not started | - |
+| 1. Edge Endpoint Raw Contract | 1/2 | In Progress|  |
 | 2. Read Schema And Repository Contracts | 0/TBD | Not started | - |
 | 3. Checkpointed Materialization | 0/TBD | Not started | - |
 | 4. Bounded Projection Data Access | 0/TBD | Not started | - |
