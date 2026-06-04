@@ -1,4 +1,5 @@
 import { Logger } from "tslog";
+import type { ClickHouseClient } from "@clickhouse/client-web";
 import {
   CLICKHOUSE_EDGE_EVENTS_TABLE,
   CLICKHOUSE_NODE_EVENTS_TABLE,
@@ -15,12 +16,17 @@ import { EdgeEventRow, NodeEventRow } from "../types";
 
 export class LogWriteRepoClickHouse extends ILogWriteRepo {
   readonly logger: Logger<unknown>;
+  private readonly getClient: () => Pick<ClickHouseClient, "insert">;
 
-  constructor(parentLogger: Logger<unknown>) {
+  constructor(
+    parentLogger: Logger<unknown>,
+    getClient: () => Pick<ClickHouseClient, "insert"> = getInitializedClickHouseClient,
+  ) {
     super();
     this.logger = parentLogger.getSubLogger({
       name: "LogWriteRepoClickHouse",
     });
+    this.getClient = getClient;
   }
 
   private buildNodeRows(data: {
@@ -35,7 +41,8 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         user_id: data.userId,
         trace_id: node.traceId,
         event_type: 0,
-        timestamp_ms: node.startedAt,
+        started_at_ms: node.startedAt,
+        ended_at_ms: null,
         node_type: node.nodeType,
         data: node.data,
         message: node.startMessage ?? null,
@@ -47,7 +54,8 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         user_id: data.userId,
         trace_id: node.traceId,
         event_type: 1,
-        timestamp_ms: node.endedAt,
+        started_at_ms: null,
+        ended_at_ms: node.endedAt,
         node_type: null,
         data: {},
         message: node.endMessage ?? null,
@@ -68,8 +76,12 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         user_id: data.userId,
         trace_id: edge.traceId,
         event_type: 0,
-        timestamp_ms: edge.startedAt,
+        started_at_ms: edge.startedAt,
+        ended_at_ms: null,
         edge_type: edge.edgeType,
+        from_node_id: edge.fromNodeId,
+        to_node_id: edge.toNodeId,
+        data: edge.data,
       })),
       // End events only mark completion; edge type is start-only.
       ...data.edgeEnds.map((edge): EdgeEventRow => ({
@@ -77,8 +89,12 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         user_id: data.userId,
         trace_id: edge.traceId,
         event_type: 1,
-        timestamp_ms: edge.endedAt,
+        started_at_ms: null,
+        ended_at_ms: edge.endedAt,
         edge_type: null,
+        from_node_id: null,
+        to_node_id: null,
+        data: {},
       })),
     ];
   }
@@ -99,7 +115,7 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
       edgeRows: edgeRows.length,
     });
 
-    const client = getInitializedClickHouseClient();
+    const client = this.getClient();
 
     if (nodeRows.length > 0) {
       await client.insert({
