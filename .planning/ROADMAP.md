@@ -63,7 +63,19 @@ Plans:
   4. Materialization checkpoint rows store per-trace raw source progress separately from latest read state.
   5. Public and internal read-model types are plain explicit types in the `api` or `internal` files required by `hono-server/src/code-base.md`.
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Define read-model public/internal types and materialization-facing `ILogReadRepo` contract.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — Add fully commented ClickHouse read-model DDL for latest nodes, latest edges, summaries, and checkpoints.
+
+**Wave 3** *(blocked on Wave 1 and Wave 2 completion)*
+
+- [ ] 02-03-PLAN.md — Add ClickHouse read repository skeleton, fake-client mapping tests, and repository factory wiring.
 
 ### Phase 3: Checkpointed Materialization
 
@@ -131,7 +143,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Edge Endpoint Raw Contract | 2/2 | Complete   | 2026-06-04 |
-| 2. Read Schema And Repository Contracts | 0/TBD | Not started | - |
+| 2. Read Schema And Repository Contracts | 0/3 | Planned    | - |
 | 3. Checkpointed Materialization | 0/TBD | Not started | - |
 | 4. Bounded Projection Data Access | 0/TBD | Not started | - |
 | 5. Ghost Projection Logic | 0/TBD | Not started | - |
