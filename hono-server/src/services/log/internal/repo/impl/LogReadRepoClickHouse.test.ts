@@ -450,14 +450,40 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
     });
   });
 
-  test("loadBoundedVisibleNodes implementation does not call loadLatestReadModel", async () => {
+  test("bounded projection methods implementation do not call loadLatestReadModel", async () => {
     const repo = LogReadRepoClickHouse.prototype;
-    const body = repo.loadBoundedVisibleNodes.toString();
     
-    // It should not call its sibling method which loads everything
-    expect(body).not.toContain("this.loadLatestReadModel");
-    // It should not contain the string literal either
-    expect(body).not.toContain("loadLatestReadModel");
+    for (const methodName of ["loadBoundedVisibleNodes", "loadBoundedVisibleEdges"] as const) {
+      const body = repo[methodName].toString();
+      // It should not call its sibling method which loads everything
+      expect(body).not.toContain("this.loadLatestReadModel");
+      // It should not contain the string literal either
+      expect(body).not.toContain("loadLatestReadModel");
+    }
+  });
+
+  test("Phase 4 source boundary: no leaks of future features or cross-cutting concerns", async () => {
+    // Read the implementation file content
+    const fs = require("fs");
+    const path = require("path");
+    const implPath = path.join(__dirname, "LogReadRepoClickHouse.ts");
+    const content = fs.readFileSync(implPath, "utf-8");
+
+    // Forbidden terms that belong to Phase 5+ or other layers
+    const forbidden = [
+      "ghost",
+      "snapped",
+      "aggregate edge", // we use 'edges' table but not 'aggregate'
+      "getProjectedGraph",
+      "/telemetry",
+      "frontend",
+      "sdk/nodejs",
+      "carno.js",
+    ];
+
+    for (const term of forbidden) {
+      expect(content.toLowerCase()).not.toContain(term.toLowerCase());
+    }
   });
 });
 
