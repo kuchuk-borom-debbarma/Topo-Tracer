@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 // @ts-ignore
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 // @ts-ignore
 import { resolve } from "node:path";
 
@@ -14,6 +14,27 @@ const currentDir = import.meta.dir;
 const API_TYPES_PATH = resolve(currentDir, "../../api/types.ts");
 const REPO_TYPES_PATH = resolve(currentDir, "./types.ts");
 const REPO_CONTRACT_PATH = resolve(currentDir, "./ILogReadRepo.ts");
+const LOG_DIR = resolve(currentDir, "../../");
+
+function listSourceFiles(dir: string): string[] {
+  const files: string[] = [];
+
+  for (const entry of readdirSync(dir)) {
+    const entryPath = resolve(dir, entry);
+    const stats = statSync(entryPath);
+
+    if (stats.isDirectory()) {
+      files.push(...listSourceFiles(entryPath));
+      continue;
+    }
+
+    if (entryPath.endsWith(".ts") && !entryPath.endsWith(".test.ts")) {
+      files.push(entryPath);
+    }
+  }
+
+  return files;
+}
 
 describe("ILogReadRepo Contract Assertions", () => {
   describe("Public API Types (api/types.ts)", () => {
@@ -172,8 +193,7 @@ describe("ILogReadRepo Contract Assertions", () => {
     });
   });
 
-  describe("Source Boundary Assertions (Phase 5)", () => {
-    const LOG_DIR = resolve(currentDir, "../../");
+  describe("Source Boundary Assertions (Phase 5/6)", () => {
     const forbiddenPatterns = [
       "ancestorPath",
       "ancestryPath",
@@ -183,16 +203,20 @@ describe("ILogReadRepo Contract Assertions", () => {
       "carno.js",
       "/telemetry/traces",
       "cursor",
-      "drill"
+      "drill",
+      "ghost_nodes",
+      "storedGhost",
+      "materializedGhost",
+      "loadGhosts",
+      "pagination",
+      "windowing",
+      "broker repair",
+      "repair ordering",
+      "sort raw events"
     ];
 
     test("Hono log service files should not contain forbidden patterns", () => {
-      const filesToCheck = [
-        resolve(LOG_DIR, "api/ILogService.ts"),
-        resolve(LOG_DIR, "internal/service-impl/LogServiceImpl.ts"),
-        resolve(LOG_DIR, "internal/projection/LogGraphProjector.ts"),
-        resolve(LOG_DIR, "internal/repo/ILogReadRepo.ts")
-      ];
+      const filesToCheck = listSourceFiles(LOG_DIR);
 
       for (const filePath of filesToCheck) {
         const content = readFileSync(filePath, "utf-8");
