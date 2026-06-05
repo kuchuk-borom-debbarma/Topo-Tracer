@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 4 context gathered
-last_updated: "2026-06-05T05:50:40.216Z"
-last_activity: 2026-06-05 -- Phase 04 planning complete
+last_updated: "2026-06-05T05:53:34.366Z"
+last_activity: 2026-06-05
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 50
 ---
 
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 4 of 6 (bounded projection data access)
-Plan: 1 of 3
-Status: Executing
-Last activity: 2026-06-05 -- Phase 04 Plan 01 complete
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-06-05
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [████████░░] 82%
 | Phase 03 P02 | 30min | 2 tasks | 5 files |
 | Phase 03 P03 | 25min | 2 tasks | 3 files |
 | Phase 04 P01 | 15min | 3 tasks | 3 files |
+| Phase 04 P02 | 10min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,9 @@ Progress: [████████░░] 82%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [Log]: Use `LIMIT cap + 1` to detect cap-hit in a single round trip (D-01/D-03). (2026-06-05)
+- [Log]: Enforce `DEFAULT_PROJECTION_NODE_CAP` internally in the repository (D-04/D-05). (2026-06-05)
+- [Log]: Forbid `loadBoundedVisibleNodes` from calling `loadLatestReadModel` to ensure performance (D-12). (2026-06-05)
 - [Log]: Repository-level cap constants (500 nodes, 2000 edges) are used instead of caller-provided limits for v1. (2026-06-05)
 - [Log]: Projection result types carry explicit cap metadata (capHit, returnedCount) to inform the UI about truncated data. (2026-06-05)
 - [Log]: Materializer uses Kahn's algorithm for deterministic topological flow order (2026-06-05)
@@ -91,6 +95,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05T05:50:40.211Z
+Last session: 2026-06-05T05:53:34.361Z
 Stopped at: Phase 4 context gathered
 Resume file: None
