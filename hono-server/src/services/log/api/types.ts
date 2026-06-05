@@ -96,3 +96,19 @@ export type ReadCheckpoint = {
 
   checkpointedAt: number;
 };
+
+export type ProjectionReadCap = {
+  cap: number;
+  returnedCount: number;
+  capHit: boolean;
+};
+
+export type BoundedVisibleNodesResult = {
+  nodes: ReadNode[];
+  cap: ProjectionReadCap;
+};
+
+export type BoundedVisibleEdgesResult = {
+  edges: ReadEdge[];
+  cap: ProjectionReadCap;
+};
