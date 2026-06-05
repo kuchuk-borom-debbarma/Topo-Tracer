@@ -48,10 +48,10 @@
 - [x] **SAFE-02**: Projection repository methods enforce a maximum number of projected edges returned for one projection operation.
 - [x] **SAFE-03**: Projection repository methods do not fetch all nodes or all edges for a trace unless an explicit test fixture proves the trace is within configured safe limits.
 - [x] **SAFE-04**: Projection queries are scoped by `user_id` and `trace_id`.
-- [ ] **SAFE-05**: Tests cover duplicate event delivery and prove checkpointed materialization is idempotent.
-- [ ] **SAFE-06**: Tests cover late or out-of-order events and document the chosen deterministic ordering behavior.
+- [x] **SAFE-05**: Tests cover duplicate event delivery and prove checkpointed materialization is idempotent.
+- [x] **SAFE-06**: Tests cover late or out-of-order events and document the chosen deterministic ordering behavior.
 - [x] **SAFE-07**: Tests cover ghost projection cases: visible-hidden-visible chains, hidden prefixes, hidden suffixes, all-hidden traces, dense hidden edges, and orphan edges.
-- [ ] **SAFE-08**: Logs for materialization and projection include safe summaries such as `userId`, `traceId`, counts, thresholds, caps, and durations, without logging raw node or edge payloads.
+- [x] **SAFE-08**: Logs for materialization and projection include safe summaries such as `userId`, `traceId`, counts, thresholds, caps, and durations, without logging raw node or edge payloads.
 
 ## v2 Requirements
 
@@ -122,10 +122,10 @@ Populated during roadmap creation.
 | SAFE-02 | Phase 4 | Complete |
 | SAFE-03 | Phase 4 | Complete |
 | SAFE-04 | Phase 4 | Complete |
-| SAFE-05 | Phase 6 | Pending |
-| SAFE-06 | Phase 6 | Pending |
+| SAFE-05 | Phase 6 | Complete |
+| SAFE-06 | Phase 6 | Complete |
 | SAFE-07 | Phase 6 | Complete |
-| SAFE-08 | Phase 6 | Pending |
+| SAFE-08 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 35 total

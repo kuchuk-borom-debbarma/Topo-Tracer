@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Checkpointed Materialization** - Read-model materialization incrementally folds raw events through checkpoints and writes latest read rows through repositories. (completed 2026-06-05)
 - [x] **Phase 4: Bounded Projection Data Access** - Projection repository methods are trace-scoped and enforce hard node, edge, and scan caps before projection logic depends on them. (completed 2026-06-05)
 - [x] **Phase 5: Ghost Projection Logic** - Importance-threshold projection returns visible nodes, deterministic ghost nodes, snapped edges, aggregate edges, and response metadata. (completed 2026-06-05)
-- [ ] **Phase 6: Verification And Safe Observability** - Tests and logs lock down idempotency, late-event ordering, ghost edge cases, safety caps, and safe runtime summaries.
+- [x] **Phase 6: Verification And Safe Observability** - Tests and logs lock down idempotency, late-event ordering, ghost edge cases, safety caps, and safe runtime summaries. (completed 2026-06-05)
 
 ## Phase Details
 
@@ -172,4 +172,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Checkpointed Materialization | 3/3 | Complete   | 2026-06-05 |
 | 4. Bounded Projection Data Access | 3/3 | Complete   | 2026-06-05 |
 | 5. Ghost Projection Logic | 3/3 | Complete   | 2026-06-05 |
-| 6. Verification And Safe Survivability | 2/3 | In Progress|  |
+| 6. Verification And Safe Observability | 3/3 | Complete   | 2026-06-05 |
