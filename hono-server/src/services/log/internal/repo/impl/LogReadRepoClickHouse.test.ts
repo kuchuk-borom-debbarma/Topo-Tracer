@@ -360,7 +360,6 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
 
     fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows;
 
-    // @ts-ignore - method doesn't exist yet
     const result = await repo.loadBoundedVisibleNodes({
       userId: "u1",
       traceId: "t1",
@@ -386,5 +385,78 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
       threshold: 2,
       limit: DEFAULT_PROJECTION_NODE_CAP + 1,
     });
+  });
+
+  test("loadBoundedVisibleNodes maps all fields correctly and handles non-cap-hit", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    const materializedAt = Date.now();
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = [
+      {
+        id: "n1",
+        user_id: "u1",
+        trace_id: "t1",
+        node_type: "op",
+        data: { foo: "bar" },
+        started_at_ms: 1000,
+        ended_at_ms: 1100,
+        start_message: "start",
+        end_message: "end",
+        importance_level: 1,
+        flow_order: 5,
+        materialized_at_ms: materializedAt,
+      },
+      {
+        id: "n2",
+        user_id: "u1",
+        trace_id: "t1",
+        node_type: "op",
+        data: {},
+        started_at_ms: 1200,
+        ended_at_ms: 1300,
+        start_message: "s2",
+        end_message: "e2",
+        importance_level: 3,
+        flow_order: 10,
+        materialized_at_ms: materializedAt,
+      },
+    ];
+
+    const result = await repo.loadBoundedVisibleNodes({
+      userId: "u1",
+      traceId: "t1",
+      threshold: 3,
+    });
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.cap.capHit).toBe(false);
+    expect(result.cap.returnedCount).toBe(2);
+
+    const n1 = result.nodes.find(n => n.id === "n1");
+    expect(n1).toMatchObject({
+      id: "n1",
+      userId: "u1",
+      traceId: "t1",
+      nodeType: "op",
+      data: { foo: "bar" },
+      startedAt: 1000,
+      endedAt: 1100,
+      startMessage: "start",
+      endMessage: "end",
+      importanceLevel: 1,
+      flowOrder: 5,
+      materializedAt: materializedAt,
+    });
+  });
+
+  test("loadBoundedVisibleNodes implementation does not call loadLatestReadModel", async () => {
+    const repo = LogReadRepoClickHouse.prototype;
+    const body = repo.loadBoundedVisibleNodes.toString();
+    
+    // It should not call its sibling method which loads everything
+    expect(body).not.toContain("this.loadLatestReadModel");
+    // It should not contain the string literal either
+    expect(body).not.toContain("loadLatestReadModel");
   });
 });
