@@ -7,8 +7,15 @@ import {
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
   getInitializedClickHouseClient,
 } from "../../../../../infra/db/clickhouse";
-import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary, BoundedVisibleNodesResult } from "../../../api/types";
-import { ILogReadRepo, DEFAULT_PROJECTION_NODE_CAP } from "../ILogReadRepo";
+import {
+  ReadCheckpoint,
+  ReadNode,
+  ReadEdge,
+  ReadTraceSummary,
+  BoundedVisibleNodesResult,
+  BoundedVisibleEdgesResult,
+} from "../../../api/types";
+import { ILogReadRepo, DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
 import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEventRow, EdgeEventRow } from "../types";
 
 export class LogReadRepoClickHouse extends ILogReadRepo {
@@ -323,8 +330,79 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     userId: string;
     traceId: string;
     nodeIds: string[];
-  }): Promise<any> {
-    throw new Error("Method not implemented.");
+  }): Promise<BoundedVisibleEdgesResult> {
+    if (params.nodeIds.length === 0) {
+      return {
+        edges: [],
+        cap: {
+          cap: DEFAULT_PROJECTION_EDGE_CAP,
+          returnedCount: 0,
+          capHit: false,
+        },
+      };
+    }
+
+    const client = this.getClient();
+    const result = await client.query({
+      query: `
+        SELECT * FROM (
+          SELECT 
+            id,
+            argMax(user_id, materialized_at_ms) as user_id,
+            argMax(trace_id, materialized_at_ms) as trace_id,
+            argMax(edge_type, materialized_at_ms) as edge_type,
+            argMax(from_node_id, materialized_at_ms) as from_node_id,
+            argMax(to_node_id, materialized_at_ms) as to_node_id,
+            argMax(from_flow_order, materialized_at_ms) as from_flow_order,
+            argMax(to_flow_order, materialized_at_ms) as to_flow_order,
+            argMax(data, materialized_at_ms) as data,
+            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
+            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+            max(materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_EDGES_TABLE}
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          GROUP BY id
+        )
+        WHERE has({nodeIds:Array(String)}, from_node_id) OR has({nodeIds:Array(String)}, to_node_id)
+        ORDER BY least(from_flow_order, to_flow_order) ASC, id ASC
+        LIMIT {limit:UInt32}
+      `,
+      format: "JSONEachRow",
+      query_params: {
+        userId: params.userId,
+        traceId: params.traceId,
+        nodeIds: params.nodeIds,
+        limit: DEFAULT_PROJECTION_EDGE_CAP + 1,
+      },
+    });
+
+    const rows = await result.json<ReadEdgeRow>();
+    const capHit = rows.length > DEFAULT_PROJECTION_EDGE_CAP;
+    const finalRows = capHit ? rows.slice(0, DEFAULT_PROJECTION_EDGE_CAP) : rows;
+
+    const edges: ReadEdge[] = finalRows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      traceId: row.trace_id,
+      edgeType: row.edge_type,
+      fromNodeId: row.from_node_id,
+      toNodeId: row.to_node_id,
+      fromFlowOrder: row.from_flow_order,
+      toFlowOrder: row.to_flow_order,
+      data: row.data,
+      startedAt: row.started_at_ms,
+      endedAt: row.ended_at_ms,
+      materializedAt: row.materialized_at_ms,
+    }));
+
+    return {
+      edges,
+      cap: {
+        cap: DEFAULT_PROJECTION_EDGE_CAP,
+        returnedCount: edges.length,
+        capHit,
+      },
+    };
   }
 
   async saveReadModel(params: {
