@@ -13,6 +13,7 @@ export class TraceReadModelMaterializer {
   async materializeTrace(params: { userId: string; traceId: string }): Promise<void> {
     const { userId, traceId } = params;
     const logger = this.parentLogger.getSubLogger({ name: `Materializer:${userId}:${traceId}` });
+    const startedAtMs = this.now();
 
     const checkpoint = await this.readRepo.loadCheckpoint({ userId, traceId });
     const { nodes: existingNodes, edges: existingEdges, summary: _existingSummary } = 
@@ -248,11 +249,24 @@ export class TraceReadModelMaterializer {
     });
 
     await this.readRepo.saveCheckpoint({ checkpoint: nextCheckpoint });
+
+    const durationMs = this.now() - startedAtMs;
     
-    logger.info("Materialized trace", { 
-      nodes: nodesArray.length, 
-      edges: savedEdges.length, 
-      diagnostics: summary 
+    logger.info("Materialized trace", {
+      userId,
+      traceId,
+      nodeCount: nodesArray.length,
+      edgeCount: savedEdges.length,
+      rawNodeEventCount: nodeEvents.length,
+      rawEdgeEventCount: edgeEvents.length,
+      durationMs,
+      diagMissingStarts,
+      diagMissingEnds,
+      diagNegativeDurations,
+      diagCycles: flowDiagnostics.diagCycles,
+      diagOrphanEdges: flowDiagnostics.diagOrphanEdges,
+      diagInvalidImportance,
+      diagClockSkew,
     });
   }
 }

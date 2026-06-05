@@ -3,6 +3,8 @@ import { TraceReadModelMaterializer } from "./TraceReadModelMaterializer";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary } from "../../api/types";
 import { Logger } from "tslog";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 class FakeRepo extends ILogReadRepo {
   loadCheckpoint = mock(async () => null as ReadCheckpoint | null) as any;
@@ -19,6 +21,26 @@ const mockLogger = {
   debug: mock(() => {}),
   getSubLogger: mock(() => mockLogger),
 } as unknown as Logger<unknown>;
+
+const createCapturedLogger = (): {
+  logger: Logger<unknown>;
+  capturedLogs: { level: string; args: any[] }[];
+} => {
+  const capturedLogs: { level: string; args: any[] }[] = [];
+  const logger = new Logger({ name: "TraceReadModelMaterializerTest", type: "hidden" });
+  logger.attachTransport((logObj: any) => {
+    const args: any[] = [];
+    for (let i = 0; logObj[i] !== undefined; i++) {
+      args.push(logObj[i]);
+    }
+    capturedLogs.push({
+      level: logObj._meta.logLevelName,
+      args,
+    });
+  });
+
+  return { logger, capturedLogs };
+};
 
 describe("TraceReadModelMaterializer", () => {
   it("performs no writes when there are no raw events", async () => {
@@ -233,5 +255,64 @@ describe("TraceReadModelMaterializer", () => {
     
     expect(repo.saveReadModel).toHaveBeenCalledTimes(2);
     expect(repo.saveCheckpoint).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs materialization as a safe scalar summary without raw payloads", async () => {
+    const repo = new FakeRepo();
+    const { logger, capturedLogs } = createCapturedLogger();
+    let now = 1000;
+    repo.loadRawEventsAfterCheckpoint.mockResolvedValue({
+      nodeEvents: [
+        { id: "n1", user_id: "u1", trace_id: "t1", event_type: 0, started_at_ms: 100, node_type: "span", data: {}, message: "s", importance_level: 1, ended_at_ms: null },
+        { id: "n1", user_id: "u1", trace_id: "t1", event_type: 1, ended_at_ms: 200, message: "e", data: {}, started_at_ms: null, node_type: null, importance_level: null },
+      ],
+      edgeEvents: [],
+    });
+
+    const materializer = new TraceReadModelMaterializer(logger, repo, () => now++);
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+
+    const materializedLog = capturedLogs.find((log) => log.args.includes("Materialized trace"));
+    expect(materializedLog).toBeDefined();
+    const metadata = materializedLog!.args.find((arg: any) => typeof arg === "object");
+
+    expect(metadata).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      nodeCount: 1,
+      edgeCount: 0,
+      rawNodeEventCount: 2,
+      rawEdgeEventCount: 0,
+      diagMissingStarts: 0,
+      diagMissingEnds: 0,
+      diagNegativeDurations: 0,
+      diagCycles: 0,
+      diagOrphanEdges: 0,
+      diagInvalidImportance: 0,
+      diagClockSkew: 0,
+    });
+    expect(typeof metadata.durationMs).toBe("number");
+
+    for (const forbiddenKey of [
+      "nodes",
+      "edges",
+      "events",
+      "nodeEvents",
+      "edgeEvents",
+      "rows",
+      "requestBody",
+      "summary",
+      "diagnostics",
+      "data",
+    ]) {
+      expect(metadata[forbiddenKey]).toBeUndefined();
+    }
+  });
+
+  it("source assertion: materializer does not log a full summary as diagnostics", () => {
+    const filePath = join(process.cwd(), "src/services/log/internal/materialization/TraceReadModelMaterializer.ts");
+    const content = readFileSync(filePath, "utf-8");
+
+    expect(content).not.toContain("diagnostics: summary");
   });
 });
