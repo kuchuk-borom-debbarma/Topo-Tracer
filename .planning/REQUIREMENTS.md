@@ -32,15 +32,15 @@
 
 ### Ghost Projection
 
-- [ ] **GPRJ-01**: Projection treats a normal node as visible only when `importanceLevel <= selectedThreshold`.
-- [ ] **GPRJ-02**: Projection never returns hidden nodes as normal nodes when their `importanceLevel` is greater than the selected threshold.
-- [ ] **GPRJ-03**: Projection generates deterministic ghost nodes for hidden flow-order ranges.
-- [ ] **GPRJ-04**: Each ghost node reports hidden node count, hidden edge count, node type counts, importance range, time range, and flow-order range.
-- [ ] **GPRJ-05**: Visible-to-visible edges are returned as direct projected edges when both endpoints are visible.
-- [ ] **GPRJ-06**: Edges touching hidden ranges are snapped through ghost nodes so visible graph continuity is preserved.
-- [ ] **GPRJ-07**: Hidden-to-hidden edges inside the same ghost range are aggregated into ghost summary counts rather than returned individually.
-- [ ] **GPRJ-08**: Projected edges are aggregated by snapped source, snapped target, and edge type to prevent dense hidden regions from producing unbounded duplicate edges.
-- [ ] **GPRJ-09**: Projection response metadata reports the threshold, returned node count, returned edge count, visible node count, ghost node count, materialized timestamp, and whether safety caps were hit.
+- [x] **GPRJ-01**: Projection treats a normal node as visible only when `importanceLevel <= selectedThreshold`.
+- [x] **GPRJ-02**: Projection never returns hidden nodes as normal nodes when their `importanceLevel` is greater than the selected threshold.
+- [x] **GPRJ-03**: Projection generates deterministic ghost nodes for hidden flow-order ranges.
+- [x] **GPRJ-04**: Each ghost node reports hidden node count, hidden edge count, node type counts, importance range, time range, and flow-order range.
+- [x] **GPRJ-05**: Visible-to-visible edges are returned as direct projected edges when both endpoints are visible.
+- [x] **GPRJ-06**: Edges touching hidden ranges are snapped through ghost nodes so visible graph continuity is preserved.
+- [x] **GPRJ-07**: Hidden-to-hidden edges inside the same ghost range are aggregated into ghost summary counts rather than returned individually.
+- [x] **GPRJ-08**: Projected edges are aggregated by snapped source, snapped target, and edge type to prevent dense hidden regions from producing unbounded duplicate edges.
+- [x] **GPRJ-09**: Projection response metadata reports the threshold, returned node count, returned edge count, visible node count, ghost node count, materialized timestamp, and whether safety caps were hit.
 
 ### Safety And Verification
 
@@ -50,7 +50,7 @@
 - [x] **SAFE-04**: Projection queries are scoped by `user_id` and `trace_id`.
 - [ ] **SAFE-05**: Tests cover duplicate event delivery and prove checkpointed materialization is idempotent.
 - [ ] **SAFE-06**: Tests cover late or out-of-order events and document the chosen deterministic ordering behavior.
-- [ ] **SAFE-07**: Tests cover ghost projection cases: visible-hidden-visible chains, hidden prefixes, hidden suffixes, all-hidden traces, dense hidden edges, and orphan edges.
+- [x] **SAFE-07**: Tests cover ghost projection cases: visible-hidden-visible chains, hidden prefixes, hidden suffixes, all-hidden traces, dense hidden edges, and orphan edges.
 - [ ] **SAFE-08**: Logs for materialization and projection include safe summaries such as `userId`, `traceId`, counts, thresholds, caps, and durations, without logging raw node or edge payloads.
 
 ## v2 Requirements
@@ -109,22 +109,22 @@ Populated during roadmap creation.
 | MAT-07 | Phase 3 | Complete |
 | MAT-08 | Phase 3 | Complete |
 | MAT-09 | Phase 3 | Complete |
-| GPRJ-01 | Phase 5 | Pending |
-| GPRJ-02 | Phase 5 | Pending |
-| GPRJ-03 | Phase 5 | Pending |
-| GPRJ-04 | Phase 5 | Pending |
-| GPRJ-05 | Phase 5 | Pending |
-| GPRJ-06 | Phase 5 | Pending |
-| GPRJ-07 | Phase 5 | Pending |
-| GPRJ-08 | Phase 5 | Pending |
-| GPRJ-09 | Phase 5 | Pending |
+| GPRJ-01 | Phase 5 | Complete |
+| GPRJ-02 | Phase 5 | Complete |
+| GPRJ-03 | Phase 5 | Complete |
+| GPRJ-04 | Phase 5 | Complete |
+| GPRJ-05 | Phase 5 | Complete |
+| GPRJ-06 | Phase 5 | Complete |
+| GPRJ-07 | Phase 5 | Complete |
+| GPRJ-08 | Phase 5 | Complete |
+| GPRJ-09 | Phase 5 | Complete |
 | SAFE-01 | Phase 4 | Complete |
 | SAFE-02 | Phase 4 | Complete |
 | SAFE-03 | Phase 4 | Complete |
 | SAFE-04 | Phase 4 | Complete |
 | SAFE-05 | Phase 6 | Pending |
 | SAFE-06 | Phase 6 | Pending |
-| SAFE-07 | Phase 6 | Pending |
+| SAFE-07 | Phase 6 | Complete |
 | SAFE-08 | Phase 6 | Pending |
 
 **Coverage:**
