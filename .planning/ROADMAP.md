@@ -116,7 +116,20 @@ Plans:
   3. Projected edge reads stop at a configured maximum for one projection operation.
   4. Repository code cannot fetch all nodes or all edges for a trace unless a test fixture explicitly proves the trace is within configured safe limits.
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Define bounded projection result types, repository cap constants, and `ILogReadRepo` method contracts.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — Implement scoped, threshold-filtered visible node reads with `LIMIT cap + 1` cap metadata.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-03-PLAN.md — Implement scoped visible-node edge reads, full-trace safety assertions, and Phase 4 technical documentation.
 
 ### Phase 5: Ghost Projection Logic
 
@@ -157,6 +170,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Edge Endpoint Raw Contract | 2/2 | Complete   | 2026-06-04 |
 | 2. Read Schema And Repository Contracts | 3/3 | Complete   | 2026-06-05 |
 | 3. Checkpointed Materialization | 3/3 | Complete   | 2026-06-05 |
-| 4. Bounded Projection Data Access | 0/TBD | Not started | - |
+| 4. Bounded Projection Data Access | 0/3 | Planned    |  |
 | 5. Ghost Projection Logic | 0/TBD | Not started | - |
 | 6. Verification And Safe Survivability | 0/TBD | Not started | - |
