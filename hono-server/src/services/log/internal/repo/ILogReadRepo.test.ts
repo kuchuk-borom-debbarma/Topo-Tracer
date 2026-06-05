@@ -35,6 +35,19 @@ describe("ILogReadRepo Contract Assertions", () => {
     test("should export ReadCheckpoint", () => {
       expect(content.includes("export type ReadCheckpoint")).toBe(true);
     });
+
+    test("should export Phase 4 projection types", () => {
+      expect(content.includes("export type ProjectionReadCap")).toBe(true);
+      expect(content.includes("export type BoundedVisibleNodesResult")).toBe(true);
+      expect(content.includes("export type BoundedVisibleEdgesResult")).toBe(true);
+    });
+
+    test("should NOT contain forbidden leakage", () => {
+      const forbidden = ["ghost", "snapped", "HTTP", "ClickHouse"];
+      for (const name of forbidden) {
+        expect(content.includes(name)).toBe(false);
+      }
+    });
   });
 
   describe("Internal Repo Types (internal/repo/types.ts)", () => {
@@ -62,20 +75,42 @@ describe("ILogReadRepo Contract Assertions", () => {
     // @ts-ignore
     const content = readFileSync(REPO_CONTRACT_PATH, "utf-8") as string;
 
-    test("should contain loadCheckpoint method", () => {
+    test("should contain existing methods", () => {
       expect(content.includes("loadCheckpoint")).toBe(true);
-    });
-
-    test("should contain saveReadModel method", () => {
+      expect(content.includes("loadLatestReadModel")).toBe(true);
+      expect(content.includes("loadRawEventsAfterCheckpoint")).toBe(true);
       expect(content.includes("saveReadModel")).toBe(true);
-    });
-
-    test("should contain saveCheckpoint method", () => {
       expect(content.includes("saveCheckpoint")).toBe(true);
     });
 
-    test("should NOT contain projection-facing names", () => {
-      const forbidden = ["threshold", "visible", "window", "ghost", "projected"];
+    test("should export repository-level cap constants", () => {
+      expect(content.includes("DEFAULT_PROJECTION_NODE_CAP = 500")).toBe(true);
+      expect(content.includes("DEFAULT_PROJECTION_EDGE_CAP = 2000")).toBe(true);
+    });
+
+    test("should contain bounded projection methods with userId and traceId", () => {
+      expect(content.includes("loadBoundedVisibleNodes")).toBe(true);
+      expect(content.includes("loadBoundedVisibleEdges")).toBe(true);
+      
+      // Check for userId/traceId presence in params
+      expect(content.includes("userId: string")).toBe(true);
+      expect(content.includes("traceId: string")).toBe(true);
+    });
+
+    test("should NOT contain forbidden unbounded projection names", () => {
+      const forbidden = [
+        "loadAllNodesForProjection", 
+        "loadAllEdgesForProjection", 
+        "getProjectedGraph", 
+        "loadGhosts"
+      ];
+      for (const name of forbidden) {
+        expect(content.includes(name)).toBe(false);
+      }
+    });
+
+    test("should NOT contain env or caller-provided limit params", () => {
+      const forbidden = ["process.env", "getEnv", "limit: number"];
       for (const name of forbidden) {
         expect(content.includes(name)).toBe(false);
       }
