@@ -453,7 +453,7 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
   test("bounded projection methods implementation do not call loadLatestReadModel", async () => {
     const repo = LogReadRepoClickHouse.prototype;
     
-    for (const methodName of ["loadBoundedVisibleNodes", "loadBoundedVisibleEdges"] as const) {
+    for (const methodName of ["loadBoundedVisibleNodes", "loadBoundedVisibleEdges", "loadBoundedProjectionNodes"] as const) {
       const body = repo[methodName].toString();
       // It should not call its sibling method which loads everything
       expect(body).not.toContain("this.loadLatestReadModel");
@@ -462,16 +462,15 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
     }
   });
 
-  test("Phase 4 source boundary: no leaks of future features or cross-cutting concerns", async () => {
+  test("Phase 5 source boundary: no leaks of cross-cutting concerns", async () => {
     // Read the implementation file content
     const fs = require("fs");
     const path = require("path");
     const implPath = path.join(__dirname, "LogReadRepoClickHouse.ts");
     const content = fs.readFileSync(implPath, "utf-8");
 
-    // Forbidden terms that belong to Phase 5+ or other layers
+    // Forbidden terms that belong to future layers or are restricted
     const forbidden = [
-      "ghost",
       "snapped",
       "aggregate edge", // we use 'edges' table but not 'aggregate'
       "getProjectedGraph",
@@ -484,6 +483,54 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
     for (const term of forbidden) {
       expect(content.toLowerCase()).not.toContain(term.toLowerCase());
     }
+  });
+});
+
+describe("LogReadRepoClickHouse bounded projection node reads", () => {
+  test("loadBoundedProjectionNodes respects cap without threshold filter", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    // Prepare DEFAULT_PROJECTION_NODE_CAP + 1 rows
+    const fakeRows = Array.from({ length: DEFAULT_PROJECTION_NODE_CAP + 1 }, (_, i) => ({
+      id: `n${i}`,
+      user_id: "u1",
+      trace_id: "t1",
+      node_type: "op",
+      data: "{}",
+      started_at_ms: 1000 + i,
+      ended_at_ms: 1100 + i,
+      start_message: "start",
+      end_message: "end",
+      importance_level: i, // Mix of levels
+      flow_order: i,
+      materialized_at_ms: 2000,
+    }));
+
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows;
+
+    const result = await repo.loadBoundedProjectionNodes({
+      userId: "u1",
+      traceId: "t1",
+    });
+
+    expect(result.nodes).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.cap).toBe(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.capHit).toBe(true);
+
+    const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
+    expect(query).toBeDefined();
+    expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
+    // CRITICAL: no importance_level filter
+    expect(query?.query).not.toContain("importance_level <=");
+    expect(query?.query).toContain("ORDER BY flow_order ASC, id ASC");
+    expect(query?.query).toContain("LIMIT {limit:UInt32}");
+
+    expect(query?.query_params).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      limit: DEFAULT_PROJECTION_NODE_CAP + 1,
+    });
   });
 });
 

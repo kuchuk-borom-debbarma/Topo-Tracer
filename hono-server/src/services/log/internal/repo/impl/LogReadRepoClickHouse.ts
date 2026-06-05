@@ -14,6 +14,7 @@ import {
   ReadTraceSummary,
   BoundedVisibleNodesResult,
   BoundedVisibleEdgesResult,
+  BoundedProjectionNodesResult,
 } from "../../../api/types";
 import { ILogReadRepo, DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
 import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEventRow, EdgeEventRow } from "../types";
@@ -400,6 +401,71 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       cap: {
         cap: DEFAULT_PROJECTION_EDGE_CAP,
         returnedCount: edges.length,
+        capHit,
+      },
+    };
+  }
+
+  async loadBoundedProjectionNodes(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<BoundedProjectionNodesResult> {
+    const client = this.getClient();
+    const result = await client.query({
+      query: `
+        SELECT * FROM (
+          SELECT 
+            id,
+            argMax(user_id, materialized_at_ms) as user_id,
+            argMax(trace_id, materialized_at_ms) as trace_id,
+            argMax(node_type, materialized_at_ms) as node_type,
+            argMax(data, materialized_at_ms) as data,
+            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
+            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+            argMax(start_message, materialized_at_ms) as start_message,
+            argMax(end_message, materialized_at_ms) as end_message,
+            argMax(importance_level, materialized_at_ms) as importance_level,
+            argMax(flow_order, materialized_at_ms) as flow_order,
+            max(materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_NODES_TABLE}
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          GROUP BY id
+        )
+        ORDER BY flow_order ASC, id ASC
+        LIMIT {limit:UInt32}
+      `,
+      format: "JSONEachRow",
+      query_params: {
+        userId: params.userId,
+        traceId: params.traceId,
+        limit: DEFAULT_PROJECTION_NODE_CAP + 1,
+      },
+    });
+
+    const rows = await result.json<ReadNodeRow>();
+    const capHit = rows.length > DEFAULT_PROJECTION_NODE_CAP;
+    const finalRows = capHit ? rows.slice(0, DEFAULT_PROJECTION_NODE_CAP) : rows;
+
+    const nodes: ReadNode[] = finalRows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      traceId: row.trace_id,
+      nodeType: row.node_type,
+      data: row.data,
+      startedAt: row.started_at_ms,
+      endedAt: row.ended_at_ms,
+      startMessage: row.start_message,
+      endMessage: row.end_message,
+      importanceLevel: row.importance_level,
+      flowOrder: row.flow_order,
+      materializedAt: row.materialized_at_ms,
+    }));
+
+    return {
+      nodes,
+      cap: {
+        cap: DEFAULT_PROJECTION_NODE_CAP,
+        returnedCount: nodes.length,
         capHit,
       },
     };
