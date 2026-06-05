@@ -42,10 +42,64 @@ describe("ILogReadRepo Contract Assertions", () => {
       expect(content.includes("export type BoundedVisibleEdgesResult")).toBe(true);
     });
 
+    test("should export Phase 5 projection types", () => {
+      expect(content.includes("export type ProjectedNormalNode")).toBe(true);
+      expect(content.includes("export type ProjectedGhostNode")).toBe(true);
+      expect(content.includes("export type ProjectedGraphNode")).toBe(true);
+      expect(content.includes("export type ProjectedGraphEdge")).toBe(true);
+      expect(content.includes("export type ProjectedGraphMetadata")).toBe(true);
+      expect(content.includes("export type ProjectedGraphResult")).toBe(true);
+      expect(content.includes("export type BoundedProjectionNodesResult")).toBe(true);
+    });
+
+    test("ProjectedGhostNode should have ghost shape fields", () => {
+      const fields = [
+        "hiddenNodeCount",
+        "hiddenEdgeCount",
+        "nodeTypeCounts",
+        "minImportanceLevel",
+        "maxImportanceLevel",
+        "startedAt",
+        "endedAt",
+        "flowOrderStart",
+        "flowOrderEnd"
+      ];
+      for (const field of fields) {
+        expect(content.includes(field)).toBe(true);
+      }
+    });
+
+    test("ProjectedGraphMetadata should have projection metadata fields", () => {
+      const fields = [
+        "threshold",
+        "returnedNodeCount",
+        "returnedEdgeCount",
+        "visibleNodeCount",
+        "ghostNodeCount",
+        "materializedAt",
+        "nodeCap",
+        "edgeCap",
+        "omittedEdgeCount"
+      ];
+      for (const field of fields) {
+        expect(content.includes(field)).toBe(true);
+      }
+    });
+
     test("should NOT contain forbidden leakage", () => {
-      const forbidden = ["ghost", "snapped", "HTTP", "ClickHouse"];
+      const forbidden = ["snapped", "HTTP", "ClickHouse"];
       for (const name of forbidden) {
         expect(content.includes(name)).toBe(false);
+      }
+    });
+
+    test("should NOT contain forbidden ancestry or database names in projection", () => {
+      const forbidden = ["ancestorPath", "ancestryPath", "parentPath", "ClickHouse", "Row"];
+      // We check for these specifically in the context of projection types
+      // so we don't trip over legitimate uses of "Row" in internal repo types.
+      const projectionTypesSection = content.split("export type ProjectedNormalNode")[1] || "";
+      for (const name of forbidden) {
+        expect(projectionTypesSection.includes(name)).toBe(false);
       }
     });
   });
@@ -91,6 +145,7 @@ describe("ILogReadRepo Contract Assertions", () => {
     test("should contain bounded projection methods with userId and traceId", () => {
       expect(content.includes("loadBoundedVisibleNodes")).toBe(true);
       expect(content.includes("loadBoundedVisibleEdges")).toBe(true);
+      expect(content.includes("loadBoundedProjectionNodes")).toBe(true);
       
       // Check for userId/traceId presence in params
       expect(content.includes("userId: string")).toBe(true);
