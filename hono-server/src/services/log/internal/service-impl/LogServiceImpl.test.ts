@@ -196,11 +196,24 @@ describe("LogServiceImpl projection orchestration", () => {
     });
     expect(metadata.returnedNodeCount).toBeDefined();
     expect(metadata.returnedEdgeCount).toBeDefined();
+    expect(metadata.visibleNodeCount).toBeDefined();
+    expect(metadata.ghostNodeCount).toBeDefined();
     expect(metadata.omittedEdgeCount).toBeDefined();
     
-    // Safety assertion: no raw nodes/edges in logs
-    expect(metadata.nodes).toBeUndefined();
-    expect(metadata.edges).toBeUndefined();
+    for (const forbiddenKey of [
+      "nodes",
+      "edges",
+      "events",
+      "nodeEvents",
+      "edgeEvents",
+      "rows",
+      "requestBody",
+      "summary",
+      "diagnostics",
+      "data",
+    ]) {
+      expect(metadata[forbiddenKey]).toBeUndefined();
+    }
   });
 
   test("source assertion: projectTraceGraph does not contain loadLatestReadModel", () => {
@@ -212,6 +225,29 @@ describe("LogServiceImpl projection orchestration", () => {
     expect(methodMatch).not.toBeNull();
     const methodBody = methodMatch![1];
     expect(methodBody).not.toContain("loadLatestReadModel");
+  });
+
+  test("source assertion: projectTraceGraph log metadata contains no raw payload keys", () => {
+    const filePath = join(process.cwd(), "src/services/log/internal/service-impl/LogServiceImpl.ts");
+    const content = readFileSync(filePath, "utf-8");
+    const logMatch = content.match(/this\.logger\.trace\("projectTraceGraph", \{([\s\S]*?)\n    \}\);/);
+
+    expect(logMatch).not.toBeNull();
+    const logMetadata = logMatch![1];
+    for (const forbiddenPattern of [
+      "nodes:",
+      "edges:",
+      "events:",
+      "nodeEvents:",
+      "edgeEvents:",
+      "rows:",
+      "requestBody:",
+      "summary:",
+      "diagnostics:",
+      "data:",
+    ]) {
+      expect(logMetadata).not.toContain(forbiddenPattern);
+    }
   });
 });
 
