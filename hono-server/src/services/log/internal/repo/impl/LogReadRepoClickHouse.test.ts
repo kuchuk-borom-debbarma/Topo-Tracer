@@ -7,6 +7,7 @@ import {
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
 } from "../../../../../infra/db/clickhouse";
 import { LogReadRepoClickHouse } from "./LogReadRepoClickHouse";
+import { DEFAULT_PROJECTION_NODE_CAP } from "../ILogReadRepo";
 
 type InsertOptions = {
   table: string;
@@ -332,6 +333,58 @@ describe("LogReadRepoClickHouse load methods", () => {
       lastNodeEventTime: 0,
       lastNodeEventId: "",
       lastNodeEventType: 0,
+    });
+  });
+});
+
+describe("LogReadRepoClickHouse bounded projection node reads", () => {
+  test("loadBoundedVisibleNodes respects cap and threshold with correct query scoping", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    // Prepare DEFAULT_PROJECTION_NODE_CAP + 1 rows
+    const fakeRows = Array.from({ length: DEFAULT_PROJECTION_NODE_CAP + 1 }, (_, i) => ({
+      id: `n${i}`,
+      user_id: "u1",
+      trace_id: "t1",
+      node_type: "op",
+      data: "{}",
+      started_at_ms: 1000 + i,
+      ended_at_ms: 1100 + i,
+      start_message: "start",
+      end_message: "end",
+      importance_level: 2,
+      flow_order: i,
+      materialized_at_ms: 2000,
+    }));
+
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows;
+
+    // @ts-ignore - method doesn't exist yet
+    const result = await repo.loadBoundedVisibleNodes({
+      userId: "u1",
+      traceId: "t1",
+      threshold: 2,
+    });
+
+    expect(result.nodes).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.cap).toBe(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.returnedCount).toBe(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.capHit).toBe(true);
+
+    const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
+    expect(query).toBeDefined();
+    expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
+    expect(query?.query).toContain("importance_level <= {threshold:Int32}");
+    expect(query?.query).toContain("ORDER BY flow_order ASC, id ASC");
+    expect(query?.query).toContain("LIMIT {limit:UInt32}");
+    expect(query?.query).toContain("argMax");
+
+    expect(query?.query_params).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      threshold: 2,
+      limit: DEFAULT_PROJECTION_NODE_CAP + 1,
     });
   });
 });
