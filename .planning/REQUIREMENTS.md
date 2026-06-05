@@ -44,10 +44,10 @@
 
 ### Safety And Verification
 
-- [ ] **SAFE-01**: Projection repository methods enforce a maximum number of visible nodes read for one projection operation.
-- [ ] **SAFE-02**: Projection repository methods enforce a maximum number of projected edges returned for one projection operation.
-- [ ] **SAFE-03**: Projection repository methods do not fetch all nodes or all edges for a trace unless an explicit test fixture proves the trace is within configured safe limits.
-- [ ] **SAFE-04**: Projection queries are scoped by `user_id` and `trace_id`.
+- [x] **SAFE-01**: Projection repository methods enforce a maximum number of visible nodes read for one projection operation.
+- [x] **SAFE-02**: Projection repository methods enforce a maximum number of projected edges returned for one projection operation.
+- [x] **SAFE-03**: Projection repository methods do not fetch all nodes or all edges for a trace unless an explicit test fixture proves the trace is within configured safe limits.
+- [x] **SAFE-04**: Projection queries are scoped by `user_id` and `trace_id`.
 - [ ] **SAFE-05**: Tests cover duplicate event delivery and prove checkpointed materialization is idempotent.
 - [ ] **SAFE-06**: Tests cover late or out-of-order events and document the chosen deterministic ordering behavior.
 - [ ] **SAFE-07**: Tests cover ghost projection cases: visible-hidden-visible chains, hidden prefixes, hidden suffixes, all-hidden traces, dense hidden edges, and orphan edges.
@@ -118,10 +118,10 @@ Populated during roadmap creation.
 | GPRJ-07 | Phase 5 | Pending |
 | GPRJ-08 | Phase 5 | Pending |
 | GPRJ-09 | Phase 5 | Pending |
-| SAFE-01 | Phase 4 | Pending |
-| SAFE-02 | Phase 4 | Pending |
-| SAFE-03 | Phase 4 | Pending |
-| SAFE-04 | Phase 4 | Pending |
+| SAFE-01 | Phase 4 | Complete |
+| SAFE-02 | Phase 4 | Complete |
+| SAFE-03 | Phase 4 | Complete |
+| SAFE-04 | Phase 4 | Complete |
 | SAFE-05 | Phase 6 | Pending |
 | SAFE-06 | Phase 6 | Pending |
 | SAFE-07 | Phase 6 | Pending |

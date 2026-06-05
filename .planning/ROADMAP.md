@@ -121,7 +121,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Define bounded projection result types, repository cap constants, and `ILogReadRepo` method contracts.
+- [x] 04-01-PLAN.md — Define bounded projection result types, repository cap constants, and `ILogReadRepo` method contracts.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -170,6 +170,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Edge Endpoint Raw Contract | 2/2 | Complete   | 2026-06-04 |
 | 2. Read Schema And Repository Contracts | 3/3 | Complete   | 2026-06-05 |
 | 3. Checkpointed Materialization | 3/3 | Complete   | 2026-06-05 |
-| 4. Bounded Projection Data Access | 0/3 | Planned    |  |
+| 4. Bounded Projection Data Access | 1/3 | In Progress|  |
 | 5. Ghost Projection Logic | 0/TBD | Not started | - |
 | 6. Verification And Safe Survivability | 0/TBD | Not started | - |

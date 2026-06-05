@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 4 context gathered
-last_updated: "2026-06-05T05:13:13.650Z"
+last_updated: "2026-06-05T05:50:40.216Z"
 last_activity: 2026-06-05 -- Phase 04 planning complete
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 11
-  completed_plans: 8
+  completed_plans: 9
   percent: 50
 ---
 
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 4 of 6 (bounded projection data access)
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-05 -- Phase 04 planning complete
+Plan: 1 of 3
+Status: Executing
+Last activity: 2026-06-05 -- Phase 04 Plan 01 complete
 
-Progress: [██████████] 100% (of current milestone)
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100% (of current milestone)
 | Phase 03 P01 | 15min | 3 tasks | 3 files |
 | Phase 03 P02 | 30min | 2 tasks | 5 files |
 | Phase 03 P03 | 25min | 2 tasks | 3 files |
+| Phase 04 P01 | 15min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Progress: [██████████] 100% (of current milestone)
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [Log]: Repository-level cap constants (500 nodes, 2000 edges) are used instead of caller-provided limits for v1. (2026-06-05)
+- [Log]: Projection result types carry explicit cap metadata (capHit, returnedCount) to inform the UI about truncated data. (2026-06-05)
 - [Log]: Materializer uses Kahn's algorithm for deterministic topological flow order (2026-06-05)
 - [Log]: Checkpointed materializer follows "checkpoint-last" write order for consistency (2026-06-05)
 - [Log]: Read model merging handles lifecycle (start/end) and graph (edge) folding (2026-06-05)
@@ -88,6 +91,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05T05:01:16.377Z
+Last session: 2026-06-05T05:50:40.211Z
 Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-bounded-projection-data-access/04-CONTEXT.md
+Resume file: None
