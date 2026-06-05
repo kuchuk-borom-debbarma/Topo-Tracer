@@ -33,6 +33,37 @@ describe("TraceReadModelMaterializer", () => {
     expect(repo.saveCheckpoint).not.toHaveBeenCalled();
   });
 
+  it("checkpoint boundary is authoritative when no post-checkpoint events are returned", async () => {
+    const repo = new FakeRepo();
+    const checkpoint: ReadCheckpoint = {
+      userId: "u1",
+      traceId: "t1",
+      lastNodeEventTime: 200,
+      lastNodeEventId: "n1",
+      lastNodeEventType: 1,
+      lastEdgeEventTime: 0,
+      lastEdgeEventId: "",
+      lastEdgeEventType: 0,
+      checkpointedAt: 900,
+    };
+    repo.loadCheckpoint.mockResolvedValue(checkpoint);
+    repo.loadRawEventsAfterCheckpoint.mockResolvedValue({
+      nodeEvents: [],
+      edgeEvents: [],
+    });
+
+    const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+
+    expect(repo.loadRawEventsAfterCheckpoint).toHaveBeenCalledWith({
+      userId: "u1",
+      traceId: "t1",
+      checkpoint,
+    });
+    expect(repo.saveReadModel).not.toHaveBeenCalled();
+    expect(repo.saveCheckpoint).not.toHaveBeenCalled();
+  });
+
   it("calls saveReadModel then saveCheckpoint in order", async () => {
     const repo = new FakeRepo();
     const callOrder: string[] = [];
@@ -111,6 +142,45 @@ describe("TraceReadModelMaterializer", () => {
     expect(n2?.importanceLevel).toBe(2);
 
     expect(savedSummary.diagMissingStarts).toBe(1); // n3
+  });
+
+  it("uses diagnose-and-continue for after-checkpoint negative durations", async () => {
+    const repo = new FakeRepo();
+    repo.loadRawEventsAfterCheckpoint.mockResolvedValue({
+      nodeEvents: [
+        {
+          id: "n1",
+          user_id: "u1",
+          trace_id: "t1",
+          event_type: 0,
+          started_at_ms: 200,
+          node_type: "span",
+          data: {},
+          message: "start",
+          importance_level: 1,
+          ended_at_ms: null,
+        },
+        {
+          id: "n1",
+          user_id: "u1",
+          trace_id: "t1",
+          event_type: 1,
+          ended_at_ms: 100,
+          message: "end before start",
+          data: {},
+          started_at_ms: null,
+          node_type: null,
+          importance_level: null,
+        },
+      ],
+      edgeEvents: [],
+    });
+
+    const materializer = new TraceReadModelMaterializer(mockLogger, repo, () => 1000);
+    await materializer.materializeTrace({ userId: "u1", traceId: "t1" });
+
+    const savedSummary = (repo.saveReadModel as any).mock.calls[0][0].summary as ReadTraceSummary;
+    expect(savedSummary.diagNegativeDurations).toBe(1);
   });
 
   it("handles checkpoint advancement correctly", async () => {
