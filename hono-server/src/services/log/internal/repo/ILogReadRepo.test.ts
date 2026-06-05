@@ -171,4 +171,35 @@ describe("ILogReadRepo Contract Assertions", () => {
       }
     });
   });
+
+  describe("Source Boundary Assertions (Phase 5)", () => {
+    const LOG_DIR = resolve(currentDir, "../../");
+    const forbiddenPatterns = [
+      "ancestorPath",
+      "ancestryPath",
+      "parentPath",
+      "frontend/src",
+      "sdk/nodejs",
+      "carno.js",
+      "/telemetry/traces",
+      "cursor",
+      "drill"
+    ];
+
+    test("Hono log service files should not contain forbidden patterns", () => {
+      const filesToCheck = [
+        resolve(LOG_DIR, "api/ILogService.ts"),
+        resolve(LOG_DIR, "internal/service-impl/LogServiceImpl.ts"),
+        resolve(LOG_DIR, "internal/projection/LogGraphProjector.ts"),
+        resolve(LOG_DIR, "internal/repo/ILogReadRepo.ts")
+      ];
+
+      for (const filePath of filesToCheck) {
+        const content = readFileSync(filePath, "utf-8");
+        for (const pattern of forbiddenPatterns) {
+          expect(content.includes(pattern)).toBe(false);
+        }
+      }
+    });
+  });
 });
