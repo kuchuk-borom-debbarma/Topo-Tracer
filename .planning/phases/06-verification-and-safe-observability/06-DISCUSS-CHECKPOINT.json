@@ -1,0 +1,126 @@
+{
+  "phase": "6",
+  "phase_name": "Verification And Safe Observability",
+  "timestamp": "2026-06-05T21:53:04Z",
+  "areas_completed": [
+    "Duplicate And Late Event Contract",
+    "Safe Log Shape",
+    "Projection Regression Scope"
+  ],
+  "areas_remaining": [],
+  "decisions": {
+    "Duplicate And Late Event Contract": [
+      {
+        "question": "How strict should Phase 6's duplicate-delivery tests be?",
+        "answer": "End-to-end idempotency.",
+        "options_presented": [
+          "End-to-end idempotency",
+          "Materializer-only idempotency",
+          "Contract-level only"
+        ]
+      },
+      {
+        "question": "Who owns trace-local event ordering?",
+        "answer": "The event bus or broker owns trace-local ordering. The development event bus may not fully enforce this yet, so Phase 6 should keep that in mind without moving ordering repair into materialization.",
+        "options_presented": [
+          "Captured from free-form clarification"
+        ]
+      },
+      {
+        "question": "How should Phase 6 treat late or out-of-order raw events that appear behind an already-saved checkpoint?",
+        "answer": "Checkpoint boundary is authoritative. Older raw rows behind the checkpoint are ignored by incremental materialization.",
+        "options_presented": [
+          "Checkpoint boundary is authoritative",
+          "Detect but do not repair",
+          "Repair by replaying wider history"
+        ]
+      },
+      {
+        "question": "For events that are still after the checkpoint but arrive with lifecycle timestamps out of order, what should the tests expect?",
+        "answer": "Keep the Phase 3 diagnose-and-continue contract. After-checkpoint lifecycle weirdness is materialized deterministically with diagnostics and does not fail the whole trace.",
+        "options_presented": [
+          "Keep Phase 3 contract",
+          "Revise to fail trace",
+          "Fail only impossible structural cases"
+        ]
+      },
+      {
+        "question": "How broad should the end-to-end duplicate fixture be?",
+        "answer": "Worker plus materializer fake repo-style fixture.",
+        "options_presented": [
+          "Worker + materializer fake repo fixture",
+          "Materializer direct replay fixture",
+          "Repository integration-style fixture"
+        ]
+      }
+    ],
+    "Safe Log Shape": [
+      {
+        "question": "What should Phase 6 lock down for materialization/projection logs?",
+        "answer": "Structured safe summaries.",
+        "options_presented": [
+          "Structured safe summaries",
+          "Minimal operational logs",
+          "Strict no-domain-data logs"
+        ]
+      },
+      {
+        "question": "Should Phase 6 enforce this through tests, source assertions, or documentation only?",
+        "answer": "Tests plus source assertions.",
+        "options_presented": [
+          "Tests plus source assertions",
+          "Logger fake tests only",
+          "Documentation only"
+        ]
+      },
+      {
+        "question": "What counts as raw payload leakage for this phase?",
+        "answer": "No arrays or full objects from read/raw rows. Logs may include explicit scalar summaries only. No nodes, edges, events, raw row objects, request bodies, full summary objects, or arbitrary metadata/data blobs.",
+        "options_presented": [
+          "No arrays or full objects from read/raw rows",
+          "No raw event bodies only",
+          "Redact known unsafe fields"
+        ]
+      },
+      {
+        "question": "If a source assertion finds an unsafe log today, should Phase 6 fix it immediately or only document it as a failure?",
+        "answer": "Fix immediately.",
+        "options_presented": [
+          "Fix immediately",
+          "Fail test first, fix in follow-up",
+          "Document only"
+        ]
+      }
+    ],
+    "Projection Regression Scope": [
+      {
+        "question": "How should Phase 6 treat ghost projection regression coverage?",
+        "answer": "Audit and fill gaps only. Reuse existing Phase 5 projector tests, inspect coverage against the Phase 6 matrix, and add only missing cases.",
+        "options_presented": [
+          "Audit and fill gaps only",
+          "Create a new complete regression suite",
+          "Service-level regression only"
+        ]
+      },
+      {
+        "question": "If all SAFE-07 cases are already covered, should Phase 6 still add anything for projection?",
+        "answer": "Add no duplicate tests. Record the audit result and spend effort on SAFE-05, SAFE-06, and SAFE-08.",
+        "options_presented": [
+          "Add no duplicate tests",
+          "Add one smoke regression",
+          "Add service-level metadata/log test"
+        ]
+      }
+    ]
+  },
+  "deferred_ideas": [],
+  "canonical_refs": [
+    ".planning/ROADMAP.md",
+    ".planning/REQUIREMENTS.md",
+    ".planning/phases/03-checkpointed-materialization/03-CONTEXT.md",
+    ".planning/phases/05-ghost-projection-logic/05-CONTEXT.md",
+    "hono-server/src/code-base.md",
+    "hono-server/src/services/log/internal/worker/ReadOptimisedAggregator.ts",
+    "hono-server/src/services/log/internal/materialization/TraceReadModelMaterializer.ts"
+  ]
+}
