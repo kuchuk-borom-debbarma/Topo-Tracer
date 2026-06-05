@@ -1,5 +1,15 @@
-import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary } from "../../api/types";
+import {
+  ReadCheckpoint,
+  ReadNode,
+  ReadEdge,
+  ReadTraceSummary,
+  BoundedVisibleNodesResult,
+  BoundedVisibleEdgesResult,
+} from "../../api/types";
 import { NodeEventRow, EdgeEventRow } from "./types";
+
+export const DEFAULT_PROJECTION_NODE_CAP = 500;
+export const DEFAULT_PROJECTION_EDGE_CAP = 2000;
 
 export abstract class ILogReadRepo {
   abstract loadCheckpoint(params: {
@@ -37,4 +47,16 @@ export abstract class ILogReadRepo {
   abstract saveCheckpoint(params: {
     checkpoint: ReadCheckpoint;
   }): Promise<void>;
+
+  abstract loadBoundedVisibleNodes(params: {
+    userId: string;
+    traceId: string;
+    threshold: number;
+  }): Promise<BoundedVisibleNodesResult>;
+
+  abstract loadBoundedVisibleEdges(params: {
+    userId: string;
+    traceId: string;
+    nodeIds: string[];
+  }): Promise<BoundedVisibleEdgesResult>;
 }
