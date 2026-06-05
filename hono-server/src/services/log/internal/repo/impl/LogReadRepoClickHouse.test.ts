@@ -7,7 +7,7 @@ import {
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
 } from "../../../../../infra/db/clickhouse";
 import { LogReadRepoClickHouse } from "./LogReadRepoClickHouse";
-import { DEFAULT_PROJECTION_NODE_CAP } from "../ILogReadRepo";
+import { DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
 
 type InsertOptions = {
   table: string;
@@ -458,5 +458,72 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
     expect(body).not.toContain("this.loadLatestReadModel");
     // It should not contain the string literal either
     expect(body).not.toContain("loadLatestReadModel");
+  });
+});
+
+describe("LogReadRepoClickHouse bounded projection edge reads", () => {
+  test("loadBoundedVisibleEdges short circuits with empty nodeIds", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    const result = await repo.loadBoundedVisibleEdges({
+      userId: "u1",
+      traceId: "t1",
+      nodeIds: [],
+    });
+
+    expect(result.edges).toHaveLength(0);
+    expect(result.cap.capHit).toBe(false);
+    expect(fakeClient.queries).toHaveLength(0);
+  });
+
+  test("loadBoundedVisibleEdges respects cap and filters by visible nodeIds", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepo(fakeClient);
+
+    // Prepare DEFAULT_PROJECTION_EDGE_CAP + 1 rows
+    const fakeRows = Array.from({ length: DEFAULT_PROJECTION_EDGE_CAP + 1 }, (_, i) => ({
+      id: `e${i}`,
+      user_id: "u1",
+      trace_id: "t1",
+      edge_type: "calls",
+      from_node_id: i % 2 === 0 ? "node-a" : "other",
+      to_node_id: i % 2 === 0 ? "other" : "node-b",
+      from_flow_order: i,
+      to_flow_order: i + 1,
+      data: "{}",
+      started_at_ms: 1000 + i,
+      ended_at_ms: 1100 + i,
+      materialized_at_ms: 2000,
+    }));
+
+    fakeClient.queryResults[CLICKHOUSE_READ_EDGES_TABLE] = fakeRows;
+
+    const result = await repo.loadBoundedVisibleEdges({
+      userId: "u1",
+      traceId: "t1",
+      nodeIds: ["node-a", "node-b"],
+    });
+
+    expect(result.edges).toHaveLength(DEFAULT_PROJECTION_EDGE_CAP);
+    expect(result.cap.cap).toBe(DEFAULT_PROJECTION_EDGE_CAP);
+    expect(result.cap.returnedCount).toBe(DEFAULT_PROJECTION_EDGE_CAP);
+    expect(result.cap.capHit).toBe(true);
+
+    const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_EDGES_TABLE));
+    expect(query).toBeDefined();
+    expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
+    expect(query?.query).toContain("has({nodeIds:Array(String)}, from_node_id)");
+    expect(query?.query).toContain("has({nodeIds:Array(String)}, to_node_id)");
+    expect(query?.query).toContain("ORDER BY least(from_flow_order, to_flow_order) ASC, id ASC");
+    expect(query?.query).toContain("LIMIT {limit:UInt32}");
+    expect(query?.query).toContain("argMax");
+
+    expect(query?.query_params).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      nodeIds: ["node-a", "node-b"],
+      limit: DEFAULT_PROJECTION_EDGE_CAP + 1,
+    });
   });
 });
