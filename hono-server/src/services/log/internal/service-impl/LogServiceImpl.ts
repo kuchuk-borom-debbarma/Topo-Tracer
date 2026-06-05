@@ -6,24 +6,35 @@ import {
   IngestNodeStart,
   IngestNodeEnd,
   IngestEdgeEnd,
+  ProjectedGraphResult,
 } from "../../api/types";
-import { createLogWriteRepo } from "../repo";
+import { createLogWriteRepo, createLogReadRepo } from "../repo";
 import { ILogWriteRepo } from "../repo/ILogWriteRepo";
+import { ILogReadRepo } from "../repo/ILogReadRepo";
+import { LogGraphProjector } from "../projection/LogGraphProjector";
 
 export class LogServiceImpl extends ILogService {
   readonly logger: Logger<unknown>;
   readonly writeRepo: ILogWriteRepo;
+  readonly readRepo: ILogReadRepo;
   readonly eventBus: IEventBus;
+  readonly projector: LogGraphProjector;
+
   constructor(
     logger: Logger<unknown>,
     eventBus: IEventBus,
     writeRepo?: ILogWriteRepo,
+    readRepo?: ILogReadRepo,
+    projector?: LogGraphProjector,
   ) {
     super();
     this.logger = logger.getSubLogger({ name: "LogServiceImpl" });
     this.eventBus = eventBus;
     this.writeRepo = writeRepo ?? createLogWriteRepo(this.logger);
+    this.readRepo = readRepo ?? createLogReadRepo(this.logger);
+    this.projector = projector ?? new LogGraphProjector();
   }
+
   async ingestNodesNEdges(data: {
     userId: string;
     nodeStarts: IngestNodeStart[];
@@ -77,6 +88,50 @@ export class LogServiceImpl extends ILogService {
       this.logger.error(err);
       throw err;
     }
+  }
+
+  async projectTraceGraph(data: {
+    userId: string;
+    traceId: string;
+    threshold: number;
+  }): Promise<ProjectedGraphResult> {
+    const { userId, traceId, threshold } = data;
+
+    const boundedNodes = await this.readRepo.loadBoundedProjectionNodes({
+      userId,
+      traceId,
+    });
+
+    const boundedEdges = await this.readRepo.loadBoundedVisibleEdges({
+      userId,
+      traceId,
+      nodeIds: boundedNodes.nodes.map((node) => node.id),
+    });
+
+    const result = this.projector.project({
+      userId,
+      traceId,
+      threshold,
+      nodes: boundedNodes.nodes,
+      edges: boundedEdges.edges,
+      nodeCap: boundedNodes.cap,
+      edgeCap: boundedEdges.cap,
+    });
+
+    this.logger.trace("projectTraceGraph", {
+      userId,
+      traceId,
+      threshold,
+      returnedNodeCount: result.metadata.returnedNodeCount,
+      returnedEdgeCount: result.metadata.returnedEdgeCount,
+      visibleNodeCount: result.metadata.visibleNodeCount,
+      ghostNodeCount: result.metadata.ghostNodeCount,
+      nodeCapHit: result.metadata.nodeCap.capHit,
+      edgeCapHit: result.metadata.edgeCap.capHit,
+      omittedEdgeCount: result.metadata.omittedEdgeCount,
+    });
+
+    return result;
   }
 
   private validateEdgeStarts(edgeStarts: IngestEdgeStart[]): void {
