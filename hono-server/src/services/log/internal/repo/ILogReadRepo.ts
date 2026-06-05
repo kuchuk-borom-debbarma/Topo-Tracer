@@ -5,6 +5,7 @@ import {
   ReadTraceSummary,
   BoundedVisibleNodesResult,
   BoundedVisibleEdgesResult,
+  BoundedProjectionNodesResult,
 } from "../../api/types";
 import { NodeEventRow, EdgeEventRow } from "./types";
 
@@ -59,4 +60,9 @@ export abstract class ILogReadRepo {
     traceId: string;
     nodeIds: string[];
   }): Promise<BoundedVisibleEdgesResult>;
+
+  abstract loadBoundedProjectionNodes(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<BoundedProjectionNodesResult>;
 }

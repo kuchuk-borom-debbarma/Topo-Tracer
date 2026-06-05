@@ -112,3 +112,66 @@ export type BoundedVisibleEdgesResult = {
   edges: ReadEdge[];
   cap: ProjectionReadCap;
 };
+
+// Phase 5: Projection and Ghosting
+
+export type ProjectedNormalNode = {
+  kind: "normal";
+  id: string;
+  nodeType: string;
+  data: Record<string, string>;
+  startedAt: number;
+  endedAt: number | null;
+  importanceLevel: number;
+  flowOrder: number;
+  materializedAt: number;
+};
+
+export type ProjectedGhostNode = {
+  kind: "ghost";
+  id: string; // Deterministic ghost ID
+  hiddenNodeCount: number;
+  hiddenEdgeCount: number;
+  nodeTypeCounts: Record<string, number>;
+  minImportanceLevel: number;
+  maxImportanceLevel: number;
+  startedAt: number;
+  endedAt: number | null;
+  flowOrderStart: number;
+  flowOrderEnd: number;
+};
+
+export type ProjectedGraphNode = ProjectedNormalNode | ProjectedGhostNode;
+
+export type ProjectedGraphEdge = {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  edgeType: string;
+  edgeCount: number;
+  startedAt: number;
+  endedAt: number | null;
+};
+
+export type ProjectedGraphMetadata = {
+  threshold: number;
+  returnedNodeCount: number;
+  returnedEdgeCount: number;
+  visibleNodeCount: number;
+  ghostNodeCount: number;
+  materializedAt: number;
+  nodeCap: ProjectionReadCap;
+  edgeCap: ProjectionReadCap;
+  omittedEdgeCount: number;
+};
+
+export type ProjectedGraphResult = {
+  nodes: ProjectedGraphNode[];
+  edges: ProjectedGraphEdge[];
+  metadata: ProjectedGraphMetadata;
+};
+
+export type BoundedProjectionNodesResult = {
+  nodes: ReadNode[];
+  cap: ProjectionReadCap;
+};
