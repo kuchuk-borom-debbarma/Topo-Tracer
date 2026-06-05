@@ -3,7 +3,9 @@ import { TraceReadModelMaterializer } from "./TraceReadModelMaterializer";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { ReadCheckpoint, ReadNode, ReadEdge, ReadTraceSummary } from "../../api/types";
 import { Logger } from "tslog";
+// @ts-ignore
 import { readFileSync } from "fs";
+// @ts-ignore
 import { join } from "path";
 
 class FakeRepo extends ILogReadRepo {
@@ -12,6 +14,9 @@ class FakeRepo extends ILogReadRepo {
   loadRawEventsAfterCheckpoint = mock(async () => ({ nodeEvents: [], edgeEvents: [] })) as any;
   saveReadModel = mock(async () => {}) as any;
   saveCheckpoint = mock(async () => {}) as any;
+  loadBoundedVisibleNodes = mock(async () => ({ nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } })) as any;
+  loadBoundedVisibleEdges = mock(async () => ({ edges: [], cap: { cap: 0, returnedCount: 0, capHit: false } })) as any;
+  loadBoundedProjectionNodes = mock(async () => ({ nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } })) as any;
 }
 
 const mockLogger = {

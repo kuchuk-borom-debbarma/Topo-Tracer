@@ -23,7 +23,9 @@ declare module "bun:test" {
     toHaveLength(expected: number): void;
     toMatchObject(expected: unknown): void;
     toBeDefined(): void;
+    toBeUndefined(): void;
     toContain(expected: unknown): void;
+    toContainEqual(expected: unknown): void;
     toMatch(expected: string | RegExp): void;
     toBeNull(): void;
     toBeGreaterThan(expected: number): void;
@@ -46,6 +48,9 @@ declare module "bun:test" {
   export function expect<T>(actual: Promise<T>): PromiseMatchers;
   export function expect(actual: () => unknown): FunctionMatchers;
   export function expect(actual: unknown): ValueMatchers;
+  export namespace expect {
+    function objectContaining(expected: unknown): unknown;
+  }
   export const test: (name: string, callback: TestCallback) => void;
   export const it: (name: string, callback: TestCallback) => void;
   export function mock<T extends (...args: any[]) => any>(implementation?: T): Mock<T>;
@@ -54,3 +59,7 @@ declare module "bun:test" {
     method: K
   ): Mock<T[K] extends (...args: any[]) => any ? T[K] : never>;
 }
+
+declare const process: {
+  cwd(): string;
+};

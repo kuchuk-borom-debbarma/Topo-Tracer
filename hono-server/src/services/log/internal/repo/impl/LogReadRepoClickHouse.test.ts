@@ -1,5 +1,9 @@
 import { describe, expect, test, mock } from "bun:test";
 import { Logger } from "tslog";
+// @ts-ignore
+import { readFileSync } from "fs";
+// @ts-ignore
+import { join } from "path";
 import {
   CLICKHOUSE_READ_NODES_TABLE,
   CLICKHOUSE_READ_EDGES_TABLE,
@@ -463,11 +467,8 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
   });
 
   test("Phase 5 source boundary: no leaks of cross-cutting concerns", async () => {
-    // Read the implementation file content
-    const fs = require("fs");
-    const path = require("path");
-    const implPath = path.join(__dirname, "LogReadRepoClickHouse.ts");
-    const content = fs.readFileSync(implPath, "utf-8");
+    const implPath = join(process.cwd(), "src/services/log/internal/repo/impl/LogReadRepoClickHouse.ts");
+    const content = readFileSync(implPath, "utf-8");
 
     // Forbidden terms that belong to future layers or are restricted
     const forbidden = [

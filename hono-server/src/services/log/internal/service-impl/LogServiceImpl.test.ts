@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Logger } from "tslog";
+// @ts-ignore
 import { readFileSync } from "fs";
+// @ts-ignore
 import { join } from "path";
 import type { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
 import type {
