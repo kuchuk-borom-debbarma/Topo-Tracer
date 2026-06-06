@@ -1,8 +1,16 @@
 import { Logger } from "tslog";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
-import { ReadNode, ReadEdge, ReadTraceSummary, ReadCheckpoint } from "../../api/types";
+import {
+  ReadNode,
+  ReadEdge,
+  ReadTraceSummary,
+  ReadCheckpoint,
+} from "../../api/types";
 import { computeFlowOrder } from "./flowOrder";
-import type { RawNodeEvent, RawEdgeEvent } from "../repo/types";
+import type {
+  NodeEventRow as RawNodeEvent,
+  EdgeEventRow as RawEdgeEvent,
+} from "../repo/types";
 
 interface MaterializationDiagnostics {
   diagMissingStarts: number;
@@ -16,26 +24,42 @@ export class TraceReadModelMaterializer {
   constructor(
     private parentLogger: Logger<unknown>,
     private readRepo: ILogReadRepo,
-    private now: () => number = () => Date.now()
+    private now: () => number = () => Date.now(),
   ) {}
 
-  async materializeTrace(params: { userId: string; traceId: string }): Promise<void> {
+  async materializeTrace(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<void> {
     const { userId, traceId } = params;
-    const logger = this.parentLogger.getSubLogger({ name: `Materializer:${userId}:${traceId}` });
+    const logger = this.parentLogger.getSubLogger({
+      name: `Materializer:${userId}:${traceId}`,
+    });
     const startedAtMs = this.now();
 
     const checkpoint = await this.readRepo.loadCheckpoint({ userId, traceId });
-    const { nodes: existingNodes, edges: existingEdges, summary: _existingSummary } = 
-      await this.readRepo.loadLatestReadModel({ userId, traceId });
-    const { nodeEvents, edgeEvents } = 
-      await this.readRepo.loadRawEventsAfterCheckpoint({ userId, traceId, checkpoint });
+    const {
+      nodes: existingNodes,
+      edges: existingEdges,
+      summary: _existingSummary,
+    } = await this.readRepo.loadLatestReadModel({ userId, traceId });
+    const { nodeEvents, edgeEvents } =
+      await this.readRepo.loadRawEventsAfterCheckpoint({
+        userId,
+        traceId,
+        checkpoint,
+      });
 
     if (nodeEvents.length === 0 && edgeEvents.length === 0) {
       return;
     }
 
-    const nodeMap = new Map<string, ReadNode>(existingNodes.map(n => [n.id, { ...n }]));
-    const edgeMap = new Map<string, ReadEdge>(existingEdges.map(e => [e.id, { ...e }]));
+    const nodeMap = new Map<string, ReadNode>(
+      existingNodes.map((n) => [n.id, { ...n }]),
+    );
+    const edgeMap = new Map<string, ReadEdge>(
+      existingEdges.map((e) => [e.id, { ...e }]),
+    );
 
     const diags: MaterializationDiagnostics = {
       diagMissingStarts: 0,
@@ -66,10 +90,11 @@ export class TraceReadModelMaterializer {
     // Compute flow order
     const nodesArray = Array.from(nodeMap.values());
     const edgesArray = Array.from(edgeMap.values());
-    const { flowOrderByNodeId, diagnostics: flowDiagnostics } = computeFlowOrder({
-      nodes: nodesArray,
-      edges: edgesArray,
-    });
+    const { flowOrderByNodeId, diagnostics: flowDiagnostics } =
+      computeFlowOrder({
+        nodes: nodesArray,
+        edges: edgesArray,
+      });
 
     // Apply flow order to nodes and edges
     const { savedEdges } = this.applyFlowOrder({
@@ -113,7 +138,7 @@ export class TraceReadModelMaterializer {
     await this.readRepo.saveCheckpoint({ checkpoint: nextCheckpoint });
 
     const durationMs = this.now() - startedAtMs;
-    
+
     logger.info("Materialized trace", {
       userId,
       traceId,
@@ -133,19 +158,24 @@ export class TraceReadModelMaterializer {
     userId: string,
     traceId: string,
     nodeMap: Map<string, ReadNode>,
-    diags: MaterializationDiagnostics
+    diags: MaterializationDiagnostics,
   ): void {
     if (event.started_at_ms === null) {
       diags.diagInvalidImportance++;
       return;
     }
 
-    const importance = (event.importance_level === null || !isFinite(event.importance_level))
-      ? (diags.diagInvalidImportance++, 0)
-      : event.importance_level;
+    const importance =
+      event.importance_level === null || !isFinite(event.importance_level)
+        ? (diags.diagInvalidImportance++, 0)
+        : event.importance_level;
 
     const existing = nodeMap.get(event.id);
-    if (existing?.startedAt !== null && existing && existing.startedAt < event.started_at_ms) {
+    if (
+      existing?.startedAt !== null &&
+      existing &&
+      existing.startedAt < event.started_at_ms
+    ) {
       // Clock skew detected: a newer 'start' event has an older timestamp than existing state.
       diags.diagClockSkew++;
     }
@@ -170,7 +200,7 @@ export class TraceReadModelMaterializer {
   private handleNodeEnd(
     event: RawNodeEvent,
     nodeMap: Map<string, ReadNode>,
-    diags: MaterializationDiagnostics
+    diags: MaterializationDiagnostics,
   ): void {
     const existing = nodeMap.get(event.id);
     if (!existing) {
@@ -199,12 +229,16 @@ export class TraceReadModelMaterializer {
     userId: string,
     traceId: string,
     edgeMap: Map<string, ReadEdge>,
-    diags: MaterializationDiagnostics
+    diags: MaterializationDiagnostics,
   ): void {
     if (event.started_at_ms === null) return;
 
     const existing = edgeMap.get(event.id);
-    if (existing?.startedAt !== null && existing && existing.startedAt < event.started_at_ms) {
+    if (
+      existing?.startedAt !== null &&
+      existing &&
+      existing.startedAt < event.started_at_ms
+    ) {
       diags.diagClockSkew++;
     }
 
@@ -228,7 +262,7 @@ export class TraceReadModelMaterializer {
   private handleEdgeEnd(
     event: RawEdgeEvent,
     edgeMap: Map<string, ReadEdge>,
-    diags: MaterializationDiagnostics
+    diags: MaterializationDiagnostics,
   ): void {
     const existing = edgeMap.get(event.id);
     if (!existing) {
@@ -287,7 +321,8 @@ export class TraceReadModelMaterializer {
     diags: MaterializationDiagnostics;
     flowDiagnostics: { diagCycles: number; diagOrphanEdges: number };
   }): ReadTraceSummary {
-    const { userId, traceId, nodesArray, savedEdges, diags, flowDiagnostics } = params;
+    const { userId, traceId, nodesArray, savedEdges, diags, flowDiagnostics } =
+      params;
 
     let minImportanceLevel = Infinity;
     let maxImportanceLevel = -Infinity;
@@ -297,7 +332,7 @@ export class TraceReadModelMaterializer {
     for (const node of nodesArray) {
       minImportanceLevel = Math.min(minImportanceLevel, node.importanceLevel);
       maxImportanceLevel = Math.max(maxImportanceLevel, node.importanceLevel);
-      
+
       const startTime = node.startedAt;
       const endTime = node.endedAt ?? startTime;
       minTime = Math.min(minTime, startTime, endTime);
@@ -343,14 +378,20 @@ export class TraceReadModelMaterializer {
 
     if (nodeEvents.length > 0) {
       const last = nodeEvents[nodeEvents.length - 1];
-      next.lastNodeEventTime = last.event_type === 0 ? (last.started_at_ms ?? next.lastNodeEventTime) : (last.ended_at_ms ?? next.lastNodeEventTime);
+      next.lastNodeEventTime =
+        last.event_type === 0
+          ? (last.started_at_ms ?? next.lastNodeEventTime)
+          : (last.ended_at_ms ?? next.lastNodeEventTime);
       next.lastNodeEventId = last.id;
       next.lastNodeEventType = last.event_type;
     }
 
     if (edgeEvents.length > 0) {
       const last = edgeEvents[edgeEvents.length - 1];
-      next.lastEdgeEventTime = last.event_type === 0 ? (last.started_at_ms ?? next.lastEdgeEventTime) : (last.ended_at_ms ?? next.lastEdgeEventTime);
+      next.lastEdgeEventTime =
+        last.event_type === 0
+          ? (last.started_at_ms ?? next.lastEdgeEventTime)
+          : (last.ended_at_ms ?? next.lastEdgeEventTime);
       next.lastEdgeEventId = last.id;
       next.lastEdgeEventType = last.event_type;
     }
@@ -358,4 +399,3 @@ export class TraceReadModelMaterializer {
     return next;
   }
 }
-
