@@ -1,0 +1,177 @@
+export type IngestNodeStart = {
+  id: string;
+  traceId: string;
+  nodeType: string;
+  data: Record<string, string>;
+  startMessage?: string;
+  startedAt: number; //UTC Milisecond
+  importanceLevel: number;
+};
+
+export type IngestNodeEnd = {
+  id: string;
+  traceId: string;
+  endedAt: number; //UTC Milisecond
+  endMessage?: string;
+};
+export type IngestEdgeStart = {
+  id: string;
+  traceId: string;
+  edgeType: string;
+  fromNodeId: string;
+  toNodeId: string;
+  data: Record<string, string>;
+  startedAt: number; //UTC Milisecond
+};
+export type IngestEdgeEnd = {
+  id: string;
+  traceId: string;
+  endedAt: number; //UTC Milisecond
+};
+
+export type ReadNode = {
+  id: string;
+  userId: string;
+  traceId: string;
+  nodeType: string;
+  data: Record<string, string>;
+  startedAt: number;
+  endedAt: number | null;
+  startMessage: string | null;
+  endMessage: string | null;
+  importanceLevel: number;
+  flowOrder: number;
+  materializedAt: number;
+};
+
+export type ReadEdge = {
+  id: string;
+  userId: string;
+  traceId: string;
+  edgeType: string;
+  fromNodeId: string;
+  toNodeId: string;
+  fromFlowOrder: number;
+  toFlowOrder: number;
+  data: Record<string, string>;
+  startedAt: number;
+  endedAt: number | null;
+  materializedAt: number;
+};
+
+export type ReadTraceSummary = {
+  userId: string;
+  traceId: string;
+  nodeCount: number;
+  edgeCount: number;
+  minImportanceLevel: number;
+  maxImportanceLevel: number;
+  startedAt: number;
+  endedAt: number | null;
+  materializedAt: number;
+
+  // Named diagnostic counts
+  diagMissingStarts: number;
+  diagMissingEnds: number;
+  diagNegativeDurations: number;
+  diagCycles: number;
+  diagOrphanEdges: number;
+  diagInvalidImportance: number;
+  diagClockSkew: number;
+};
+
+export type ReadCheckpoint = {
+  userId: string;
+  traceId: string;
+
+  // Exact raw node progress
+  lastNodeEventTime: number;
+  lastNodeEventId: string;
+  lastNodeEventType: number;
+
+  // Exact raw edge progress
+  lastEdgeEventTime: number;
+  lastEdgeEventId: string;
+  lastEdgeEventType: number;
+
+  checkpointedAt: number;
+};
+
+export type ProjectionReadCap = {
+  cap: number;
+  returnedCount: number;
+  capHit: boolean;
+};
+
+export type BoundedVisibleNodesResult = {
+  nodes: ReadNode[];
+  cap: ProjectionReadCap;
+};
+
+export type BoundedVisibleEdgesResult = {
+  edges: ReadEdge[];
+  cap: ProjectionReadCap;
+};
+
+// Phase 5: Projection and Ghosting
+
+export type ProjectedNormalNode = {
+  kind: "normal";
+  id: string;
+  nodeType: string;
+  data: Record<string, string>;
+  startedAt: number;
+  endedAt: number | null;
+  importanceLevel: number;
+  flowOrder: number;
+  materializedAt: number;
+};
+
+export type ProjectedGhostNode = {
+  kind: "ghost";
+  id: string; // Deterministic ghost ID
+  hiddenNodeCount: number;
+  hiddenEdgeCount: number;
+  nodeTypeCounts: Record<string, number>;
+  minImportanceLevel: number;
+  maxImportanceLevel: number;
+  startedAt: number;
+  endedAt: number | null;
+  flowOrderStart: number;
+  flowOrderEnd: number;
+};
+
+export type ProjectedGraphNode = ProjectedNormalNode | ProjectedGhostNode;
+
+export type ProjectedGraphEdge = {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  edgeType: string;
+  edgeCount: number;
+  startedAt: number;
+  endedAt: number | null;
+};
+
+export type ProjectedGraphMetadata = {
+  threshold: number;
+  returnedNodeCount: number;
+  returnedEdgeCount: number;
+  visibleNodeCount: number;
+  ghostNodeCount: number;
+  materializedAt: number;
+  nodeCap: ProjectionReadCap;
+  edgeCap: ProjectionReadCap;
+  omittedEdgeCount: number;
+};
+
+export type ProjectedGraphResult = {
+  nodes: ProjectedGraphNode[];
+  edges: ProjectedGraphEdge[];
+  metadata: ProjectedGraphMetadata;
+};
+
+export type BoundedProjectionNodesResult = {
+  nodes: ReadNode[];
+  cap: ProjectionReadCap;
+};
