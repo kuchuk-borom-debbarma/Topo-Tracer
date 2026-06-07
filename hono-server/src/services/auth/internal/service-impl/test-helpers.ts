@@ -63,13 +63,12 @@ export function mockPending(id = "pending-123"): PendingUser {
   };
 }
 
-export function mockTokenOtp(id = "token-otp-456", token = "pending-123", tokenType: TokenOTP["tokenType"] = "SIGN_UP"): TokenOTP {
+export function mockTokenOtp(id = "token-otp-456", token = "pending-123", tokenType: TokenOTP["tokenType"] = "USER_SIGNUP"): TokenOTP {
   return {
     id,
     token,
     otp: "12345",
     tokenType,
-    createdAt: new Date(1000),
   };
 }
 

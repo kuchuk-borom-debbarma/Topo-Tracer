@@ -7,7 +7,7 @@ describe("AuthServiceImpl - SignUp Flow", () => {
     const { service, repo, notification } = createService();
 
     (repo.insertPendingSignUpUser as any).mockResolvedValue(mockPending("pending-123"));
-    (repo.upsertUserTokenOTP as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "SIGN_UP"));
+    (repo.upsertUserTokenOTP as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "USER_SIGNUP"));
 
     const tokenOtpId = await service.startSignUp({
       username: "userA",
@@ -35,7 +35,7 @@ describe("AuthServiceImpl - SignUp Flow", () => {
   it("should finishSignUp when OTP is correct", async () => {
     const { service, repo } = createService();
 
-    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "SIGN_UP"));
+    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "USER_SIGNUP"));
     (repo.getPendingUserById as any).mockResolvedValue(mockPending("pending-123"));
     (repo.insertUser as any).mockResolvedValue(mockUser("user-789"));
 
@@ -54,7 +54,7 @@ describe("AuthServiceImpl - SignUp Flow", () => {
   it("should throw on finishSignUp if OTP mismatches", async () => {
     const { service, repo } = createService();
 
-    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "SIGN_UP"));
+    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "USER_SIGNUP"));
 
     await expect(
       service.finishSignUp({ token: "token-otp-456", otp: "wrong-otp" })

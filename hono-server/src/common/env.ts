@@ -10,6 +10,7 @@ export type AppBindings = Record<string, unknown> & {
   CLICKHOUSE_DATABASE?: string;
   JWT_SECRET?: string;
   POSTGRES_URL?: string;
+  KAFKA_BROKERS?: string;
 };
 
 export type AppVariables = Record<string, unknown>;
