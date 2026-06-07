@@ -13,6 +13,7 @@
   "dependencies": {
     "@clickhouse/client-web": "^1.19.0",
     "hono": "^4.12.23",
+    "postgres": "^3.4.9",
     "tslog": "^4.10.2"
   },
   "devDependencies": {

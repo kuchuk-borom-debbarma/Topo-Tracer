@@ -9,6 +9,7 @@ export type AppBindings = Record<string, unknown> & {
   CLICKHOUSE_PASSWORD?: string;
   CLICKHOUSE_DATABASE?: string;
   JWT_SECRET?: string;
+  POSTGRES_URL?: string;
 };
 
 export type AppVariables = Record<string, unknown>;
@@ -18,10 +19,12 @@ export type AppEnv = {
   Variables: AppVariables;
 };
 
+// fallow-ignore-next-line unused-type
 export type AppContext = Context<AppEnv>;
 
 // Hono's adapter reads from process.env, Deno.env, or c.env depending on the
 // runtime. Use this wrapper instead of platform-specific env access.
+// fallow-ignore-next-line unused-export
 export const getEnv = <E extends AppEnv>(
   c: Context<E>,
   runtime?: Runtime,
@@ -31,6 +34,7 @@ export const getEnv = <E extends AppEnv>(
 
 // Use this for bindings whose runtime type may not be known yet, such as
 // platform objects or secrets that need validation at the call site.
+// fallow-ignore-next-line unused-export
 export const getEnvValue = <E extends AppEnv>(
   c: Context<E>,
   key: keyof AppBindings,

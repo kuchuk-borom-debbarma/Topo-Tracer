@@ -1,6 +1,9 @@
 import { User } from "../../../api/types";
 import { IAuthRepo } from "../IAuthRepo";
 import { PendingUser, TokenOTP } from "../types";
+import { postgres } from "../../../../../infra/db";
+import { TopoTraceException } from "../../../../../common/types";
+import { hashPassword } from "../../util/hash";
 
 /**
  * PostgreSQL implementation of the Auth Repository contract.
@@ -8,107 +11,269 @@ import { PendingUser, TokenOTP } from "../types";
  * - This class resides in internal/repo/impl.
  * - It inherits from the abstract IAuthRepo contract.
  * - Responsible for mapping PostgreSQL tables/rows to the service module's internal types.
- * - Currently structured as a placeholder/stub to be backed by a PG client later.
+ * - Connects using the initialized postgres singleton client.
  */
 export class AuthRepoPg extends IAuthRepo {
+  private get sql() {
+    return postgres.getInitializedPostgresClient();
+  }
+
   /**
    * Retrieves a user matching the provided filters.
    * Will execute SQL select against the users table.
    */
-  getUserByFilter(filters: {
+  async getUserByFilter(filters: {
     email?: string;
     password?: string;
   }): Promise<User> {
-    throw new Error("Method not implemented.");
+    const { email, password } = filters;
+    if (!email) {
+      throw new Error("Email filter is required.");
+    }
+
+    const row = await this.fetchUserRowByEmail(email);
+    if (!row) {
+      throw new TopoTraceException("User not found or invalid credentials.", 401);
+    }
+
+    await this.verifyPasswordMatch(password, row.password_hash);
+
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  private async fetchUserRowByEmail(email: string): Promise<any | null> {
+    const rows = await this.sql<any[]>`
+      SELECT id, username, email, password_hash, created_at, updated_at
+      FROM users
+      WHERE email = ${email}
+    `;
+    return rows[0] ?? null;
+  }
+
+  private async verifyPasswordMatch(plain: string | undefined, hashed: string): Promise<void> {
+    if (!plain) return;
+    const computed = await hashPassword(plain);
+    if (computed !== hashed) {
+      throw new TopoTraceException("User not found or invalid credentials.", 401);
+    }
   }
 
   /**
    * Inserts a fully active user record.
    * Will execute an insert into the users table.
    */
-  insertUser(data: {
+  async insertUser(data: {
     username: string;
     email: string;
     password: string;
     isPasswordHashed?: boolean;
   }): Promise<User> {
-    throw new Error("Method not implemented.");
+    const id = crypto.randomUUID();
+    const passwordHash = data.isPasswordHashed ? data.password : await hashPassword(data.password);
+
+    const rows = await this.sql<any[]>`
+      INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
+      VALUES (${id}, ${data.username}, ${data.email}, ${passwordHash}, NOW(), NOW())
+      RETURNING id, username, email, created_at, updated_at
+    `;
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
   }
 
   /**
    * Inserts a temporary pending signup record.
    * Will execute an insert into the pending_users table.
    */
-  insertPendingSignUpUser(data: {
+  async insertPendingSignUpUser(data: {
     username: string;
     email: string;
     password: string;
   }): Promise<PendingUser> {
-    throw new Error("Method not implemented.");
+    const id = crypto.randomUUID();
+    const passwordHash = await hashPassword(data.password);
+
+    const rows = await this.sql<any[]>`
+      INSERT INTO pending_users (id, username, email, password, created_at)
+      VALUES (${id}, ${data.username}, ${data.email}, ${passwordHash}, NOW())
+      RETURNING id, username, email, password
+    `;
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      hashedPassword: row.password,
+    };
   }
 
   /**
    * Finds a pending signup record by its primary token ID.
    */
-  getPendingUserById(token: string): Promise<PendingUser> {
-    throw new Error("Method not implemented.");
+  async getPendingUserById(token: string): Promise<PendingUser> {
+    const rows = await this.sql<any[]>`
+      SELECT id, username, email, password
+      FROM pending_users
+      WHERE id = ${token}
+    `;
+
+    if (rows.length === 0) {
+      throw new TopoTraceException("Pending user registration not found.", 404);
+    }
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      hashedPassword: row.password,
+    };
   }
 
   /**
    * Upserts the OTP verification code and token binding.
    * Will execute SQL upsert on token_otps table.
    */
-  upsertUserTokenOTP(data: {
+  async upsertUserTokenOTP(data: {
     otp: string;
     token: string;
   }): Promise<TokenOTP> {
-    throw new Error("Method not implemented.");
+    const rows = await this.sql<any[]>`
+      INSERT INTO token_otps (id, token, otp, token_type, created_at)
+      VALUES (${data.token}, ${data.token}, ${data.otp}, 'USER_SIGNUP', NOW())
+      ON CONFLICT (id) DO UPDATE
+      SET otp = EXCLUDED.otp, created_at = NOW()
+      RETURNING id, token, otp, token_type as "tokenType"
+    `;
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      token: row.token,
+      otp: row.otp,
+      tokenType: row.tokenType as TokenOTP["tokenType"],
+    };
   }
 
   /**
    * Finds verification code state by token ID.
    */
-  getTokenOTPById(token: string): Promise<TokenOTP> {
-    throw new Error("Method not implemented.");
+  async getTokenOTPById(token: string): Promise<TokenOTP> {
+    const rows = await this.sql<any[]>`
+      SELECT id, token, otp, token_type as "tokenType"
+      FROM token_otps
+      WHERE id = ${token}
+    `;
+
+    if (rows.length === 0) {
+      throw new TopoTraceException("Verification token not found.", 404);
+    }
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      token: row.token,
+      otp: row.otp,
+      tokenType: row.tokenType as TokenOTP["tokenType"],
+    };
   }
 
   /**
    * Retrieves a fully registered user by their ID.
    */
-  getUserById(token: string): Promise<User> {
-    throw new Error("Method not implemented.");
+  async getUserById(token: string): Promise<User> {
+    const rows = await this.sql<any[]>`
+      SELECT id, username, email, created_at, updated_at
+      FROM users
+      WHERE id = ${token}
+    `;
+
+    if (rows.length === 0) {
+      throw new TopoTraceException("User profile not found.", 404);
+    }
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
   }
 
   /**
    * Updates a user's password in the database.
    */
-  updateUserPassword(data: {
+  async updateUserPassword(data: {
     userId: string;
     password: string;
   }): Promise<void> {
-    throw new Error("Method not implemented.");
+    const passwordHash = await hashPassword(data.password);
+    const result = await this.sql`
+      UPDATE users
+      SET password_hash = ${passwordHash}, updated_at = NOW()
+      WHERE id = ${data.userId}
+    `;
+    if (result.count === 0) {
+      throw new TopoTraceException("User profile not found.", 404);
+    }
   }
 
   /**
    * Inserts a new Token OTP verification record.
    */
-  insertUserTokenOTP(data: {
+  async insertUserTokenOTP(data: {
     otp: string;
     token: string;
     tokenType: TokenOTP["tokenType"];
   }): Promise<TokenOTP> {
-    throw new Error("Method not implemented.");
+    const id = crypto.randomUUID();
+    const rows = await this.sql<any[]>`
+      INSERT INTO token_otps (id, token, otp, token_type, created_at)
+      VALUES (${id}, ${data.token}, ${data.otp}, ${data.tokenType}, NOW())
+      RETURNING id, token, otp, token_type as "tokenType"
+    `;
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      token: row.token,
+      otp: row.otp,
+      tokenType: row.tokenType as TokenOTP["tokenType"],
+    };
   }
 
   /**
    * Deletes all Token OTP records matching the given token reference and type.
    */
-  deleteUserTokenOTPs(data: {
+  async deleteUserTokenOTPs(data: {
     token: string;
     tokenType: TokenOTP["tokenType"];
   }): Promise<void> {
-    throw new Error("Method not implemented.");
+    if (data.tokenType === "USER_SIGNUP") {
+      await this.sql`
+        DELETE FROM token_otps
+        WHERE id = ${data.token} AND token_type = ${data.tokenType}
+      `;
+    } else {
+      await this.sql`
+        DELETE FROM token_otps
+        WHERE token = ${data.token} AND token_type = ${data.tokenType}
+      `;
+    }
   }
 }
-
-

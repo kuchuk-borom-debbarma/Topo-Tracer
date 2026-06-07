@@ -101,6 +101,7 @@ export class AuthServiceImpl extends IAuthService {
         email: user.email,
         password: user.hashedPassword,
         username: user.username,
+        isPasswordHashed: true,
       });
     } catch (err) {
       this.logger.error("Failed to finish signup verification", err);
