@@ -9,3 +9,4 @@ import { InMemoryCache } from "./internal/InMemoryCache";
  * - Restricts direct implementation imports from other modules.
  */
 export const cache: ICache = new InMemoryCache();
+export { SpoofCache } from "./internal/SpoofCache";
