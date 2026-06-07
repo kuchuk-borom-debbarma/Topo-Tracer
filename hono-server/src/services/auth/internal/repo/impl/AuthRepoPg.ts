@@ -78,5 +78,37 @@ export class AuthRepoPg extends IAuthRepo {
   getUserById(token: string): Promise<User> {
     throw new Error("Method not implemented.");
   }
+
+  /**
+   * Updates a user's password in the database.
+   */
+  updateUserPassword(data: {
+    userId: string;
+    password: string;
+  }): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
+
+  /**
+   * Inserts a new Token OTP verification record.
+   */
+  insertUserTokenOTP(data: {
+    otp: string;
+    token: string;
+    tokenType: TokenOTP["tokenType"];
+  }): Promise<TokenOTP> {
+    throw new Error("Method not implemented.");
+  }
+
+  /**
+   * Deletes all Token OTP records matching the given token reference and type.
+   */
+  deleteUserTokenOTPs(data: {
+    token: string;
+    tokenType: TokenOTP["tokenType"];
+  }): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
 }
+
 

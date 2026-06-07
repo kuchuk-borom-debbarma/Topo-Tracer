@@ -15,8 +15,9 @@ export type PendingUser = {
  */
 export type TokenOTP = {
   id: string;
-  token: string; // References the pending user registration ID
+  token: string; // References the pending user registration ID or registered user ID
   otp: string;   // The temporary verification code
-  tokenType: "USER_SIGNUP" | "DUMMY";
+  tokenType: "USER_SIGNUP" | "PASSWORD_RESET" | "DUMMY";
 };
+
 

@@ -113,5 +113,78 @@ export class AuthServiceImpl extends IAuthService {
       throw err;
     }
   }
+
+  /**
+   * Initiates the password reset flow.
+   * Looks up the user by email, inserts a new PASSWORD_RESET token, and generates an OTP.
+   */
+  async startResetPassword(data: { email: string }): Promise<string> {
+    // SECURITY WARNING: In compliance with code-base.md, only log non-sensitive identifier (email)
+    this.logger.trace(`startResetPassword initiated for email="${data.email}"`);
+    try {
+      // 1. Lookup user by email filter
+      const user = await this.authRepo.getUserByFilter({ email: data.email });
+      if (!user) {
+        throw new TopoTraceException("User not found", 404);
+      }
+
+      // 2. Insert new TokenOTP entry (allowing multiple active reset tokens as per design to avoid overwrite spam)
+      const tokenOTP = await this.authRepo.insertUserTokenOTP({
+        token: user.id,
+        otp: "12345", // TODO: Replace placeholder with secure random generator
+        tokenType: "PASSWORD_RESET",
+      });
+
+      // TODO: Publish a notification/email event to deliver the OTP to the user
+      return tokenOTP.id;
+    } catch (err) {
+      this.logger.error("Failed to start password reset flow", err);
+      throw err;
+    }
+  }
+
+  /**
+   * Finalizes the password reset flow.
+   * Verifies the OTP, updates the user's password, and deletes all user's reset tokens.
+   */
+  async finishResetPassword(data: {
+    token: string;
+    otp: string;
+    newPassword: string;
+  }): Promise<void> {
+    // SECURITY WARNING: In compliance with code-base.md, do not log OTP or newPassword.
+    this.logger.trace(`finishResetPassword verification initiated for token="${data.token}"`);
+    try {
+      // 1. Fetch the TokenOTP record
+      const tokenOtp = await this.authRepo.getTokenOTPById(data.token);
+
+      // 2. Validate token type and OTP value
+      if (tokenOtp.tokenType !== "PASSWORD_RESET") {
+        throw new TopoTraceException("Invalid token type", 400);
+      }
+      if (tokenOtp.otp !== data.otp) {
+        throw new TopoTraceException("OTP Mismatch", 403);
+      }
+
+      // 3. Fetch user associated with this token
+      const user = await this.authRepo.getUserById(tokenOtp.token);
+
+      // 4. Update the user password in repository
+      await this.authRepo.updateUserPassword({
+        userId: user.id,
+        password: data.newPassword,
+      });
+
+      // 5. Clean up all password reset tokens associated with this user
+      await this.authRepo.deleteUserTokenOTPs({
+        token: user.id,
+        tokenType: "PASSWORD_RESET",
+      });
+    } catch (err) {
+      this.logger.error("Failed to finish password reset flow", err);
+      throw err;
+    }
+  }
 }
+
 

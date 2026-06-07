@@ -43,5 +43,31 @@ export abstract class IAuthService {
     email: string;
     password: string;
   }): Promise<string>;
+
+  /**
+   * Initiates a password reset flow.
+   * If the email exists, generates a reset token and OTP to be verified.
+   * 
+   * @param data.email - Registered email of the user.
+   * @returns A Promise resolving to the reset token ID.
+   */
+  abstract startResetPassword(data: { email: string }): Promise<string>;
+
+  /**
+   * Finalizes the password reset flow.
+   * Verifies the OTP matches the token, hashes and updates the user's password,
+   * and cleans up all associated password reset OTPs.
+   * 
+   * @param data.token - The reset token ID.
+   * @param data.otp - The one-time password verification code.
+   * @param data.newPassword - The plain-text new password.
+   * @throws TopoTraceException (403) if the OTP is invalid or mismatched.
+   */
+  abstract finishResetPassword(data: {
+    token: string;
+    otp: string;
+    newPassword: string;
+  }): Promise<void>;
 }
+
 

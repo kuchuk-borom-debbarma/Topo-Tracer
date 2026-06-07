@@ -87,5 +87,43 @@ export abstract class IAuthRepo {
    * @returns The User record.
    */
   abstract getUserById(token: string): Promise<User>;
+
+  /**
+   * Updates a user's password in the database.
+   * 
+   * @param data.userId - User ID.
+   * @param data.password - The hashed new password.
+   */
+  abstract updateUserPassword(data: {
+    userId: string;
+    password: string;
+  }): Promise<void>;
+
+  /**
+   * Inserts a new Token OTP verification record (allows multiple active entries).
+   * 
+   * @param data.otp - The one-time password code.
+   * @param data.token - The associated user/signup token ID.
+   * @param data.tokenType - The token classification.
+   * @returns The newly created TokenOTP record.
+   */
+  abstract insertUserTokenOTP(data: {
+    otp: string;
+    token: string;
+    tokenType: TokenOTP["tokenType"];
+  }): Promise<TokenOTP>;
+
+  /**
+   * Deletes all Token OTP records matching the given token reference and type.
+   * Used for cleanup after successful verification.
+   * 
+   * @param data.token - The associated token/user ID reference to delete.
+   * @param data.tokenType - The token classification to clean up.
+   */
+  abstract deleteUserTokenOTPs(data: {
+    token: string;
+    tokenType: TokenOTP["tokenType"];
+  }): Promise<void>;
 }
+
 
