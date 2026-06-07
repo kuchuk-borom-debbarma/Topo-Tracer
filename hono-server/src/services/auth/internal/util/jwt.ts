@@ -15,7 +15,7 @@ export type JWTPayload = {
 
 /**
  * Generates a signed JWT token containing user details.
- * 
+ *
  * @param payload.userId - The user ID to include in the payload as 'sub'.
  * @param payload.email - The user email to include.
  * @param secret - Secret key used for signing.
@@ -36,11 +36,10 @@ export async function generateToken(
 
 /**
  * Verifies a JWT token and returns its decoded payload.
- * 
+ *
  * @param token - The token string to verify.
  * @param secret - Secret key used to verify the signature.
  */
-// fallow-ignore-next-line unused-export
 export async function verifyToken(
   token: string,
   secret: string,

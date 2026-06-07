@@ -4,7 +4,8 @@ import { authRepo } from "../repo";
 import { IAuthRepo } from "../repo/IAuthRepo";
 import { TopoTraceException } from "../../../../common/types";
 import { IExternalNotificationService } from "../../../external-notification/api/IExternalNotificationService";
-import { generateToken } from "../util/jwt";
+import { generateToken, verifyToken } from "../util/jwt";
+import { User } from "../../api/types";
 
 /**
  * Authentication Service implementation.
@@ -215,6 +216,32 @@ export class AuthServiceImpl extends IAuthService {
     } catch (err) {
       this.logger.error("Failed to finish password reset flow", err);
       throw err;
+    }
+  }
+
+  /**
+   * Retrieves the user profile associated with a valid JWT token.
+   * Decodes and verifies the token signature before performing database lookup.
+   */
+  // fallow-ignore-next-line unused-class-member
+  async getUserByToken(data: {
+    token: string;
+    jwtSecret: string;
+  }): Promise<User> {
+    this.logger.trace("getUserByToken initiated");
+    const { token, jwtSecret } = data;
+    try {
+      // 1. Verify the JWT token and decode its payload
+      const payload = await verifyToken(token, jwtSecret);
+
+      // 2. Fetch the corresponding user from the repository
+      const user = await this.authRepo.getUserById(payload.sub);
+
+      return user;
+    } catch (err) {
+      this.logger.error("Failed to authenticate user by token", err);
+      // Map verification failures to standard 401 Unauthorized exceptions
+      throw new TopoTraceException("Invalid or expired token", 401);
     }
   }
 }

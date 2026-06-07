@@ -1,3 +1,5 @@
+import { User } from "./types";
+
 /**
  * Interface contract for the Authentication Service.
  * Exposes the public capabilities of the auth service module.
@@ -77,6 +79,21 @@ export abstract class IAuthService {
     otp: string;
     newPassword: string;
   }): Promise<void>;
+
+  /**
+   * Retrieves the user profile associated with a valid JWT token.
+   * Decodes and verifies the token signature before performing database lookup.
+   * 
+   * @param data.token - The JWT token to verify.
+   * @param data.jwtSecret - Secret key used to verify the JWT token signature.
+   * @returns The User profile.
+   * @throws TopoTraceException (401) if the token is invalid or expired.
+   */
+  // fallow-ignore-next-line unused-class-member
+  abstract getUserByToken(data: {
+    token: string;
+    jwtSecret: string;
+  }): Promise<User>;
 }
 
 
