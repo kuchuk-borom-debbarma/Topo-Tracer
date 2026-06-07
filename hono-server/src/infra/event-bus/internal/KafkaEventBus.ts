@@ -112,10 +112,17 @@ export class KafkaEventBus extends IEventBus {
         // been successfully processed. We scope the cache key by consumerName so that
         // distinct consumer groups can each process the message exactly once.
         const nonDuplicateEvents: EventBusPublishedEvent[] = [];
+        const seenInBatch = new Set<string>();
+
         for (const event of events) {
           if (!event.idempotencyId) {
             // Events without a stable idempotency identity bypass deduplication.
             nonDuplicateEvents.push(event);
+            continue;
+          }
+
+          if (seenInBatch.has(event.idempotencyId)) {
+            // Skip duplicate occurrences of the same event within the same batch.
             continue;
           }
 
@@ -127,9 +134,7 @@ export class KafkaEventBus extends IEventBus {
             continue;
           }
 
-          // Mark this event as processed for this consumer group. We use a 24-hour TTL
-          // (86,400 seconds) to balance storage utilization with safety against retries.
-          await this.cache.set(cacheKey, "true", 86400);
+          seenInBatch.add(event.idempotencyId);
           nonDuplicateEvents.push(event);
         }
 
@@ -137,6 +142,15 @@ export class KafkaEventBus extends IEventBus {
         // avoiding redundant invocations on empty batches as per code-base.md guidelines.
         if (nonDuplicateEvents.length > 0) {
           await handler(nonDuplicateEvents);
+
+          // Mark these events as processed for this consumer group ONLY after the handler
+          // successfully resolves. If the handler fails, we do not update the cache, allowing
+          // the broker to retry processing of the same events. We use a 24-hour TTL (86,400 seconds)
+          // to balance storage utilization with safety against retries.
+          for (const idempotencyId of seenInBatch) {
+            const cacheKey = `eb:idemp:${options.consumerName}:${idempotencyId}`;
+            await this.cache.set(cacheKey, "true", 86400);
+          }
         }
       },
     });

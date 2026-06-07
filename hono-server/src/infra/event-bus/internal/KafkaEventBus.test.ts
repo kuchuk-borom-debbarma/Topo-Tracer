@@ -193,4 +193,42 @@ describe("KafkaEventBus Integration", () => {
     expect(handlerB).toHaveBeenCalledTimes(1);
     expect((handlerB as any).mock.calls[0][0][0].idempotencyId).toBe("shared-id");
   });
+
+  it("should not mark events as processed in cache if the handler throws an error", async () => {
+    resetMocks();
+    const cache = new MockCache();
+    const bus = new KafkaEventBus(["localhost:9092"], cache);
+    
+    // Handler that throws an error
+    const handler = mock(async () => {
+      throw new Error("handler failure");
+    });
+
+    await bus.subscribe({ topic: "test-topic", consumerName: "group-abc" }, handler);
+    expect(eachBatchCallback).not.toBeNull();
+
+    let threw = false;
+    try {
+      await eachBatchCallback({
+        batch: {
+          topic: "test-topic",
+          messages: [
+            {
+              headers: { idempotencyId: "id-failure-test" },
+              value: { toString: () => JSON.stringify({ msg: "fail" }) },
+              timestamp: "1000",
+            },
+          ],
+        },
+      });
+    } catch (err: any) {
+      threw = true;
+      expect(err.message).toBe("handler failure");
+    }
+    expect(threw).toBe(true);
+
+    // The key should NOT be written to the cache
+    const cacheVal = await cache.get("eb:idemp:group-abc:id-failure-test");
+    expect(cacheVal).toBeNull();
+  });
 });

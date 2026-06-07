@@ -33,9 +33,16 @@ export class DevEventBus extends IEventBus {
     // fallow-ignore-next-line complexity
     const wrappedHandler: EventBusHandler = async (events) => {
       const nonDuplicateEvents: EventBusPublishedEvent[] = [];
+      const seenInBatch = new Set<string>();
+
       for (const event of events) {
         if (!event.idempotencyId) {
           nonDuplicateEvents.push(event);
+          continue;
+        }
+
+        if (seenInBatch.has(event.idempotencyId)) {
+          // Skip duplicate occurrences of the same event within the same batch.
           continue;
         }
 
@@ -47,13 +54,20 @@ export class DevEventBus extends IEventBus {
           continue;
         }
 
-        // Set processed flag with a 24-hour TTL
-        await this.cache.set(cacheKey, "true", 86400);
+        seenInBatch.add(event.idempotencyId);
         nonDuplicateEvents.push(event);
       }
 
       if (nonDuplicateEvents.length > 0) {
         await handler(nonDuplicateEvents);
+
+        // Mark these events as processed for this consumer group ONLY after the handler
+        // successfully resolves. If the handler fails, we do not update the cache, allowing
+        // retry processing of the same events. We use a 24-hour TTL (86,400 seconds).
+        for (const idempotencyId of seenInBatch) {
+          const cacheKey = `eb:idemp:${options.consumerName}:${idempotencyId}`;
+          await this.cache.set(cacheKey, "true", 86400);
+        }
       }
     };
 
