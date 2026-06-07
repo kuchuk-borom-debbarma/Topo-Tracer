@@ -8,6 +8,7 @@ import {
   EventBusPublishOptions,
   EventBusSubscribeOptions,
 } from "../api/types";
+import { ICache } from "../../cache/api/ICache";
 
 /**
  * Kafka-backed Event Bus implementation using kafkajs.
@@ -18,7 +19,11 @@ export class KafkaEventBus extends IEventBus {
   private producer: Producer | null = null;
   private readonly consumers: Consumer[] = [];
 
-  constructor(brokers: string[], clientId = "topo-tracer-hono") {
+  constructor(
+    brokers: string[],
+    private readonly cache: ICache,
+    clientId = "topo-tracer-hono",
+  ) {
     super();
     this.kafka = new Kafka({
       clientId,
@@ -103,7 +108,36 @@ export class KafkaEventBus extends IEventBus {
           };
         });
 
-        await handler(events);
+        // To enforce consumer-side idempotency, we filter out events that have already
+        // been successfully processed. We scope the cache key by consumerName so that
+        // distinct consumer groups can each process the message exactly once.
+        const nonDuplicateEvents: EventBusPublishedEvent[] = [];
+        for (const event of events) {
+          if (!event.idempotencyId) {
+            // Events without a stable idempotency identity bypass deduplication.
+            nonDuplicateEvents.push(event);
+            continue;
+          }
+
+          const cacheKey = `eb:idemp:${options.consumerName}:${event.idempotencyId}`;
+          const isDuplicate = await this.cache.get<string>(cacheKey);
+          
+          if (isDuplicate) {
+            // Drop duplicate deliveries (e.g. from partition rebalances, retries).
+            continue;
+          }
+
+          // Mark this event as processed for this consumer group. We use a 24-hour TTL
+          // (86,400 seconds) to balance storage utilization with safety against retries.
+          await this.cache.set(cacheKey, "true", 86400);
+          nonDuplicateEvents.push(event);
+        }
+
+        // Only trigger the downstream handler if the batch contains new work,
+        // avoiding redundant invocations on empty batches as per code-base.md guidelines.
+        if (nonDuplicateEvents.length > 0) {
+          await handler(nonDuplicateEvents);
+        }
       },
     });
   }
