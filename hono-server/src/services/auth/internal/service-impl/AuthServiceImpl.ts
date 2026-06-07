@@ -6,6 +6,7 @@ import { TopoTraceException } from "../../../../common/types";
 import { IExternalNotificationService } from "../../../external-notification/api/IExternalNotificationService";
 import { generateToken, verifyToken } from "../util/jwt";
 import { User } from "../../api/types";
+import { ICache } from "../../../../infra/cache/api/ICache";
 
 /**
  * Authentication Service implementation.
@@ -19,10 +20,12 @@ export class AuthServiceImpl extends IAuthService {
   readonly logger: Logger<unknown>;
   readonly authRepo: IAuthRepo;
   readonly notificationService: IExternalNotificationService;
+  readonly cache: ICache;
 
   constructor(
     parentLogger: Logger<unknown>,
     notificationService: IExternalNotificationService,
+    cache: ICache,
   ) {
     super();
     // Derives a structured child logger for this component, adhering to the logging rules
@@ -31,6 +34,7 @@ export class AuthServiceImpl extends IAuthService {
     });
     this.authRepo = authRepo;
     this.notificationService = notificationService;
+    this.cache = cache;
   }
 
   /**
@@ -213,6 +217,9 @@ export class AuthServiceImpl extends IAuthService {
         token: user.id,
         tokenType: "PASSWORD_RESET",
       });
+
+      // 6. Invalidate user cache entry to reflect security change
+      await this.cache.delete(`user:id:${user.id}`);
     } catch (err) {
       this.logger.error("Failed to finish password reset flow", err);
       throw err;
@@ -234,8 +241,19 @@ export class AuthServiceImpl extends IAuthService {
       // 1. Verify the JWT token and decode its payload
       const payload = await verifyToken(token, jwtSecret);
 
-      // 2. Fetch the corresponding user from the repository
+      // 2. Try to retrieve user from cache
+      const cacheKey = `user:id:${payload.sub}`;
+      const cachedUser = await this.cache.get<User>(cacheKey);
+      if (cachedUser) {
+        this.logger.trace(`getUserByToken cache hit for userId="${payload.sub}"`);
+        return cachedUser;
+      }
+
+      // 3. Fetch from repository if cache miss
       const user = await this.authRepo.getUserById(payload.sub);
+
+      // 4. Populate cache with a 1-hour TTL
+      await this.cache.set(cacheKey, user, 3600);
 
       return user;
     } catch (err) {
