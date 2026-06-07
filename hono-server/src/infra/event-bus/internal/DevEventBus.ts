@@ -6,9 +6,14 @@ import {
   EventBusSubscribeOptions,
 } from "../api/types";
 import { IEventBus } from "../api/IEventBus";
+import { ICache } from "../../cache/api/ICache";
 
 export class DevEventBus extends IEventBus {
   private readonly handlersByTopic = new Map<string, EventBusHandler[]>();
+
+  constructor(private readonly cache: ICache) {
+    super();
+  }
 
   async publish(
     events: EventBusPublishEvent[],
@@ -23,8 +28,37 @@ export class DevEventBus extends IEventBus {
     options: EventBusSubscribeOptions,
     handler: EventBusHandler,
   ): Promise<void> {
+    // To enforce consumer-side idempotency in development, we wrap the handler and filter out
+    // events that have already been processed by this consumerName.
+    // fallow-ignore-next-line complexity
+    const wrappedHandler: EventBusHandler = async (events) => {
+      const nonDuplicateEvents: EventBusPublishedEvent[] = [];
+      for (const event of events) {
+        if (!event.idempotencyId) {
+          nonDuplicateEvents.push(event);
+          continue;
+        }
+
+        const cacheKey = `eb:idemp:${options.consumerName}:${event.idempotencyId}`;
+        const isDuplicate = await this.cache.get<string>(cacheKey);
+        
+        if (isDuplicate) {
+          // Skip duplicate event delivery for this consumer group
+          continue;
+        }
+
+        // Set processed flag with a 24-hour TTL
+        await this.cache.set(cacheKey, "true", 86400);
+        nonDuplicateEvents.push(event);
+      }
+
+      if (nonDuplicateEvents.length > 0) {
+        await handler(nonDuplicateEvents);
+      }
+    };
+
     const handlers = this.handlersByTopic.get(options.topic) ?? [];
-    handlers.push(handler);
+    handlers.push(wrappedHandler);
     this.handlersByTopic.set(options.topic, handlers);
   }
 

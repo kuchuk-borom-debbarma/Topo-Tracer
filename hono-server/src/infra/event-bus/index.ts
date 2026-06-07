@@ -8,5 +8,5 @@ const useKafka = (process as any).env.EVENT_BUS_TYPE === "kafka";
 
 export const eventBus: IEventBus = useKafka
   ? new KafkaEventBus(brokers, cache)
-  : new DevEventBus();
+  : new DevEventBus(cache);
 
