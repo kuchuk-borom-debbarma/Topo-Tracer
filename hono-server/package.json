@@ -1,0 +1,22 @@
+{
+  "name": "hono-server",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "fallow": "fallow audit --base HEAD",
+    "fallow:full": "fallow",
+    "fallow:health": "fallow health --report-only",
+    "fallow:fix": "fallow fix --dry-run"
+  },
+  "dependencies": {
+    "@clickhouse/client-web": "^1.19.0",
+    "hono": "^4.12.23",
+    "tslog": "^4.10.2"
+  },
+  "devDependencies": {
+    "fallow": "^2.88.1",
+    "wrangler": "^4.4.0"
+  }
+}

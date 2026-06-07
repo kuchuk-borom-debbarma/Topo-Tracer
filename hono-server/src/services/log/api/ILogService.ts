@@ -1,0 +1,49 @@
+import {
+  IngestEdgeEnd,
+  IngestEdgeStart,
+  IngestNodeEnd,
+  IngestNodeStart,
+  ProjectedGraphResult,
+} from "./types";
+
+/**
+ * Interface contract for the Log Service.
+ * Exposes public trace ingestion and visualization features.
+ * Following code-base.md guidelines:
+ * - Decouples HTTP handlers (routes) from real log orchestration.
+ * - Utilizes standard object parameters on all public methods.
+ * - Restricts database and event-bus details behind the implementation boundary.
+ */
+export abstract class ILogService {
+  /**
+   * Batch ingests lifecycle events for nodes and edges (starts/ends).
+   * 
+   * @param data.userId - ID of the user owning these traces.
+   * @param data.nodeStarts - Array of node start events.
+   * @param data.edgeStarts - Array of edge start events.
+   * @param data.nodeEnds - Array of node end/resolution events.
+   * @param data.edgeEnds - Array of edge end/resolution events.
+   */
+  abstract ingestNodesNEdges(data: {
+    userId: string;
+    nodeStarts: IngestNodeStart[];
+    edgeStarts: IngestEdgeStart[];
+    nodeEnds: IngestNodeEnd[];
+    edgeEnds: IngestEdgeEnd[];
+  }): Promise<void>;
+
+  /**
+   * Projects a read-optimized trace graph bounded by a specific importance threshold.
+   * 
+   * @param data.userId - Owner of the trace (for multi-tenant safety).
+   * @param data.traceId - Target trace ID to fetch.
+   * @param data.threshold - Maximum importance level to include in the projected graph window.
+   * @returns Bounded graph projection with nodes, edges, and flow diagnostics.
+   */
+  abstract projectTraceGraph(data: {
+    userId: string;
+    traceId: string;
+    threshold: number;
+  }): Promise<ProjectedGraphResult>;
+}
+

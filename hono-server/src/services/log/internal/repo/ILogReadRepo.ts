@@ -1,0 +1,109 @@
+import {
+  ReadCheckpoint,
+  ReadNode,
+  ReadEdge,
+  ReadTraceSummary,
+  BoundedVisibleNodesResult,
+  BoundedVisibleEdgesResult,
+  BoundedProjectionNodesResult,
+} from "../../api/types";
+import { NodeEventRow, EdgeEventRow } from "./types";
+
+/**
+ * Default upper limits for row queries when projecting graphs.
+ * Prevents returning excessive rows which would crash memory or UI rendering.
+ */
+export const DEFAULT_PROJECTION_NODE_CAP = 500;
+export const DEFAULT_PROJECTION_EDGE_CAP = 2000;
+
+/**
+ * Interface contract for the Log Read Repository.
+ * Following code-base.md guidelines:
+ * - Decouples service logic from database clients (like ClickHouse).
+ * - Declares methods for reading checkpoints, raw events, read models, and projected graph segments.
+ * - Uses object parameters on all methods.
+ */
+export abstract class ILogReadRepo {
+  /**
+   * Retrieves the latest processed checkpoint for a trace.
+   * Checkpoints store offset values to resume incremental materialization safely.
+   */
+  abstract loadCheckpoint(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<ReadCheckpoint | null>;
+
+  /**
+   * Loads the materialized read-model elements (nodes, edges, and summary) for a trace.
+   */
+  abstract loadLatestReadModel(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<{
+    nodes: ReadNode[];
+    edges: ReadEdge[];
+    summary: ReadTraceSummary | null;
+  }>;
+
+  /**
+   * Reads raw events appended since the provided checkpoint.
+   * Replayed by the materializer to perform incremental updates.
+   */
+  abstract loadRawEventsAfterCheckpoint(params: {
+    userId: string;
+    traceId: string;
+    checkpoint: ReadCheckpoint | null;
+  }): Promise<{
+    nodeEvents: NodeEventRow[];
+    edgeEvents: EdgeEventRow[];
+  }>;
+
+  /**
+   * Saves or overwrites the materialized read-optimized projections of a trace.
+   */
+  abstract saveReadModel(params: {
+    userId: string;
+    traceId: string;
+    nodes: ReadNode[];
+    edges: ReadEdge[];
+    summary: ReadTraceSummary;
+    materializedAt: number;
+  }): Promise<void>;
+
+  /**
+   * Persists a new checkpoint representing materialization progress.
+   */
+  abstract saveCheckpoint(params: {
+    checkpoint: ReadCheckpoint;
+  }): Promise<void>;
+
+  /**
+   * Queries materialized nodes filtered by a given importance threshold.
+   * Output is bounded by DEFAULT_PROJECTION_NODE_CAP.
+   */
+  abstract loadBoundedVisibleNodes(params: {
+    userId: string;
+    traceId: string;
+    threshold: number;
+  }): Promise<BoundedVisibleNodesResult>;
+
+  /**
+   * Queries materialized edges connecting a specific list of nodes.
+   * Output is bounded by DEFAULT_PROJECTION_EDGE_CAP.
+   */
+  abstract loadBoundedVisibleEdges(params: {
+    userId: string;
+    traceId: string;
+    nodeIds: string[];
+  }): Promise<BoundedVisibleEdgesResult>;
+
+  /**
+   * Loads all materialized nodes for a trace, up to the default safety cap.
+   * Used as the first pass during threshold-based sub-graph projection.
+   */
+  abstract loadBoundedProjectionNodes(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<BoundedProjectionNodesResult>;
+}
+

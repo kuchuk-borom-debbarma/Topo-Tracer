@@ -1,0 +1,439 @@
+import { describe, expect, test } from "bun:test";
+// @ts-ignore
+import { readFileSync } from "fs";
+// @ts-ignore
+import { join } from "path";
+import {
+  CLICKHOUSE_READ_NODES_TABLE,
+  CLICKHOUSE_READ_EDGES_TABLE,
+  CLICKHOUSE_TRACE_SUMMARIES_TABLE,
+  CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
+} from "../../../../../infra/db/clickhouse";
+import { LogReadRepoClickHouse } from "./LogReadRepoClickHouse";
+import { DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
+import { FakeClickHouseClient, createRepoWithFakeClient, createTestNode, createTestEdge, createTestSummary } from "./test-helpers";
+
+describe("LogReadRepoClickHouse row mapping", () => {
+  test("saveReadModel inserts nodes, edges, and summary with correct snake_case mapping", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    const nodes = [createTestNode()];
+    const edges = [createTestEdge()];
+    const summary = createTestSummary();
+
+    await repo.saveReadModel({ userId: "user-1", traceId: "trace-1", nodes, edges, summary, materializedAt: 3000 });
+
+    const nodeInsert = fakeClient.inserts.find(i => i.table === CLICKHOUSE_READ_NODES_TABLE);
+    const edgeInsert = fakeClient.inserts.find(i => i.table === CLICKHOUSE_READ_EDGES_TABLE);
+    const summaryInsert = fakeClient.inserts.find(i => i.table === CLICKHOUSE_TRACE_SUMMARIES_TABLE);
+
+    expect(nodeInsert?.values[0]).toMatchObject({
+      id: "node-1",
+      user_id: "user-1",
+      trace_id: "trace-1",
+      node_type: "op",
+      data: { key: "val" },
+      started_at_ms: 1000,
+      ended_at_ms: 2000,
+      start_message: "start",
+      end_message: "end",
+      importance_level: 5,
+      flow_order: 1,
+      materialized_at_ms: 3000,
+    });
+
+    expect(edgeInsert?.values[0]).toMatchObject({
+      id: "edge-1",
+      user_id: "user-1",
+      trace_id: "trace-1",
+      edge_type: "calls",
+      from_node_id: "node-1",
+      to_node_id: "node-2",
+      from_flow_order: 1,
+      to_flow_order: 2,
+      data: { ekey: "eval" },
+      started_at_ms: 1100,
+      ended_at_ms: 2100,
+      materialized_at_ms: 3000,
+    });
+
+    expect(summaryInsert?.values[0]).toMatchObject({
+      user_id: "user-1",
+      trace_id: "trace-1",
+      node_count: 1,
+      edge_count: 1,
+      min_importance_level: 5,
+      max_importance_level: 5,
+      started_at_ms: 1000,
+      ended_at_ms: 2000,
+      materialized_at_ms: 3000,
+    });
+  });
+
+  test("saveCheckpoint inserts checkpoint with correct snake_case mapping", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    const checkpoint = {
+      userId: "u1",
+      traceId: "t1",
+      lastNodeEventTime: 1000,
+      lastNodeEventId: "n1",
+      lastNodeEventType: 0,
+      lastEdgeEventTime: 1100,
+      lastEdgeEventId: "e1",
+      lastEdgeEventType: 1,
+      checkpointedAt: 2000,
+    };
+
+    await repo.saveCheckpoint({ checkpoint });
+
+    const insert = fakeClient.inserts.find(i => i.table === CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE);
+    expect(insert?.values[0]).toMatchObject({
+      user_id: "u1",
+      trace_id: "t1",
+      node_progress_timestamp: 1000,
+      node_progress_id: "n1",
+      node_progress_event_type: 0,
+      edge_progress_timestamp: 1100,
+      edge_progress_id: "e1",
+      edge_progress_event_type: 1,
+      updated_at_ms: 2000,
+    });
+  });
+});
+
+describe("LogReadRepoClickHouse row loading", () => {
+  test("loadCheckpoint maps snake_case back to camelCase and handles empty results", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE] = [
+      {
+        user_id: "u1",
+        trace_id: "t1",
+        node_progress_timestamp: 1000,
+        node_progress_id: "n1",
+        node_progress_event_type: 0,
+        edge_progress_timestamp: 1100,
+        edge_progress_id: "e1",
+        edge_progress_event_type: 1,
+        updated_at_ms: 2000,
+      },
+    ];
+
+    const result = await repo.loadCheckpoint({ userId: "u1", traceId: "t1" });
+    expect(result).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      lastNodeEventTime: 1000,
+      lastNodeEventId: "n1",
+      lastNodeEventType: 0,
+      lastEdgeEventTime: 1100,
+      lastEdgeEventId: "e1",
+      lastEdgeEventType: 1,
+      checkpointedAt: 2000,
+    });
+
+    const emptyResult = await repo.loadCheckpoint({ userId: "u2", traceId: "t2" });
+    expect(emptyResult).toBeNull();
+  });
+
+  test("loadLatestReadModel maps all tables and handles JSON parsing", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = [
+      { id: "n1", user_id: "u1", trace_id: "t1", data: { a: 1 }, started_at_ms: 100, ended_at_ms: 200, importance_level: 1, flow_order: 1 },
+    ];
+    fakeClient.queryResults[CLICKHOUSE_READ_EDGES_TABLE] = [
+      { id: "e1", user_id: "u1", trace_id: "t1", data: {}, started_at_ms: 150, ended_at_ms: null, from_node_id: "n1", to_node_id: "n2", from_flow_order: 1, to_flow_order: 2 },
+    ];
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_TABLE] = [
+      { user_id: "u1", trace_id: "t1", node_count: 1, edge_count: 1 },
+    ];
+
+    const result = await repo.loadLatestReadModel({ userId: "u1", traceId: "t1" });
+    expect(result.nodes[0]).toMatchObject({ id: "n1", data: { a: 1 }, startedAt: 100, endedAt: 200 });
+    expect(result.edges[0]).toMatchObject({ id: "e1", fromNodeId: "n1", toNodeId: "n2" });
+    expect(result.summary).toMatchObject({ nodeCount: 1, edgeCount: 1 });
+  });
+
+  test("loadRawEventsAfterCheckpoint applies correct threshold logic", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    const checkpoint = {
+      userId: "u1",
+      traceId: "t1",
+      lastNodeEventTime: 1000,
+      lastNodeEventId: "n1",
+      lastNodeEventType: 0,
+      lastEdgeEventTime: 1100,
+      lastEdgeEventId: "e1",
+      lastEdgeEventType: 1,
+      checkpointedAt: 2000,
+    };
+
+    await repo.loadRawEventsAfterCheckpoint({ userId: "u1", traceId: "t1", checkpoint });
+
+    const nodeQuery = fakeClient.queries.find(q => q.query.includes("node_events"));
+    const edgeQuery = fakeClient.queries.find(q => q.query.includes("edge_events"));
+
+    expect(nodeQuery?.query).toContain("tuple(");
+    expect(nodeQuery?.query).toContain("started_at_ms");
+    expect(nodeQuery?.query).toContain("ORDER BY");
+    expect(nodeQuery?.query_params).toMatchObject({
+      lastNodeEventTime: 1000,
+      lastNodeEventId: "n1",
+      lastNodeEventType: 0,
+    });
+
+    expect(edgeQuery?.query_params).toMatchObject({
+      lastEdgeEventTime: 1100,
+      lastEdgeEventId: "e1",
+      lastEdgeEventType: 1,
+    });
+  });
+
+  test("loadRawEventsAfterCheckpoint handles null checkpoint with defaults", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    await repo.loadRawEventsAfterCheckpoint({ userId: "u1", traceId: "t1", checkpoint: null });
+
+    const nodeQuery = fakeClient.queries.find(q => q.query.includes("node_events"));
+    expect(nodeQuery?.query_params).toMatchObject({
+      lastNodeEventTime: 0,
+      lastNodeEventId: "",
+      lastNodeEventType: 0,
+    });
+  });
+});
+
+describe("LogReadRepoClickHouse bounded projection node reads", () => {
+  test("loadBoundedVisibleNodes respects cap and threshold with correct query scoping", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    // Prepare DEFAULT_PROJECTION_NODE_CAP + 1 rows
+    const fakeRows = Array.from({ length: DEFAULT_PROJECTION_NODE_CAP + 1 }, (_, i) => ({
+      id: `n${i}`,
+      user_id: "u1",
+      trace_id: "t1",
+      node_type: "op",
+      data: "{}",
+      started_at_ms: 1000 + i,
+      ended_at_ms: 1100 + i,
+      start_message: "start",
+      end_message: "end",
+      importance_level: 2,
+      flow_order: i,
+      materialized_at_ms: 2000,
+    }));
+
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows;
+
+    const result = await repo.loadBoundedVisibleNodes({
+      userId: "u1",
+      traceId: "t1",
+      threshold: 2,
+    });
+
+    expect(result.nodes).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.cap).toBe(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.returnedCount).toBe(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.capHit).toBe(true);
+
+    const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
+    expect(query).toBeDefined();
+    expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
+    expect(query?.query).toContain("importance_level <= {threshold:Int32}");
+    expect(query?.query).toContain("ORDER BY flow_order ASC, id ASC");
+    expect(query?.query).toContain("LIMIT {limit:UInt32}");
+    expect(query?.query).toContain("argMax");
+
+    expect(query?.query_params).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      threshold: 2,
+      limit: DEFAULT_PROJECTION_NODE_CAP + 1,
+    });
+  });
+
+  test("loadBoundedVisibleNodes maps all fields correctly and handles non-cap-hit", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    const materializedAt = Date.now();
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = [
+      createTestNode({ id: "n1", userId: "u1", traceId: "t1", materialized_at_ms: materializedAt }),
+      createTestNode({ id: "n2", userId: "u1", traceId: "t1", materialized_at_ms: materializedAt, importanceLevel: 3, flowOrder: 10 }),
+    ].map(n => ({
+      ...n,
+      user_id: n.userId,
+      trace_id: n.traceId,
+      node_type: n.nodeType,
+      started_at_ms: n.startedAt,
+      ended_at_ms: n.endedAt,
+      importance_level: n.importanceLevel,
+      flow_order: n.flowOrder,
+    }));
+
+
+    const result = await repo.loadBoundedVisibleNodes({
+      userId: "u1",
+      traceId: "t1",
+      threshold: 5,
+    });
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.cap.capHit).toBe(false);
+    expect(result.cap.returnedCount).toBe(2);
+
+    const n1 = result.nodes.find(n => n.id === "n1");
+    expect(n1).toMatchObject({
+      id: "n1",
+      userId: "u1",
+      traceId: "t1",
+      nodeType: "op",
+      startedAt: 1000,
+      endedAt: 2000,
+      importanceLevel: 5, // from createTestNode default
+    });
+  });
+
+  test("bounded projection methods implementation do not call loadLatestReadModel", async () => {
+    const repo = LogReadRepoClickHouse.prototype;
+    
+    for (const methodName of ["loadBoundedVisibleNodes", "loadBoundedVisibleEdges", "loadBoundedProjectionNodes"] as const) {
+      const body = repo[methodName].toString();
+      // It should not call its sibling method which loads everything
+      expect(body).not.toContain("this.loadLatestReadModel");
+      // It should not contain the string literal either
+      expect(body).not.toContain("loadLatestReadModel");
+    }
+  });
+
+  test("Phase 5 source boundary: no leaks of cross-cutting concerns", async () => {
+    const implPath = join(process.cwd(), "src/services/log/internal/repo/impl/LogReadRepoClickHouse.ts");
+    const content = readFileSync(implPath, "utf-8");
+
+    // Forbidden terms that belong to future layers or are restricted
+    const forbidden = [
+      "snapped",
+      "aggregate edge", // we use 'edges' table but not 'aggregate'
+      "getProjectedGraph",
+      "/telemetry",
+      "frontend",
+      "sdk/nodejs",
+      "carno.js",
+    ];
+
+    for (const term of forbidden) {
+      expect(content.toLowerCase()).not.toContain(term.toLowerCase());
+    }
+  });
+});
+
+describe("LogReadRepoClickHouse bounded projection node reads", () => {
+  test("loadBoundedProjectionNodes respects cap without threshold filter", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    // Prepare DEFAULT_PROJECTION_NODE_CAP + 1 rows
+    const fakeRows = Array.from({ length: DEFAULT_PROJECTION_NODE_CAP + 1 }, (_, i) => ({
+      id: `n${i}`,
+      user_id: "u1",
+      trace_id: "t1",
+      node_type: "op",
+      data: "{}",
+      started_at_ms: 1000 + i,
+      ended_at_ms: 1100 + i,
+      start_message: "start",
+      end_message: "end",
+      importance_level: i, // Mix of levels
+      flow_order: i,
+      materialized_at_ms: 2000,
+    }));
+
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows;
+
+    const result = await repo.loadBoundedProjectionNodes({
+      userId: "u1",
+      traceId: "t1",
+    });
+
+    expect(result.nodes).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.cap.capHit).toBe(true);
+
+    const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
+    expect(query).toBeDefined();
+    expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
+    expect(query?.query).not.toContain("importance_level <=");
+    expect(query?.query_params).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      limit: DEFAULT_PROJECTION_NODE_CAP + 1,
+    });
+  });
+});
+
+describe("LogReadRepoClickHouse bounded projection edge reads", () => {
+  test("loadBoundedVisibleEdges short circuits with empty nodeIds", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    const result = await repo.loadBoundedVisibleEdges({
+      userId: "u1",
+      traceId: "t1",
+      nodeIds: [],
+    });
+
+    expect(result.edges).toHaveLength(0);
+    expect(result.cap.capHit).toBe(false);
+    expect(fakeClient.queries).toHaveLength(0);
+  });
+
+  test("loadBoundedVisibleEdges respects cap and filters by visible nodeIds", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    // Prepare DEFAULT_PROJECTION_EDGE_CAP + 1 rows
+    const fakeRows = Array.from({ length: DEFAULT_PROJECTION_EDGE_CAP + 1 }, (_, i) => ({
+      id: `e${i}`,
+      user_id: "u1",
+      trace_id: "t1",
+      edge_type: "calls",
+      from_node_id: i % 2 === 0 ? "node-a" : "other",
+      to_node_id: i % 2 === 0 ? "other" : "node-b",
+      from_flow_order: i,
+      to_flow_order: i + 1,
+      data: "{}",
+      started_at_ms: 1000 + i,
+      ended_at_ms: 1100 + i,
+      materialized_at_ms: 2000,
+    }));
+
+    fakeClient.queryResults[CLICKHOUSE_READ_EDGES_TABLE] = fakeRows;
+
+    const result = await repo.loadBoundedVisibleEdges({
+      userId: "u1",
+      traceId: "t1",
+      nodeIds: ["node-a", "node-b"],
+    });
+
+    expect(result.edges).toHaveLength(DEFAULT_PROJECTION_EDGE_CAP);
+    expect(result.cap.capHit).toBe(true);
+
+    const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_EDGES_TABLE));
+    expect(query).toBeDefined();
+    expect(query?.query_params).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      nodeIds: ["node-a", "node-b"],
+      limit: DEFAULT_PROJECTION_EDGE_CAP + 1,
+    });
+  });
+});
