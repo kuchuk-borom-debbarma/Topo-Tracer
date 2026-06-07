@@ -3,6 +3,7 @@ import { IAuthService } from "../../api/IAuthService";
 import { authRepo } from "../repo";
 import { IAuthRepo } from "../repo/IAuthRepo";
 import { TopoTraceException } from "../../../../common/types";
+import { IExternalNotificationService } from "../../../external-notification/api/IExternalNotificationService";
 
 /**
  * Authentication Service implementation.
@@ -15,14 +16,19 @@ import { TopoTraceException } from "../../../../common/types";
 export class AuthServiceImpl extends IAuthService {
   readonly logger: Logger<unknown>;
   readonly authRepo: IAuthRepo;
+  readonly notificationService: IExternalNotificationService;
 
-  constructor(parentLogger: Logger<unknown>) {
+  constructor(
+    parentLogger: Logger<unknown>,
+    notificationService: IExternalNotificationService,
+  ) {
     super();
     // Derives a structured child logger for this component, adhering to the logging rules
     this.logger = parentLogger.getSubLogger({
       name: "AuthServiceImpl",
     });
     this.authRepo = authRepo;
+    this.notificationService = notificationService;
   }
 
   /**
@@ -30,6 +36,7 @@ export class AuthServiceImpl extends IAuthService {
    * Creates a pending signup state in the database, generates a verification code (OTP),
    * and returns the confirmation token identifier.
    */
+  // fallow-ignore-next-line unused-class-member
   async startSignUp(data: {
     username: string;
     email: string;
@@ -48,7 +55,13 @@ export class AuthServiceImpl extends IAuthService {
         otp: "12345", // TODO: Replace placeholder with random OTP generator for production
       });
 
-      // TODO: Publish a notification/email event to deliver the OTP to the user
+      // 3. Dispatch OTP notification to user
+      await this.notificationService.sendNotification({
+        recipient: data.email,
+        subject: "Verify your TopoTracer registration",
+        body: `Your verification OTP code is: ${tokenOTP.otp}`,
+      });
+
       return tokenOTP.id;
     } catch (err) {
       this.logger.error("Failed to start signup process", err);
@@ -61,6 +74,7 @@ export class AuthServiceImpl extends IAuthService {
    * Validates the verification code (OTP) against the pending registration token.
    * If correct, promotes the pending record into a fully registered user.
    */
+  // fallow-ignore-next-line unused-class-member
   async finishSignUp(data: { token: string; otp: string }): Promise<void> {
     // SECURITY WARNING: In compliance with code-base.md, redact OTP/credentials in trace logs.
     this.logger.trace(`finishSignUp verification initiated for token="${data.token}"`);
@@ -92,6 +106,7 @@ export class AuthServiceImpl extends IAuthService {
    * User Sign In Flow:
    * Verifies the user credentials and generates a JWT authorization token.
    */
+  // fallow-ignore-next-line unused-class-member
   async getAuthToken(data: {
     email: string;
     password: string;
@@ -118,6 +133,7 @@ export class AuthServiceImpl extends IAuthService {
    * Initiates the password reset flow.
    * Looks up the user by email, inserts a new PASSWORD_RESET token, and generates an OTP.
    */
+  // fallow-ignore-next-line unused-class-member
   async startResetPassword(data: { email: string }): Promise<string> {
     // SECURITY WARNING: In compliance with code-base.md, only log non-sensitive identifier (email)
     this.logger.trace(`startResetPassword initiated for email="${data.email}"`);
@@ -135,7 +151,13 @@ export class AuthServiceImpl extends IAuthService {
         tokenType: "PASSWORD_RESET",
       });
 
-      // TODO: Publish a notification/email event to deliver the OTP to the user
+      // 3. Dispatch OTP notification to user
+      await this.notificationService.sendNotification({
+        recipient: data.email,
+        subject: "Reset your TopoTracer password",
+        body: `Your password reset OTP code is: ${tokenOTP.otp}`,
+      });
+
       return tokenOTP.id;
     } catch (err) {
       this.logger.error("Failed to start password reset flow", err);
@@ -147,6 +169,7 @@ export class AuthServiceImpl extends IAuthService {
    * Finalizes the password reset flow.
    * Verifies the OTP, updates the user's password, and deletes all user's reset tokens.
    */
+  // fallow-ignore-next-line unused-class-member
   async finishResetPassword(data: {
     token: string;
     otp: string;
