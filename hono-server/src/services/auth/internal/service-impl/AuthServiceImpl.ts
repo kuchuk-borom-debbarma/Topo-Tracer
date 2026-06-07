@@ -4,6 +4,7 @@ import { authRepo } from "../repo";
 import { IAuthRepo } from "../repo/IAuthRepo";
 import { TopoTraceException } from "../../../../common/types";
 import { IExternalNotificationService } from "../../../external-notification/api/IExternalNotificationService";
+import { generateToken } from "../util/jwt";
 
 /**
  * Authentication Service implementation.
@@ -110,10 +111,12 @@ export class AuthServiceImpl extends IAuthService {
   async getAuthToken(data: {
     email: string;
     password: string;
+    jwtSecret: string;
+    expiresInSeconds?: number;
   }): Promise<string> {
     // SECURITY WARNING: In compliance with code-base.md, do not log credentials/passwords.
     this.logger.trace(`getAuthToken login attempt for email="${data.email}"`);
-    const { email, password } = data;
+    const { email, password, jwtSecret, expiresInSeconds } = data;
     try {
       // 1. Fetch user matching email and verify credential match
       const user = await this.authRepo.getUserByFilter({
@@ -121,8 +124,14 @@ export class AuthServiceImpl extends IAuthService {
         password,
       });
 
-      // TODO: Use jwt utility to sign and return a valid access token
-      return "";
+      // 2. Generate and sign the JWT access token using the utility
+      const token = await generateToken(
+        { userId: user.id, email: user.email },
+        jwtSecret,
+        expiresInSeconds,
+      );
+
+      return token;
     } catch (err) {
       this.logger.error("Failed to acquire authentication token", err);
       throw err;

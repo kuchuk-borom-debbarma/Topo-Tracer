@@ -16,6 +16,7 @@ export abstract class IAuthService {
    * @param data.password - The plain-text password (hashed internally before storage).
    * @returns A pending user/registration token ID.
    */
+  // fallow-ignore-next-line unused-class-member
   abstract startSignUp(data: {
     username: string;
     email: string;
@@ -30,6 +31,7 @@ export abstract class IAuthService {
    * @param data.otp - The one-time password to verify.
    * @throws TopoTraceException (403) if the OTP mismatches.
    */
+  // fallow-ignore-next-line unused-class-member
   abstract finishSignUp(data: { token: string; otp: string }): Promise<void>;
 
   /**
@@ -37,11 +39,16 @@ export abstract class IAuthService {
    * 
    * @param data.email - Registered email of the user.
    * @param data.password - Password to authenticate.
+   * @param data.jwtSecret - Secret key used to sign the JWT token.
+   * @param data.expiresInSeconds - Optional expiration time of the token in seconds.
    * @returns A Promise resolving to a JWT token.
    */
+  // fallow-ignore-next-line unused-class-member
   abstract getAuthToken(data: {
     email: string;
     password: string;
+    jwtSecret: string;
+    expiresInSeconds?: number;
   }): Promise<string>;
 
   /**
@@ -51,6 +58,7 @@ export abstract class IAuthService {
    * @param data.email - Registered email of the user.
    * @returns A Promise resolving to the reset token ID.
    */
+  // fallow-ignore-next-line unused-class-member
   abstract startResetPassword(data: { email: string }): Promise<string>;
 
   /**
@@ -63,6 +71,7 @@ export abstract class IAuthService {
    * @param data.newPassword - The plain-text new password.
    * @throws TopoTraceException (403) if the OTP is invalid or mismatched.
    */
+  // fallow-ignore-next-line unused-class-member
   abstract finishResetPassword(data: {
     token: string;
     otp: string;
