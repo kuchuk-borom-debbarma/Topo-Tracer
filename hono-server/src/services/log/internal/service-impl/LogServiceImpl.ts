@@ -13,6 +13,14 @@ import { ILogWriteRepo } from "../repo/ILogWriteRepo";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { LogGraphProjector } from "../projection/LogGraphProjector";
 
+/**
+ * Concrete implementation of the Log Service.
+ * Following code-base.md guidelines:
+ * - Owns coordination and validation of business workflows for traces.
+ * - Restricts database client usage behind repository contracts (writeRepo, readRepo).
+ * - Interfaces with the event bus to publish asynchronous model materialization signals.
+ * - Leverages dependency injection via constructor options.
+ */
 export class LogServiceImpl extends ILogService {
   readonly logger: Logger<unknown>;
   readonly writeRepo: ILogWriteRepo;
@@ -35,6 +43,14 @@ export class LogServiceImpl extends ILogService {
     this.projector = projector ?? new LogGraphProjector();
   }
 
+  /**
+   * Orchestrates the ingestion of a batch of node and edge lifecycle events.
+   * Steps:
+   * 1. Validates the event payloads (e.g., ensuring edges have valid from/to nodes).
+   * 2. Persists the raw events in ClickHouse (append-only database write).
+   * 3. Group events by traceId to identify which traces are dirty.
+   * 4. Publish ingestion events onto the event bus to trigger async read-model materialization.
+   */
   async ingestNodesNEdges(data: {
     userId: string;
     nodeStarts: IngestNodeStart[];
@@ -52,7 +68,8 @@ export class LogServiceImpl extends ILogService {
 
     try {
       this.validateEdgeStarts(data.edgeStarts);
-      // Service owns orchestration; persistence stays behind the repo contract.
+      
+      // Write raw events using repository (service does not contain raw SQL/Clickhouse setup)
       await this.writeRepo.ingestNodesNEdges(data);
 
       const traceIds = this.getTraceIds(data);
@@ -65,6 +82,7 @@ export class LogServiceImpl extends ILogService {
         traceCount: traceIds.length,
       });
 
+      // Publish notification for each modified trace to queue rebuilding the read models
       await this.eventBus.publish(
         traceIds.map((traceId) => ({
           topic: "log.trace.ingested",
@@ -90,6 +108,13 @@ export class LogServiceImpl extends ILogService {
     }
   }
 
+  /**
+   * Projects a trace graph filtered by importance threshold.
+   * Steps:
+   * 1. Loads nodes from the read-optimized tables within a maximum read cap.
+   * 2. Loads visible edges linking those loaded nodes within a cap.
+   * 3. Invokes the LogGraphProjector utility to collapse hidden nodes into ghost nodes.
+   */
   async projectTraceGraph(data: {
     userId: string;
     traceId: string;
@@ -97,6 +122,7 @@ export class LogServiceImpl extends ILogService {
   }): Promise<ProjectedGraphResult> {
     const { userId, traceId, threshold } = data;
 
+    // Load nodes and edges under hard limits (safety caps) to prevent memory exhaust
     const boundedNodes = await this.readRepo.loadBoundedProjectionNodes({
       userId,
       traceId,
@@ -108,6 +134,7 @@ export class LogServiceImpl extends ILogService {
       nodeIds: boundedNodes.nodes.map((node) => node.id),
     });
 
+    // Run local CPU projection rules to calculate visible normal and ghost nodes
     const result = this.projector.project({
       userId,
       traceId,
@@ -134,6 +161,9 @@ export class LogServiceImpl extends ILogService {
     return result;
   }
 
+  /**
+   * Validates that edges have valid node references.
+   */
   private validateEdgeStarts(edgeStarts: IngestEdgeStart[]): void {
     for (const edge of edgeStarts) {
       if (
@@ -145,10 +175,16 @@ export class LogServiceImpl extends ILogService {
     }
   }
 
+  /**
+   * Checks for a non-empty string.
+   */
   private isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
   }
 
+  /**
+   * Extracts sorted unique trace IDs referenced inside the ingested event arrays.
+   */
   private getTraceIds(data: {
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
@@ -165,6 +201,10 @@ export class LogServiceImpl extends ILogService {
     ].sort();
   }
 
+  /**
+   * Constructs a deterministic, payload-derived idempotency key for this batch of trace events.
+   * Ensures redeliveries do not duplicate materialization commands, but later updates succeed.
+   */
   private buildTraceIngestIdempotencyId(
     data: {
       userId: string;
@@ -193,3 +233,4 @@ export class LogServiceImpl extends ILogService {
     return `log.trace.ingested:${data.userId}:${traceId}:${parts.join("|")}`;
   }
 }
+

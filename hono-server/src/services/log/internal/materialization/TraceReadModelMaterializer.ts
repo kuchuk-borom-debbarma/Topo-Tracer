@@ -20,6 +20,12 @@ interface MaterializationDiagnostics {
   diagClockSkew: number;
 }
 
+/**
+ * Orchestrator for transforming raw append-only telemetry events into read-optimized models.
+ * Following code-base.md guidelines:
+ * - Business logic for trace construction and topological ordering resides here.
+ * - Saves read models first and checkpoints second to ensure fault-tolerance and crash recovery.
+ */
 export class TraceReadModelMaterializer {
   constructor(
     private parentLogger: Logger<unknown>,
@@ -27,6 +33,18 @@ export class TraceReadModelMaterializer {
     private now: () => number = () => Date.now(),
   ) {}
 
+  /**
+   * Run incremental materialization for a trace.
+   * Performs the following steps:
+   * 1. Loads the latest checkpoint tracking the processed raw event offsets.
+   * 2. Loads the existing materialized read model (nodes & edges) to continue building onto them.
+   * 3. Queries any raw node and edge events appended to the event log since that checkpoint.
+   * 4. Iteratively processes raw start/end events to update/fold node and edge status.
+   * 5. Computes topological flow ordering of the updated trace graph (detecting cycles/orphans).
+   * 6. Builds the updated ReadTraceSummary stats and diagnostics.
+   * 7. Saves the rebuilt read-model elements first.
+   * 8. Saves the new checkpoint second to mark progress.
+   */
   async materializeTrace(params: {
     userId: string;
     traceId: string;
@@ -37,12 +55,17 @@ export class TraceReadModelMaterializer {
     });
     const startedAtMs = this.now();
 
+    // 1. Fetch current progress checkpoint
     const checkpoint = await this.readRepo.loadCheckpoint({ userId, traceId });
+    
+    // 2. Fetch already-processed read model components
     const {
       nodes: existingNodes,
       edges: existingEdges,
       summary: _existingSummary,
     } = await this.readRepo.loadLatestReadModel({ userId, traceId });
+    
+    // 3. Fetch newer raw telemetry events appended since the last checkpoint run
     const { nodeEvents, edgeEvents } =
       await this.readRepo.loadRawEventsAfterCheckpoint({
         userId,
@@ -69,7 +92,7 @@ export class TraceReadModelMaterializer {
       diagClockSkew: 0,
     };
 
-    // Fold node events
+    // 4. Process raw node events (matching start with end)
     for (const event of nodeEvents) {
       if (event.event_type === 0) {
         this.handleNodeStart(event, userId, traceId, nodeMap, diags);
@@ -78,7 +101,7 @@ export class TraceReadModelMaterializer {
       }
     }
 
-    // Fold edge events
+    // 5. Process raw edge events
     for (const event of edgeEvents) {
       if (event.event_type === 0) {
         this.handleEdgeStart(event, userId, traceId, edgeMap, diags);
@@ -87,7 +110,7 @@ export class TraceReadModelMaterializer {
       }
     }
 
-    // Compute flow order
+    // 6. Compute topological flow sorting order
     const nodesArray = Array.from(nodeMap.values());
     const edgesArray = Array.from(edgeMap.values());
     const { flowOrderByNodeId, diagnostics: flowDiagnostics } =
@@ -96,7 +119,7 @@ export class TraceReadModelMaterializer {
         edges: edgesArray,
       });
 
-    // Apply flow order to nodes and edges
+    // 7. Inject flow order positions into node and edge structures
     const { savedEdges } = this.applyFlowOrder({
       nodesArray,
       edgesArray,
@@ -104,7 +127,7 @@ export class TraceReadModelMaterializer {
       diags,
     });
 
-    // Build summary
+    // 8. Compile the aggregate diagnostics and metadata summary
     const summary = this.buildSummary({
       userId,
       traceId,
@@ -114,7 +137,7 @@ export class TraceReadModelMaterializer {
       flowDiagnostics,
     });
 
-    // Build next checkpoint
+    // 9. Compute next event checkpoint offset positions
     const nextCheckpoint = this.buildNextCheckpoint({
       userId,
       traceId,
@@ -123,7 +146,7 @@ export class TraceReadModelMaterializer {
       edgeEvents,
     });
 
-    // Save
+    // 10. Persist read model first, then the checkpoint
     // Materialization follows a "write read model, then checkpoint" rule to ensure
     // that a crash during save results in a safe retry from the old checkpoint.
     await this.readRepo.saveReadModel({

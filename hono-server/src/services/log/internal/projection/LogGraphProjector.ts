@@ -9,7 +9,24 @@ import {
   ProjectedGraphEdge
 } from "../../api/types";
 
+
+/**
+ * Projects a raw materialized trace sub-graph by filtering nodes based on an importance threshold.
+ * Nodes exceeding the threshold are collapsed ("ghosted") into aggregated placeholder nodes.
+ * Edges are snapped and consolidated (aggregated) to reference the new projected nodes.
+ */
 export class LogGraphProjector {
+  /**
+   * Projects nodes and edges into normal/ghost groupings.
+   * Steps:
+   * 1. Sort nodes topologically by flowOrder.
+   * 2. Loop over nodes. If node importance <= threshold, it remains a normal node.
+   *    If node importance > threshold, it is staged into a run of hidden nodes.
+   *    When a normal node is encountered (or loop ends), the run of hidden nodes is collapsed into a single ghost node.
+   * 3. Loop over edges. Snap edge source/target IDs to the corresponding projected node IDs.
+   *    If both source and target map to the same ghost node, it becomes a hidden edge count on that ghost node.
+   *    Otherwise, edges are aggregated by from/to/type keys.
+   */
   project(params: {
     userId: string;
     traceId: string;
@@ -33,6 +50,7 @@ export class LogGraphProjector {
 
     let currentHiddenRun: ReadNode[] = [];
 
+    // Helper to collapse consecutive hidden nodes into a single ghost node
     const finalizeHiddenRun = () => {
       if (currentHiddenRun.length === 0) return;
 
@@ -79,6 +97,7 @@ export class LogGraphProjector {
       currentHiddenRun = [];
     };
 
+    // Construct projected nodes (normals vs ghosts)
     for (const node of sortedNodes) {
       if (node.importanceLevel <= threshold) {
         finalizeHiddenRun();
@@ -108,17 +127,20 @@ export class LogGraphProjector {
       const projectedFromId = nodeProjectionById.get(edge.fromNodeId);
       const projectedToId = nodeProjectionById.get(edge.toNodeId);
 
+      // Edge has source or target outside the loaded scope (due to paging/caps)
       if (!projectedFromId || !projectedToId) {
         omittedEdgeCount++;
         continue;
       }
 
+      // Edge is fully contained within a single collapsed ghost node
       if (projectedFromId === projectedToId && ghostNodesById.has(projectedFromId)) {
         const ghost = ghostNodesById.get(projectedFromId)!;
         ghost.hiddenEdgeCount++;
         continue;
       }
 
+      // Consolidate parallel edges mapping between the same node structures
       const aggregateKey = `${projectedFromId}|${projectedToId}|${edge.edgeType}`;
       const existing = aggregateEdges.get(aggregateKey);
 
@@ -143,7 +165,7 @@ export class LogGraphProjector {
 
     const projectedEdges = Array.from(aggregateEdges.values());
 
-    // Max materialized timestamp
+    // Calculate maximum materializedAt timestamp to return fresh cache hints
     let maxMaterializedAt = 0;
     for (const node of nodes) {
       maxMaterializedAt = Math.max(maxMaterializedAt, node.materializedAt);
@@ -172,3 +194,4 @@ export class LogGraphProjector {
     };
   }
 }
+

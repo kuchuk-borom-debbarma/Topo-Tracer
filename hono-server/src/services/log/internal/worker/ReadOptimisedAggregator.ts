@@ -1,27 +1,44 @@
 import type { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
 import type { EventBusPublishedEvent } from "../../../../infra/event-bus/api/types";
 
+/**
+ * Payload type delivered via the log.trace.ingested event.
+ */
 type TraceIngestedPayload = {
   userId: string;
   traceId: string;
 };
 
+/**
+ * Adapter interface representing the materializer.
+ */
 export interface ITraceReadModelMaterializer {
   materializeTrace(params: { userId: string; traceId: string }): Promise<void>;
 }
 
+/**
+ * Background worker/subscriber that listens to telemetry ingestion events
+ * and triggers trace read-model rebuild calculations.
+ * Following code-base.md guidelines:
+ * - Subscribes to the log.trace.ingested topic via the IEventBus contract.
+ * - Coalesces multiple concurrent events for the same traceId inside a batch to avoid redundant rebuild runs.
+ */
 export class ReadOptimisedAggregator {
   constructor(
     private readonly eventBus: IEventBus,
     private readonly materializer: ITraceReadModelMaterializer
   ) {}
 
+  /**
+   * Initializes the subscriber.
+   * Registers a callback with a custom consumer name and batch sizes.
+   */
   async init(): Promise<void> {
     await this.eventBus.subscribe(
       {
         topic: "log.trace.ingested",
         consumerName: "read-optimised-aggregator",
-        batchSize: 100,
+        batchSize: 100, // Consume up to 100 events in a single batch delivery
       },
       async (events) => {
         await this.run(events);
@@ -29,6 +46,10 @@ export class ReadOptimisedAggregator {
     );
   }
 
+  /**
+   * Processes a batch of events delivered by the bus.
+   * Leverages a Map keyed on traceId to deduplicate rebuild commands in-memory.
+   */
   async run(events: EventBusPublishedEvent[]): Promise<void> {
     const traces = new Map<string, TraceIngestedPayload>();
 
@@ -50,6 +71,9 @@ export class ReadOptimisedAggregator {
     }
   }
 
+  /**
+   * Strong-type guard to validate the untyped event payload data.
+   */
   private isTraceIngestedPayload(data: unknown): data is TraceIngestedPayload {
     // Event payloads enter the worker as unknown, so first ensure the value can
     // actually hold fields before reading userId or traceId from it.
@@ -71,6 +95,9 @@ export class ReadOptimisedAggregator {
     return hasUserId && hasTraceId;
   }
 
+  /**
+   * Dispatches the trace to the materialization orchestrator.
+   */
   private async rebuildTrace(data: TraceIngestedPayload): Promise<void> {
     await this.materializer.materializeTrace({
       userId: data.userId,
@@ -78,3 +105,4 @@ export class ReadOptimisedAggregator {
     });
   }
 }
+

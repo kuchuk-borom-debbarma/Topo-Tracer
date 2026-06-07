@@ -19,6 +19,14 @@ import {
 import { ILogReadRepo, DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
 import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEventRow, EdgeEventRow } from "../types";
 
+/**
+ * ClickHouse implementation of the Log Read Repository.
+ * Following code-base.md guidelines:
+ * - Resides under internal/repo/impl.
+ * - Handles execution of ClickHouse SQL query syntax.
+ * - Uses argMax aggregation operators because read-optimized tables are backed by ReplacingMergeTree engines.
+ * - Maps snake_case database rows back into camelCase module types.
+ */
 export class LogReadRepoClickHouse extends ILogReadRepo {
   readonly logger: Logger<unknown>;
   private readonly getClient: () => Pick<ClickHouseClient, "insert" | "query">;
@@ -34,6 +42,9 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     this.getClient = getClient;
   }
 
+  /**
+   * Retrieves the latest materialization checkpoint record for a trace from ClickHouse.
+   */
   async loadCheckpoint(params: {
     userId: string;
     traceId: string;
@@ -72,6 +83,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     };
   }
 
+  /**
+   * Loads the latest materialized elements (nodes, edges, and summary) for a trace.
+   * Resolves them concurrently using argMax grouping queries to collapse duplicate records.
+   */
   async loadLatestReadModel(params: {
     userId: string;
     traceId: string;
@@ -196,6 +211,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     };
   }
 
+  /**
+   * Replays/loads all raw events appended since the provided checkpoint.
+   * Employs tuple-based inequality sorting to query new records correctly.
+   */
   async loadRawEventsAfterCheckpoint(params: {
     userId: string;
     traceId: string;
@@ -259,6 +278,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     };
   }
 
+  /**
+   * Loads materialized nodes from ClickHouse filtered by importance threshold.
+   * Employs the DEFAULT_PROJECTION_NODE_CAP safety boundary.
+   */
   async loadBoundedVisibleNodes(params: {
     userId: string;
     traceId: string;
@@ -327,6 +350,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     };
   }
 
+  /**
+   * Loads materialized edges that connect to or from any node in the visible nodes list.
+   * Employs the DEFAULT_PROJECTION_EDGE_CAP safety boundary.
+   */
   async loadBoundedVisibleEdges(params: {
     userId: string;
     traceId: string;
@@ -406,6 +433,9 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     };
   }
 
+  /**
+   * Loads all nodes for a trace up to the default safety cap.
+   */
   async loadBoundedProjectionNodes(params: {
     userId: string;
     traceId: string;
@@ -471,6 +501,9 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     };
   }
 
+  /**
+   * Saves the fully materialized trace components (nodes, edges, summary) into the read-optimized tables.
+   */
   async saveReadModel(params: {
     userId: string;
     traceId: string;
@@ -515,6 +548,9 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     });
   }
 
+  /**
+   * Updates/saves progress offsets for trace rebuilds.
+   */
   async saveCheckpoint(params: {
     checkpoint: ReadCheckpoint;
   }): Promise<void> {

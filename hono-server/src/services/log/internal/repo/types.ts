@@ -1,8 +1,16 @@
+/**
+ * Database row structures (snake_case) to decouple database schema from public API types.
+ */
+
+/**
+ * ClickHouse row structure for raw node events (starts/ends).
+ * Uses snake_case to match ClickHouse column definitions.
+ */
 export type NodeEventRow = {
   id: string;
   user_id: string;
   trace_id: string;
-  event_type: 0 | 1;
+  event_type: 0 | 1; // 0 for Start, 1 for End
   started_at_ms: number | null;
   ended_at_ms: number | null;
   node_type: string | null;
@@ -11,11 +19,15 @@ export type NodeEventRow = {
   importance_level: number | null;
 };
 
+/**
+ * ClickHouse row structure for raw edge events (starts/ends).
+ * Uses snake_case to match ClickHouse column definitions.
+ */
 export type EdgeEventRow = {
   id: string;
   user_id: string;
   trace_id: string;
-  event_type: 0 | 1;
+  event_type: 0 | 1; // 0 for Start, 1 for End
   started_at_ms: number | null;
   ended_at_ms: number | null;
   edge_type: string | null;
@@ -24,6 +36,9 @@ export type EdgeEventRow = {
   data: Record<string, string>;
 };
 
+/**
+ * ClickHouse row structure for materialized read-optimized nodes.
+ */
 export type ReadNodeRow = {
   id: string;
   user_id: string;
@@ -39,6 +54,9 @@ export type ReadNodeRow = {
   materialized_at_ms: number;
 };
 
+/**
+ * ClickHouse row structure for materialized read-optimized edges.
+ */
 export type ReadEdgeRow = {
   id: string;
   user_id: string;
@@ -54,6 +72,9 @@ export type ReadEdgeRow = {
   materialized_at_ms: number;
 };
 
+/**
+ * ClickHouse row structure for trace summaries and aggregates.
+ */
 export type TraceSummaryRow = {
   user_id: string;
   trace_id: string;
@@ -74,6 +95,9 @@ export type TraceSummaryRow = {
   diagnostic_clock_skew_count: number;
 };
 
+/**
+ * ClickHouse row structure for progress tracking checkpoints.
+ */
 export type ReadCheckpointRow = {
   user_id: string;
   trace_id: string;
