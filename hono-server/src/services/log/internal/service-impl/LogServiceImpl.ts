@@ -45,11 +45,10 @@ export class LogServiceImpl extends ILogService {
 
   /**
    * Orchestrates the ingestion of a batch of node and edge lifecycle events.
-   * Steps:
+   * Following the reactive flow to ensure durability without database polling:
    * 1. Validates the event payloads (e.g., ensuring edges have valid from/to nodes).
-   * 2. Persists the raw events in ClickHouse (append-only database write).
-   * 3. Group events by traceId to identify which traces are dirty.
-   * 4. Publish ingestion events onto the event bus to trigger async read-model materialization.
+   * 2. Publishes the raw telemetry event batch to the event bus under "log.telemetry.received".
+   * 3. A reactive background worker consumes this event, writes it to ClickHouse, and triggers materialization.
    */
   async ingestNodesNEdges(data: {
     userId: string;
@@ -69,37 +68,34 @@ export class LogServiceImpl extends ILogService {
     try {
       this.validateEdgeStarts(data.edgeStarts);
       
-      // Write raw events using repository (service does not contain raw SQL/Clickhouse setup)
-      await this.writeRepo.ingestNodesNEdges(data);
-
-      const traceIds = this.getTraceIds(data);
-      if (traceIds.length === 0) {
+      const totalEvents =
+        data.nodeStarts.length +
+        data.edgeStarts.length +
+        data.nodeEnds.length +
+        data.edgeEnds.length;
+      if (totalEvents === 0) {
         return;
       }
 
-      this.logger.trace("publishing trace ingest events", {
+      const idempotencyId = this.buildTelemetryReceivedIdempotencyId(data);
+
+      this.logger.trace("publishing raw telemetry received event reactively", {
         userId: data.userId,
-        traceCount: traceIds.length,
+        idempotencyId,
       });
 
-      // Publish notification for each modified trace to queue rebuilding the read models
+      // Publish the raw events batch to the event bus
       await this.eventBus.publish(
-        traceIds.map((traceId) => ({
-          topic: "log.trace.ingested",
-          // traceId is the ordering key because read-model rebuild work for one
-          // trace must observe the same order as the append-only writes.
-          key: traceId,
-          // The id is derived from this ingest's trace-local payload, not just
-          // traceId, so retries dedupe while later ingests still produce events.
-          idempotencyId: this.buildTraceIngestIdempotencyId(data, traceId),
-          data: {
-            userId: data.userId,
-            traceId,
+        [
+          {
+            topic: "log.telemetry.received",
+            key: data.userId,
+            idempotencyId,
+            data,
           },
-        })),
+        ],
         {
-          // batchId is only for correlating this publish call in logs/brokers.
-          batchId: `log.trace.ingested:${data.userId}:${traceIds.join(",")}`,
+          batchId: `log.telemetry.received:${data.userId}:${idempotencyId}`,
         },
       );
     } catch (err) {
@@ -183,54 +179,23 @@ export class LogServiceImpl extends ILogService {
   }
 
   /**
-   * Extracts sorted unique trace IDs referenced inside the ingested event arrays.
+   * Constructs a deterministic, payload-derived idempotency key for this batch of received events.
    */
-  private getTraceIds(data: {
+  private buildTelemetryReceivedIdempotencyId(data: {
+    userId: string;
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
     nodeEnds: IngestNodeEnd[];
     edgeEnds: IngestEdgeEnd[];
-  }): string[] {
-    return [
-      ...new Set([
-        ...data.nodeStarts.map((node) => node.traceId),
-        ...data.edgeStarts.map((edge) => edge.traceId),
-        ...data.nodeEnds.map((node) => node.traceId),
-        ...data.edgeEnds.map((edge) => edge.traceId),
-      ]),
-    ].sort();
-  }
-
-  /**
-   * Constructs a deterministic, payload-derived idempotency key for this batch of trace events.
-   * Ensures redeliveries do not duplicate materialization commands, but later updates succeed.
-   */
-  private buildTraceIngestIdempotencyId(
-    data: {
-      userId: string;
-      nodeStarts: IngestNodeStart[];
-      edgeStarts: IngestEdgeStart[];
-      nodeEnds: IngestNodeEnd[];
-      edgeEnds: IngestEdgeEnd[];
-    },
-    traceId: string,
-  ): string {
+  }): string {
     const parts = [
-      ...data.nodeStarts
-        .filter((node) => node.traceId === traceId)
-        .map((node) => `node-start:${node.id}:${node.startedAt}`),
-      ...data.nodeEnds
-        .filter((node) => node.traceId === traceId)
-        .map((node) => `node-end:${node.id}:${node.endedAt}`),
-      ...data.edgeStarts
-        .filter((edge) => edge.traceId === traceId)
-        .map((edge) => `edge-start:${edge.id}:${edge.startedAt}`),
-      ...data.edgeEnds
-        .filter((edge) => edge.traceId === traceId)
-        .map((edge) => `edge-end:${edge.id}:${edge.endedAt}`),
+      ...data.nodeStarts.map((node) => `n-start:${node.id}`),
+      ...data.nodeEnds.map((node) => `n-end:${node.id}`),
+      ...data.edgeStarts.map((edge) => `e-start:${edge.id}`),
+      ...data.edgeEnds.map((edge) => `e-end:${edge.id}`),
     ].sort();
 
-    return `log.trace.ingested:${data.userId}:${traceId}:${parts.join("|")}`;
+    return `log.telemetry.received:${data.userId}:${parts.join("|")}`;
   }
 }
 
