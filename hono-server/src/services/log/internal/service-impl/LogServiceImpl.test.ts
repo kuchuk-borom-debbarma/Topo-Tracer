@@ -13,12 +13,13 @@ import type {
 } from "../../../../infra/event-bus/api/types";
 import type {
   IngestEdgeStart,
-  BoundedProjectionNodesResult,
-  BoundedVisibleEdgesResult,
   ReadCheckpoint,
   ReadNode,
   ReadEdge,
   ReadTraceSummary,
+  BoundedVisibleEdgesResult,
+  PagingParams,
+  PagedResult,
 } from "../../api/types";
 import type { ILogWriteRepo } from "../repo/ILogWriteRepo";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
@@ -52,7 +53,9 @@ class FakeLogReadRepo extends ILogReadRepo {
   }
   async saveReadModel(): Promise<void> {}
   async saveCheckpoint(): Promise<void> {}
-  async loadBoundedVisibleNodes(): Promise<any> { return { nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } }; }
+  async loadBoundedVisibleNodes(): Promise<PagedResult<ReadNode>> {
+    return { items: [], totalCount: 0, hasMore: false };
+  }
 
   async loadBoundedVisibleEdges(params: { userId: string; traceId: string; nodeIds: string[]; }): Promise<BoundedVisibleEdgesResult> {
     this.loadBoundedVisibleEdgesCalls.push(params);
@@ -62,13 +65,14 @@ class FakeLogReadRepo extends ILogReadRepo {
     };
   }
 
-  async loadBoundedProjectionNodes(params: { userId: string; traceId: string; }): Promise<BoundedProjectionNodesResult> {
+  async loadBoundedProjectionNodes(params: { userId: string; traceId: string; paging: PagingParams; }): Promise<PagedResult<ReadNode>> {
     this.loadBoundedProjectionNodesCalls.push(params);
     return {
-      nodes: [
+      items: [
         { id: "node-1", userId: params.userId, traceId: params.traceId, importanceLevel: 1, flowOrder: 1, materializedAt: 100 } as ReadNode
       ],
-      cap: { cap: 500, returnedCount: 1, capHit: true }
+      totalCount: 1,
+      hasMore: true
     };
   }
 }
@@ -157,7 +161,8 @@ describe("LogServiceImpl projection orchestration", () => {
     expect(readRepo.loadBoundedProjectionNodesCalls).toHaveLength(1);
     expect(readRepo.loadBoundedProjectionNodesCalls[0]).toEqual({
       userId: "u1",
-      traceId: "trace-1"
+      traceId: "trace-1",
+      paging: { offset: 0, limit: 500 }
     });
 
     expect(readRepo.loadBoundedVisibleEdgesCalls).toHaveLength(1);

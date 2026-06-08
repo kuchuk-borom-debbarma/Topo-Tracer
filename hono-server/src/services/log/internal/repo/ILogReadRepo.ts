@@ -3,9 +3,9 @@ import {
   ReadNode,
   ReadEdge,
   ReadTraceSummary,
-  BoundedVisibleNodesResult,
   BoundedVisibleEdgesResult,
-  BoundedProjectionNodesResult,
+  PagingParams,
+  PagedResult,
 } from "../../api/types";
 import { NodeEventRow, EdgeEventRow } from "./types";
 
@@ -79,13 +79,14 @@ export abstract class ILogReadRepo {
 
   /**
    * Queries materialized nodes filtered by a given importance threshold.
-   * Output is bounded by DEFAULT_PROJECTION_NODE_CAP.
+   * Output is bounded by PagingParams.limit.
    */
   abstract loadBoundedVisibleNodes(params: {
     userId: string;
     traceId: string;
     threshold: number;
-  }): Promise<BoundedVisibleNodesResult>;
+    paging: PagingParams;
+  }): Promise<PagedResult<ReadNode>>;
 
   /**
    * Queries materialized edges connecting a specific list of nodes.
@@ -98,12 +99,13 @@ export abstract class ILogReadRepo {
   }): Promise<BoundedVisibleEdgesResult>;
 
   /**
-   * Loads all materialized nodes for a trace, up to the default safety cap.
+   * Loads all materialized nodes for a trace, up to the safety cap in paging.
    * Used as the first pass during threshold-based sub-graph projection.
    */
   abstract loadBoundedProjectionNodes(params: {
     userId: string;
     traceId: string;
-  }): Promise<BoundedProjectionNodesResult>;
+    paging: PagingParams;
+  }): Promise<PagedResult<ReadNode>>;
 }
 

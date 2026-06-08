@@ -14,6 +14,11 @@ import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { LogGraphProjector } from "../projection/LogGraphProjector";
 
 /**
+ * Default upper limits for row queries when projecting graphs.
+ */
+const DEFAULT_PROJECTION_NODE_CAP = 500;
+
+/**
  * Concrete implementation of the Log Service.
  * Following code-base.md guidelines:
  * - Owns coordination and validation of business workflows for traces.
@@ -122,12 +127,13 @@ export class LogServiceImpl extends ILogService {
     const boundedNodes = await this.readRepo.loadBoundedProjectionNodes({
       userId,
       traceId,
+      paging: { offset: 0, limit: DEFAULT_PROJECTION_NODE_CAP },
     });
 
     const boundedEdges = await this.readRepo.loadBoundedVisibleEdges({
       userId,
       traceId,
-      nodeIds: boundedNodes.nodes.map((node) => node.id),
+      nodeIds: boundedNodes.items.map((node) => node.id),
     });
 
     // Run local CPU projection rules to calculate visible normal and ghost nodes
@@ -135,9 +141,13 @@ export class LogServiceImpl extends ILogService {
       userId,
       traceId,
       threshold,
-      nodes: boundedNodes.nodes,
+      nodes: boundedNodes.items,
       edges: boundedEdges.edges,
-      nodeCap: boundedNodes.cap,
+      nodeCap: {
+        cap: DEFAULT_PROJECTION_NODE_CAP,
+        returnedCount: boundedNodes.items.length,
+        capHit: boundedNodes.hasMore,
+      },
       edgeCap: boundedEdges.cap,
     });
 

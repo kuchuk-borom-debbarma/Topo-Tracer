@@ -190,6 +190,15 @@ export class LogGraphProjector {
         nodeCap,
         edgeCap,
         omittedEdgeCount,
+        paging: {
+          nextCursor: null,
+          previousCursor: null,
+          hasAfter: false,
+          hasBefore: false,
+          totalNodeCount: 0,
+          fromFlowOrder: 0,
+          toFlowOrder: 0,
+        },
       },
     };
   }
