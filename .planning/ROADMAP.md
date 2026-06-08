@@ -9,14 +9,14 @@
 **Plans:** 1 plan
 - [x] 01-01-PLAN.md — Define paging types, CursorCodec utility, and update ClickHouse repo implementation with limit+1 probing.
 
-## Phase 2: Service-Level Projection
-- [ ] **Task 2.1: Update LogServiceImpl**: Pass `cursor` and `limit` from API through to the repository.
-- [ ] **Task 2.2: Paging Metadata Calculation**: Implement logic to calculate `hasBefore`, `hasAfter`, `previousCursor`, and `nextCursor`.
-- [ ] **Task 2.3: Integrate with Projector**: Ensure `LogGraphProjector` handles the windowed data correctly (it should, as it's window-agnostic).
-- [ ] **Task 2.4: Integration Tests**: Verify end-to-end paging through `LogServiceImpl.test.ts`.
+## Phase 2: Service-Level Projection [COMPLETE]
+- [x] **Task 2.1: Update LogServiceImpl**: Pass `cursor` and `limit` from API through to the repository.
+- [x] **Task 2.2: Paging Metadata Calculation**: Implement logic to calculate `hasBefore`, `hasAfter`, `previousCursor`, and `nextCursor`.
+- [x] **Task 2.3: Integrate with Projector**: Ensure `LogGraphProjector` handles the windowed data correctly (it should, as it's window-agnostic).
+- [x] **Task 2.4: Integration Tests**: Verify end-to-end paging through `LogServiceImpl.test.ts`.
 
 **Plans:** 1 plan
-- [ ] 02-01-PLAN.md — Implement cursor transformation, version safety (409 Conflict), and paging metadata calculation in LogServiceImpl.
+- [x] 02-01-PLAN.md — Implement cursor transformation, version safety (409 Conflict), and paging metadata calculation in LogServiceImpl.
 
 ## Phase 3: Frontend Alignment (Optional/Verification)
 - [ ] **Task 3.1: Verify Frontend Paging**: Check if Hono routes need updates to expose the new parameters.
