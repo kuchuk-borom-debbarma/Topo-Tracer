@@ -1,4 +1,5 @@
 import { Logger } from "tslog";
+import { ConflictError } from "../../../../common/types";
 import type { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
 import { ILogService } from "../../api/ILogService";
 import {
@@ -12,11 +13,13 @@ import { createLogWriteRepo, createLogReadRepo } from "../repo";
 import { ILogWriteRepo } from "../repo/ILogWriteRepo";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { LogGraphProjector } from "../projection/LogGraphProjector";
+import { decodeCursor, encodeCursor } from "../util/CursorCodec";
 
 /**
  * Default upper limits for row queries when projecting graphs.
  */
 const DEFAULT_PROJECTION_NODE_CAP = 500;
+const MAX_PROJECTION_NODE_CAP = 1000;
 
 /**
  * Concrete implementation of the Log Service.
@@ -120,14 +123,34 @@ export class LogServiceImpl extends ILogService {
     userId: string;
     traceId: string;
     threshold: number;
+    cursor?: string;
+    limit?: number;
   }): Promise<ProjectedGraphResult> {
-    const { userId, traceId, threshold } = data;
+    const { userId, traceId, threshold, cursor, limit: providedLimit } = data;
+
+    const limit = Math.min(providedLimit ?? DEFAULT_PROJECTION_NODE_CAP, MAX_PROJECTION_NODE_CAP);
+
+    const summary = await this.readRepo.loadTraceSummary({ userId, traceId });
+    if (!summary) {
+      throw new Error("Trace not found");
+    }
+
+    let offset = 0;
+    if (cursor) {
+      const decoded = decodeCursor(cursor);
+      if (decoded.materializedAt !== summary.materializedAt) {
+        throw new ConflictError(
+          `Cursor is stale. Cursor refers to materialization at ${decoded.materializedAt}, but latest is ${summary.materializedAt}. Please refresh.`
+        );
+      }
+      offset = decoded.offset;
+    }
 
     // Load nodes and edges under hard limits (safety caps) to prevent memory exhaust
     const boundedNodes = await this.readRepo.loadBoundedProjectionNodes({
       userId,
       traceId,
-      paging: { offset: 0, limit: DEFAULT_PROJECTION_NODE_CAP },
+      paging: { offset, limit },
     });
 
     const boundedEdges = await this.readRepo.loadBoundedVisibleEdges({
@@ -144,17 +167,33 @@ export class LogServiceImpl extends ILogService {
       nodes: boundedNodes.items,
       edges: boundedEdges.edges,
       nodeCap: {
-        cap: DEFAULT_PROJECTION_NODE_CAP,
+        cap: limit,
         returnedCount: boundedNodes.items.length,
         capHit: boundedNodes.hasMore,
       },
       edgeCap: boundedEdges.cap,
     });
 
+    // Enrich metadata with paging information
+    const hasAfter = boundedNodes.hasMore;
+    const hasBefore = offset > 0;
+
+    result.metadata.paging = {
+      hasAfter,
+      hasBefore,
+      nextCursor: hasAfter ? encodeCursor(offset + limit, summary.materializedAt) : null,
+      previousCursor: hasBefore ? encodeCursor(Math.max(0, offset - limit), summary.materializedAt) : null,
+      totalNodeCount: summary.nodeCount,
+      fromFlowOrder: boundedNodes.items.length > 0 ? boundedNodes.items[0].flowOrder : 0,
+      toFlowOrder: boundedNodes.items.length > 0 ? boundedNodes.items[boundedNodes.items.length - 1].flowOrder : 0,
+    };
+
     this.logger.trace("projectTraceGraph", {
       userId,
       traceId,
       threshold,
+      offset,
+      limit,
       returnedNodeCount: result.metadata.returnedNodeCount,
       returnedEdgeCount: result.metadata.returnedEdgeCount,
       visibleNodeCount: result.metadata.visibleNodeCount,
@@ -162,6 +201,8 @@ export class LogServiceImpl extends ILogService {
       nodeCapHit: result.metadata.nodeCap.capHit,
       edgeCapHit: result.metadata.edgeCap.capHit,
       omittedEdgeCount: result.metadata.omittedEdgeCount,
+      hasAfter,
+      hasBefore,
     });
 
     return result;
