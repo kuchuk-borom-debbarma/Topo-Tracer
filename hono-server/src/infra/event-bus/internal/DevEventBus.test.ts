@@ -4,6 +4,8 @@ import { DevEventBus } from "./DevEventBus";
 import { EventBusPublishedEvent } from "../api/types";
 import { InMemoryCache } from "../../cache/internal/InMemoryCache";
 import { CacheIdempotencyStore } from "../idempotency/internal/CacheIdempotencyStore";
+import { InMemoryOutboxStore } from "../../outbox/internal/InMemoryOutboxStore";
+import { OutboxRelay } from "../../outbox/internal/OutboxRelay";
 
 describe("DevEventBus - Publish and Subscribe Routing", () => {
   it("should route published events to subscribers of the matching topic", async () => {
@@ -100,3 +102,89 @@ describe("DevEventBus - Idempotency Deduplication", () => {
     expect(handler1).toHaveBeenCalledTimes(0);
   });
 });
+
+describe("DevEventBus - Outbox Integration", () => {
+  it("should write events to outbox store when tx is provided and bypassOutbox is not set", async () => {
+    const cache = new InMemoryCache();
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const outboxStore = new InMemoryOutboxStore();
+    const bus = new DevEventBus(idempotencyStore, outboxStore);
+    const handler = mock(async () => {});
+
+    await bus.subscribe({ topic: "outbox.topic", consumerName: "c-outbox" }, handler);
+
+    // Publish with transaction context
+    const mockTx = {};
+    await bus.publish(
+      [{ topic: "outbox.topic", idempotencyId: "evt-outbox-1", data: { x: 1 } }],
+      { tx: mockTx }
+    );
+
+    // Should not call handler immediately because it went to the outbox
+    expect(handler).not.toHaveBeenCalled();
+
+    // Verify it was saved to the outbox
+    const pendingEvents = await outboxStore.claimPending();
+    expect(pendingEvents).toHaveLength(1);
+    expect(pendingEvents[0]?.idempotencyId).toBe("evt-outbox-1");
+    expect(pendingEvents[0]?.status).toBe("processing");
+  });
+
+  it("should publish directly and bypass outbox when bypassOutbox option is true", async () => {
+    const cache = new InMemoryCache();
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const outboxStore = new InMemoryOutboxStore();
+    const bus = new DevEventBus(idempotencyStore, outboxStore);
+    const handler = mock(async () => {});
+
+    await bus.subscribe({ topic: "outbox.topic", consumerName: "c-outbox" }, handler);
+
+    // Publish with transaction context but also bypassOutbox set to true
+    const mockTx = {};
+    await bus.publish(
+      [{ topic: "outbox.topic", idempotencyId: "evt-outbox-bypass", data: { x: 2 } }],
+      { tx: mockTx, bypassOutbox: true }
+    );
+
+    // Should call handler immediately because we bypassed the outbox
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    // Verify it was NOT saved to the outbox
+    const pendingEvents = await outboxStore.claimPending();
+    expect(pendingEvents).toHaveLength(0);
+  });
+
+  it("should process outbox events via OutboxRelay", async () => {
+    const cache = new InMemoryCache();
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const outboxStore = new InMemoryOutboxStore();
+    const bus = new DevEventBus(idempotencyStore, outboxStore);
+    const handler = mock(async () => {});
+
+    await bus.subscribe({ topic: "outbox.topic", consumerName: "c-outbox" }, handler);
+
+    const mockTx = {};
+    await bus.publish(
+      [{ topic: "outbox.topic", idempotencyId: "evt-outbox-relay", data: { val: 42 } }],
+      { tx: mockTx }
+    );
+
+    expect(handler).not.toHaveBeenCalled();
+
+    // Run the relay poll manually
+    const relay = new OutboxRelay(outboxStore, bus);
+    await relay.poll();
+
+    // Now it should be published and delivered to the subscriber
+    expect(handler).toHaveBeenCalledTimes(1);
+    const delivered = (handler.mock.calls[0] as any)[0];
+    expect(delivered[0]?.idempotencyId).toBe("evt-outbox-relay");
+    expect(delivered[0]?.data).toEqual({ val: 42 });
+
+    // Verify it is marked as sent
+    const pendingEvents = await outboxStore.claimPending();
+    expect(pendingEvents).toHaveLength(0);
+    expect(outboxStore.getAllEvents()[0]?.status).toBe("sent");
+  });
+});
+

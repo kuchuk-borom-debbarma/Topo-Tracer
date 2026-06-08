@@ -7,19 +7,27 @@ import {
 } from "../api/types";
 import { IEventBus } from "../api/IEventBus";
 import { IIdempotencyStore } from "../idempotency/api/IIdempotencyStore";
+import { IOutboxStore } from "../../outbox";
 
 export class DevEventBus extends IEventBus {
   private readonly handlersByTopic = new Map<string, EventBusHandler[]>();
 
-  constructor(private readonly idempotencyStore: IIdempotencyStore) {
+  constructor(
+    private readonly idempotencyStore: IIdempotencyStore,
+    private readonly outboxStore?: IOutboxStore,
+  ) {
     super();
   }
 
+  // fallow-ignore-next-line complexity
   async publish(
     events: EventBusPublishEvent[],
     options?: EventBusPublishOptions,
   ): Promise<void> {
-    void options;
+    if (this.outboxStore && options?.tx && !options?.bypassOutbox) {
+      await this.outboxStore.save(events, options.tx);
+      return;
+    }
 
     await this.deliverByTopic(this.groupByTopic(events));
   }

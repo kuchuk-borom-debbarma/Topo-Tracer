@@ -7,11 +7,20 @@ import { IExternalNotificationService } from "../../../external-notification/api
 import { InMemoryCache } from "../../../../infra/cache/internal/InMemoryCache";
 import { User } from "../../api/types";
 import { PendingUser, TokenOTP } from "../repo/types";
+import { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
+
+export class MockEventBus extends IEventBus {
+  publish = mock(async () => {});
+  subscribe = mock(async () => {});
+}
 
 export const mockLogger = new Logger({ name: "AuthServiceImplTest", type: "hidden" });
 export const jwtSecret = "my-secret-key-9876";
 
 export class MockAuthRepo extends IAuthRepo {
+  transaction = mock(async (fn: any): Promise<any> => {
+    return fn(this);
+  });
   getUserByFilter = mock(async (filters: any): Promise<User> => {
     throw new Error("Not implemented");
   });
@@ -72,11 +81,12 @@ export function mockTokenOtp(id = "token-otp-456", token = "pending-123", tokenT
   };
 }
 
-export function createService() {
+export function createService(eventBus?: any) {
   const repo = new MockAuthRepo();
   const notification = new MockNotificationService();
   const cache = new InMemoryCache();
-  const service = new AuthServiceImpl(mockLogger, notification, cache);
+  const bus = eventBus ?? new MockEventBus();
+  const service = new AuthServiceImpl(mockLogger, notification, cache, bus);
   (service as any).authRepo = repo;
-  return { service, repo, notification, cache };
+  return { service, repo, notification, cache, eventBus: bus };
 }

@@ -3,6 +3,7 @@ import { describe, expect, it, mock } from "bun:test";
 import { KafkaEventBus } from "./KafkaEventBus";
 import { ICache } from "../../cache/api/ICache";
 import { CacheIdempotencyStore } from "../idempotency/internal/CacheIdempotencyStore";
+import { InMemoryOutboxStore } from "../../outbox/internal/InMemoryOutboxStore";
 
 const mockProducerSend = mock(async () => {});
 const mockProducerConnect = mock(async () => {});
@@ -243,5 +244,70 @@ describe("KafkaEventBus Integration", () => {
     // The key should NOT be written to the cache
     const cacheVal = await cache.get("eb:idemp:group-abc:id-failure-test");
     expect(cacheVal).toBeNull();
+  });
+
+  describe("Outbox Integration", () => {
+    it("should write events to outbox store when tx is provided and bypassOutbox is not set", async () => {
+      resetMocks();
+      const cache = new MockCache();
+      const idempotencyStore = new CacheIdempotencyStore(cache);
+      const outboxStore = new InMemoryOutboxStore();
+      const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore, outboxStore);
+
+      const mockTx = {};
+      await bus.publish(
+        [{ topic: "outbox-topic", idempotencyId: "evt-1", data: { val: 1 } }],
+        { tx: mockTx }
+      );
+
+      // Verify no direct Kafka publish occurred
+      expect(mockProducerSend).not.toHaveBeenCalled();
+
+      // Verify event was saved to outbox
+      const pending = await outboxStore.claimPending();
+      expect(pending).toHaveLength(1);
+      expect(pending[0]?.idempotencyId).toBe("evt-1");
+      expect(pending[0]?.status).toBe("processing");
+    });
+
+    it("should bypass outbox and publish directly to Kafka when bypassOutbox is true", async () => {
+      resetMocks();
+      const cache = new MockCache();
+      const idempotencyStore = new CacheIdempotencyStore(cache);
+      const outboxStore = new InMemoryOutboxStore();
+      const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore, outboxStore);
+
+      const mockTx = {};
+      await bus.publish(
+        [{ topic: "outbox-topic", idempotencyId: "evt-bypass", data: { val: 2 } }],
+        { tx: mockTx, bypassOutbox: true }
+      );
+
+      // Verify direct Kafka publish occurred
+      expect(mockProducerSend).toHaveBeenCalledTimes(1);
+
+      // Verify event was NOT saved to outbox
+      const pending = await outboxStore.claimPending();
+      expect(pending).toHaveLength(0);
+    });
+
+    it("should publish directly to Kafka when outboxStore is configured but no tx is provided", async () => {
+      resetMocks();
+      const cache = new MockCache();
+      const idempotencyStore = new CacheIdempotencyStore(cache);
+      const outboxStore = new InMemoryOutboxStore();
+      const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore, outboxStore);
+
+      await bus.publish(
+        [{ topic: "outbox-topic", idempotencyId: "evt-no-tx", data: { val: 3 } }]
+      );
+
+      // Verify direct Kafka publish occurred
+      expect(mockProducerSend).toHaveBeenCalledTimes(1);
+
+      // Verify event was NOT saved to outbox
+      const pending = await outboxStore.claimPending();
+      expect(pending).toHaveLength(0);
+    });
   });
 });

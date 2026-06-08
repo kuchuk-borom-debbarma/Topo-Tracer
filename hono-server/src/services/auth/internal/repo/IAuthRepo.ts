@@ -46,11 +46,14 @@ export abstract class IAuthRepo {
    * @param data.password - Password to store.
    * @returns The created PendingUser object containing the signup state.
    */
-  abstract insertPendingSignUpUser(data: {
-    username: string;
-    email: string;
-    password: string;
-  }): Promise<PendingUser>;
+  abstract insertPendingSignUpUser(
+    data: {
+      username: string;
+      email: string;
+      password: string;
+    },
+    tx?: any,
+  ): Promise<PendingUser>;
 
   /**
    * Retrieves the pending user signup details by the signup token ID.
@@ -67,10 +70,13 @@ export abstract class IAuthRepo {
    * @param data.token - The associated signup token ID.
    * @returns The created/updated TokenOTP record.
    */
-  abstract upsertUserTokenOTP(data: {
-    otp: string;
-    token: string;
-  }): Promise<TokenOTP>;
+  abstract upsertUserTokenOTP(
+    data: {
+      otp: string;
+      token: string;
+    },
+    tx?: any,
+  ): Promise<TokenOTP>;
 
   /**
    * Fetches the Token OTP record using the token ID.
@@ -124,6 +130,11 @@ export abstract class IAuthRepo {
     token: string;
     tokenType: TokenOTP["tokenType"];
   }): Promise<void>;
+
+  /**
+   * Executes database operations inside a PostgreSQL transaction context.
+   */
+  abstract transaction<T>(fn: (tx: any) => Promise<T>): Promise<T>;
 }
 
 

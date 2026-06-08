@@ -8,6 +8,7 @@ import {
   EventBusPublishOptions,
   EventBusSubscribeOptions,
 } from "../api/types";
+import { IOutboxStore } from "../../outbox";
 import { IIdempotencyStore } from "../idempotency/api/IIdempotencyStore";
 
 /**
@@ -22,6 +23,7 @@ export class KafkaEventBus extends IEventBus {
   constructor(
     brokers: string[],
     private readonly idempotencyStore: IIdempotencyStore,
+    private readonly outboxStore?: IOutboxStore,
     clientId = "topo-tracer-hono",
   ) {
     super();
@@ -39,7 +41,10 @@ export class KafkaEventBus extends IEventBus {
     events: EventBusPublishEvent[],
     options?: EventBusPublishOptions,
   ): Promise<void> {
-    void options;
+    if (this.outboxStore && options?.tx && !options?.bypassOutbox) {
+      await this.outboxStore.save(events, options.tx);
+      return;
+    }
 
     if (!this.producer) {
       this.producer = this.kafka.producer({

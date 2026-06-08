@@ -7,6 +7,7 @@ import { IExternalNotificationService } from "../../../external-notification/api
 import { generateToken, verifyToken } from "../util/jwt";
 import { User } from "../../api/types";
 import { ICache } from "../../../../infra/cache/api/ICache";
+import { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
 
 /**
  * Authentication Service implementation.
@@ -21,11 +22,13 @@ export class AuthServiceImpl extends IAuthService {
   readonly authRepo: IAuthRepo;
   readonly notificationService: IExternalNotificationService;
   readonly cache: ICache;
+  readonly eventBus: IEventBus;
 
   constructor(
     parentLogger: Logger<unknown>,
     notificationService: IExternalNotificationService,
     cache: ICache,
+    eventBus: IEventBus,
   ) {
     super();
     // Derives a structured child logger for this component, adhering to the logging rules
@@ -35,6 +38,7 @@ export class AuthServiceImpl extends IAuthService {
     this.authRepo = authRepo;
     this.notificationService = notificationService;
     this.cache = cache;
+    this.eventBus = eventBus;
   }
 
   /**
@@ -52,23 +56,36 @@ export class AuthServiceImpl extends IAuthService {
     // Only log safe metadata (username and email).
     this.logger.trace(`startSignUp initiated for username="${data.username}", email="${data.email}"`);
     try {
-      // 1. Write the pending user record to register intent
-      const inserted = await this.authRepo.insertPendingSignUpUser(data);
+      const tokenId = await this.authRepo.transaction(async (tx) => {
+        // 1. Write the pending user record to register intent
+        const inserted = await this.authRepo.insertPendingSignUpUser(data, tx);
 
-      // 2. Generate a verification code OTP linked to the pending user token
-      const tokenOTP = await this.authRepo.upsertUserTokenOTP({
-        token: inserted.id,
-        otp: "12345", // TODO: Replace placeholder with random OTP generator for production
+        // 2. Generate a verification code OTP linked to the pending user token
+        const tokenOTP = await this.authRepo.upsertUserTokenOTP({
+          token: inserted.id,
+          otp: "12345", // TODO: Replace placeholder with random OTP generator for production
+        }, tx);
+
+        // 3. Publish signup event to trigger async email notification
+        await this.eventBus.publish(
+          [
+            {
+              topic: "auth.signup.started",
+              idempotencyId: `auth.signup.started:${inserted.id}`,
+              key: inserted.id,
+              data: {
+                email: data.email,
+                otp: tokenOTP.otp,
+              },
+            },
+          ],
+          { tx },
+        );
+
+        return tokenOTP.id;
       });
 
-      // 3. Dispatch OTP notification to user
-      await this.notificationService.sendNotification({
-        recipient: data.email,
-        subject: "Verify your TopoTracer registration",
-        body: `Your verification OTP code is: ${tokenOTP.otp}`,
-      });
-
-      return tokenOTP.id;
+      return tokenId;
     } catch (err) {
       this.logger.error("Failed to start signup process", err);
       throw err;
