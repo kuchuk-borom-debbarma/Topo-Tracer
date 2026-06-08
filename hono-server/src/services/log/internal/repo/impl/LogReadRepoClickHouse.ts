@@ -12,11 +12,11 @@ import {
   ReadNode,
   ReadEdge,
   ReadTraceSummary,
-  BoundedVisibleNodesResult,
   BoundedVisibleEdgesResult,
-  BoundedProjectionNodesResult,
+  PagingParams,
+  PagedResult,
 } from "../../../api/types";
-import { ILogReadRepo, DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
+import { ILogReadRepo, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
 import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEventRow, EdgeEventRow } from "../types";
 
 /**
@@ -280,35 +280,42 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
 
   /**
    * Loads materialized nodes from ClickHouse filtered by importance threshold.
-   * Employs the DEFAULT_PROJECTION_NODE_CAP safety boundary.
+   * Supports sliding-window paging using flow_order offset.
    */
   async loadBoundedVisibleNodes(params: {
     userId: string;
     traceId: string;
     threshold: number;
-  }): Promise<BoundedVisibleNodesResult> {
+    paging: PagingParams;
+  }): Promise<PagedResult<ReadNode>> {
+    const limit = Math.min(params.paging.limit, 1000);
+    const offset = params.paging.offset;
+
     const client = this.getClient();
     const result = await client.query({
       query: `
-        SELECT * FROM (
-          SELECT 
-            id,
-            argMax(user_id, materialized_at_ms) as user_id,
-            argMax(trace_id, materialized_at_ms) as trace_id,
-            argMax(node_type, materialized_at_ms) as node_type,
-            argMax(data, materialized_at_ms) as data,
-            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
-            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            argMax(start_message, materialized_at_ms) as start_message,
-            argMax(end_message, materialized_at_ms) as end_message,
-            argMax(importance_level, materialized_at_ms) as importance_level,
-            argMax(flow_order, materialized_at_ms) as flow_order,
-            max(materialized_at_ms) as materialized_at_ms
-          FROM ${CLICKHOUSE_READ_NODES_TABLE}
-          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
-          GROUP BY id
+        SELECT *, count(*) OVER() as total_node_count FROM (
+          SELECT * FROM (
+            SELECT 
+              id,
+              argMax(user_id, materialized_at_ms) as user_id,
+              argMax(trace_id, materialized_at_ms) as trace_id,
+              argMax(node_type, materialized_at_ms) as node_type,
+              argMax(data, materialized_at_ms) as data,
+              argMax(started_at_ms, materialized_at_ms) as started_at_ms,
+              argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+              argMax(start_message, materialized_at_ms) as start_message,
+              argMax(end_message, materialized_at_ms) as end_message,
+              argMax(importance_level, materialized_at_ms) as importance_level,
+              argMax(flow_order, materialized_at_ms) as flow_order,
+              max(materialized_at_ms) as materialized_at_ms
+            FROM ${CLICKHOUSE_READ_NODES_TABLE}
+            WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+            GROUP BY id
+          )
+          WHERE importance_level <= {threshold:Int32}
         )
-        WHERE importance_level <= {threshold:Int32}
+        WHERE flow_order >= {offset:UInt32}
         ORDER BY flow_order ASC, id ASC
         LIMIT {limit:UInt32}
       `,
@@ -317,13 +324,15 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         userId: params.userId,
         traceId: params.traceId,
         threshold: params.threshold,
-        limit: DEFAULT_PROJECTION_NODE_CAP + 1,
+        offset: offset,
+        limit: limit + 1,
       },
     });
 
-    const rows = await result.json<ReadNodeRow>();
-    const capHit = rows.length > DEFAULT_PROJECTION_NODE_CAP;
-    const finalRows = capHit ? rows.slice(0, DEFAULT_PROJECTION_NODE_CAP) : rows;
+    const rows = await result.json<ReadNodeRow & { total_node_count: number }>();
+    const hasMore = rows.length > limit;
+    const finalRows = hasMore ? rows.slice(0, limit) : rows;
+    const totalCount = rows.length > 0 ? Number(rows[0].total_node_count) : 0;
 
     const nodes: ReadNode[] = finalRows.map(row => ({
       id: row.id,
@@ -341,12 +350,9 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     }));
 
     return {
-      nodes,
-      cap: {
-        cap: DEFAULT_PROJECTION_NODE_CAP,
-        returnedCount: nodes.length,
-        capHit,
-      },
+      items: nodes,
+      totalCount,
+      hasMore,
     };
   }
 
@@ -434,16 +440,21 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
   }
 
   /**
-   * Loads all nodes for a trace up to the default safety cap.
+   * Loads all nodes for a trace up to the safety cap in paging.
+   * Supports sliding-window paging using flow_order offset.
    */
   async loadBoundedProjectionNodes(params: {
     userId: string;
     traceId: string;
-  }): Promise<BoundedProjectionNodesResult> {
+    paging: PagingParams;
+  }): Promise<PagedResult<ReadNode>> {
+    const limit = Math.min(params.paging.limit, 1000);
+    const offset = params.paging.offset;
+
     const client = this.getClient();
     const result = await client.query({
       query: `
-        SELECT * FROM (
+        SELECT *, count(*) OVER() as total_node_count FROM (
           SELECT 
             id,
             argMax(user_id, materialized_at_ms) as user_id,
@@ -461,6 +472,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           WHERE user_id = {userId:String} AND trace_id = {traceId:String}
           GROUP BY id
         )
+        WHERE flow_order >= {offset:UInt32}
         ORDER BY flow_order ASC, id ASC
         LIMIT {limit:UInt32}
       `,
@@ -468,13 +480,15 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       query_params: {
         userId: params.userId,
         traceId: params.traceId,
-        limit: DEFAULT_PROJECTION_NODE_CAP + 1,
+        offset: offset,
+        limit: limit + 1,
       },
     });
 
-    const rows = await result.json<ReadNodeRow>();
-    const capHit = rows.length > DEFAULT_PROJECTION_NODE_CAP;
-    const finalRows = capHit ? rows.slice(0, DEFAULT_PROJECTION_NODE_CAP) : rows;
+    const rows = await result.json<ReadNodeRow & { total_node_count: number }>();
+    const hasMore = rows.length > limit;
+    const finalRows = hasMore ? rows.slice(0, limit) : rows;
+    const totalCount = rows.length > 0 ? Number(rows[0].total_node_count) : 0;
 
     const nodes: ReadNode[] = finalRows.map(row => ({
       id: row.id,
@@ -492,12 +506,57 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     }));
 
     return {
-      nodes,
-      cap: {
-        cap: DEFAULT_PROJECTION_NODE_CAP,
-        returnedCount: nodes.length,
-        capHit,
+      items: nodes,
+      totalCount,
+      hasMore,
+    };
+  }
+
+  /**
+   * Loads the latest summary for a trace from ClickHouse.
+   */
+  async loadTraceSummary(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<ReadTraceSummary | null> {
+    const client = this.getClient();
+    const result = await client.query({
+      query: `
+        SELECT * FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
+        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+        ORDER BY materialized_at_ms DESC
+        LIMIT 1
+      `,
+      format: "JSONEachRow",
+      query_params: {
+        userId: params.userId,
+        traceId: params.traceId,
       },
+    });
+
+    const rows = await result.json<TraceSummaryRow>();
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const row = rows[0];
+    return {
+      userId: row.user_id,
+      traceId: row.trace_id,
+      nodeCount: row.node_count,
+      edgeCount: row.edge_count,
+      minImportanceLevel: row.min_importance_level,
+      maxImportanceLevel: row.max_importance_level,
+      startedAt: row.started_at_ms,
+      endedAt: row.ended_at_ms,
+      materializedAt: row.materialized_at_ms,
+      diagMissingStarts: row.diagnostic_missing_starts_count,
+      diagMissingEnds: row.diagnostic_missing_ends_count,
+      diagNegativeDurations: row.diagnostic_negative_duration_count,
+      diagCycles: row.diagnostic_cycle_count,
+      diagOrphanEdges: row.diagnostic_orphan_edge_count,
+      diagInvalidImportance: row.diagnostic_invalid_importance_count,
+      diagClockSkew: row.diagnostic_clock_skew_count,
     };
   }
 

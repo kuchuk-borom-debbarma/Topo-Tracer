@@ -107,5 +107,13 @@ export abstract class ILogReadRepo {
     traceId: string;
     paging: PagingParams;
   }): Promise<PagedResult<ReadNode>>;
+
+  /**
+   * Loads the latest summary for a trace.
+   */
+  abstract loadTraceSummary(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<ReadTraceSummary | null>;
 }
 
