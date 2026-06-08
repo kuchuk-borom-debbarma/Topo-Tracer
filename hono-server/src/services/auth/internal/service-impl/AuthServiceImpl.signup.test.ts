@@ -48,6 +48,23 @@ describe("AuthServiceImpl - SignUp Flow", () => {
     expect(notification.sendNotification).not.toHaveBeenCalled();
   });
 
+  it("should rollback transaction and not publish event if user insertion fails", async () => {
+    const { service, repo, eventBus } = createService();
+
+    (repo.insertPendingSignUpUser as any).mockRejectedValue(new Error("Database write failure"));
+
+    await expect(
+      service.startSignUp({
+        username: "userA",
+        email: "userA@test.com",
+        password: "password123",
+      })
+    ).rejects.toThrow("Database write failure");
+
+    expect(repo.upsertUserTokenOTP).not.toHaveBeenCalled();
+    expect(eventBus.publish).not.toHaveBeenCalled();
+  });
+
   it("should finishSignUp when OTP is correct", async () => {
     const { service, repo } = createService();
 
