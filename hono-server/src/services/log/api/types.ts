@@ -220,6 +220,15 @@ export type ProjectedGraphMetadata = {
   nodeCap: ProjectionReadCap;
   edgeCap: ProjectionReadCap;
   omittedEdgeCount: number;
+  paging: {
+    nextCursor: string | null;
+    previousCursor: string | null;
+    hasAfter: boolean;
+    hasBefore: boolean;
+    totalNodeCount: number;
+    fromFlowOrder: number;
+    toFlowOrder: number;
+  };
 };
 
 /**
@@ -229,6 +238,23 @@ export type ProjectedGraphResult = {
   nodes: ProjectedGraphNode[];
   edges: ProjectedGraphEdge[];
   metadata: ProjectedGraphMetadata;
+};
+
+/**
+ * Paging parameters for sliding-window exploration.
+ */
+export type PagingParams = {
+  offset: number;
+  limit: number;
+};
+
+/**
+ * Generic wrapper for paged repository results.
+ */
+export type PagedResult<T> = {
+  items: T[];
+  totalCount: number;
+  hasMore: boolean;
 };
 
 /**

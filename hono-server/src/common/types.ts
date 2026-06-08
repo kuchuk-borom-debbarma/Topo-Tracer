@@ -5,3 +5,9 @@ export class TopoTraceException extends Error {
     this.statusCode = statusCode;
   }
 }
+
+export class ConflictError extends TopoTraceException {
+  constructor(msg: string) {
+    super(msg, 409);
+  }
+}

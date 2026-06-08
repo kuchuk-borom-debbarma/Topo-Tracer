@@ -160,6 +160,27 @@ describe("LogReadRepoClickHouse row loading", () => {
     expect(result.summary).toMatchObject({ nodeCount: 1, edgeCount: 1 });
   });
 
+  test("loadTraceSummary maps summary and handles empty", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_TABLE] = [
+      { user_id: "u1", trace_id: "t1", node_count: 5, edge_count: 4, materialized_at_ms: 12345 },
+    ];
+
+    const result = await repo.loadTraceSummary({ userId: "u1", traceId: "t1" });
+    expect(result).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      nodeCount: 5,
+      edgeCount: 4,
+      materializedAt: 12345,
+    });
+
+    const empty = await repo.loadTraceSummary({ userId: "u2", traceId: "t2" });
+    expect(empty).toBeNull();
+  });
+
   test("loadRawEventsAfterCheckpoint applies correct threshold logic", async () => {
     const fakeClient = new FakeClickHouseClient();
     const repo = createRepoWithFakeClient(fakeClient);
@@ -233,23 +254,24 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
       materialized_at_ms: 2000,
     }));
 
-    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows;
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows.map(r => ({ ...r, total_node_count: fakeRows.length }));
 
     const result = await repo.loadBoundedVisibleNodes({
       userId: "u1",
       traceId: "t1",
       threshold: 2,
+      paging: { offset: 0, limit: DEFAULT_PROJECTION_NODE_CAP },
     });
 
-    expect(result.nodes).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
-    expect(result.cap.cap).toBe(DEFAULT_PROJECTION_NODE_CAP);
-    expect(result.cap.returnedCount).toBe(DEFAULT_PROJECTION_NODE_CAP);
-    expect(result.cap.capHit).toBe(true);
+    expect(result.items).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.totalCount).toBe(DEFAULT_PROJECTION_NODE_CAP + 1);
+    expect(result.hasMore).toBe(true);
 
     const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
     expect(query).toBeDefined();
     expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
     expect(query?.query).toContain("importance_level <= {threshold:Int32}");
+    expect(query?.query).toContain("flow_order >= {offset:UInt32}");
     expect(query?.query).toContain("ORDER BY flow_order ASC, id ASC");
     expect(query?.query).toContain("LIMIT {limit:UInt32}");
     expect(query?.query).toContain("argMax");
@@ -258,6 +280,7 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
       userId: "u1",
       traceId: "t1",
       threshold: 2,
+      offset: 0,
       limit: DEFAULT_PROJECTION_NODE_CAP + 1,
     });
   });
@@ -286,13 +309,13 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
       userId: "u1",
       traceId: "t1",
       threshold: 5,
+      paging: { offset: 0, limit: 100 },
     });
 
-    expect(result.nodes).toHaveLength(2);
-    expect(result.cap.capHit).toBe(false);
-    expect(result.cap.returnedCount).toBe(2);
+    expect(result.items).toHaveLength(2);
+    expect(result.hasMore).toBe(false);
 
-    const n1 = result.nodes.find(n => n.id === "n1");
+    const n1 = result.items.find(n => n.id === "n1");
     expect(n1).toMatchObject({
       id: "n1",
       userId: "u1",
@@ -317,8 +340,17 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
   });
 
   test("Phase 5 source boundary: no leaks of cross-cutting concerns", async () => {
-    const implPath = join(process.cwd(), "src/services/log/internal/repo/impl/LogReadRepoClickHouse.ts");
-    const content = readFileSync(implPath, "utf-8");
+    // Try both common cwd locations
+    let content = "";
+    try {
+      content = readFileSync(join(process.cwd(), "src/services/log/internal/repo/impl/LogReadRepoClickHouse.ts"), "utf-8");
+    } catch {
+      try {
+        content = readFileSync(join(process.cwd(), "hono-server/src/services/log/internal/repo/impl/LogReadRepoClickHouse.ts"), "utf-8");
+      } catch {
+        throw new Error("Could not find LogReadRepoClickHouse.ts to run boundary check");
+      }
+    }
 
     // Forbidden terms that belong to future layers or are restricted
     const forbidden = [
@@ -358,15 +390,16 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
       materialized_at_ms: 2000,
     }));
 
-    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows;
+    fakeClient.queryResults[CLICKHOUSE_READ_NODES_TABLE] = fakeRows.map(r => ({ ...r, total_node_count: fakeRows.length }));
 
     const result = await repo.loadBoundedProjectionNodes({
       userId: "u1",
       traceId: "t1",
+      paging: { offset: 0, limit: DEFAULT_PROJECTION_NODE_CAP },
     });
 
-    expect(result.nodes).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
-    expect(result.cap.capHit).toBe(true);
+    expect(result.items).toHaveLength(DEFAULT_PROJECTION_NODE_CAP);
+    expect(result.hasMore).toBe(true);
 
     const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
     expect(query).toBeDefined();

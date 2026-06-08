@@ -13,12 +13,13 @@ import type {
 } from "../../../../infra/event-bus/api/types";
 import type {
   IngestEdgeStart,
-  BoundedProjectionNodesResult,
-  BoundedVisibleEdgesResult,
   ReadCheckpoint,
   ReadNode,
   ReadEdge,
   ReadTraceSummary,
+  BoundedVisibleEdgesResult,
+  PagingParams,
+  PagedResult,
 } from "../../api/types";
 import type { ILogWriteRepo } from "../repo/ILogWriteRepo";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
@@ -42,6 +43,25 @@ class FakeLogWriteRepo implements ILogWriteRepo {
 class FakeLogReadRepo extends ILogReadRepo {
   loadBoundedProjectionNodesCalls: any[] = [];
   loadBoundedVisibleEdgesCalls: any[] = [];
+  loadTraceSummaryResult: ReadTraceSummary | null = {
+    userId: "u1",
+    traceId: "trace-1",
+    nodeCount: 1,
+    edgeCount: 0,
+    materializedAt: 100,
+    startedAt: 100,
+    endedAt: 200,
+    minImportanceLevel: 1,
+    maxImportanceLevel: 1,
+    diagMissingStarts: 0,
+    diagMissingEnds: 0,
+    diagNegativeDurations: 0,
+    diagCycles: 0,
+    diagOrphanEdges: 0,
+    diagInvalidImportance: 0,
+    diagClockSkew: 0,
+  };
+  loadBoundedProjectionNodesResult: PagedResult<ReadNode> | null = null;
 
   async loadCheckpoint(): Promise<ReadCheckpoint | null> { return null; }
   async loadLatestReadModel(): Promise<{ nodes: ReadNode[]; edges: ReadEdge[]; summary: ReadTraceSummary | null; }> {
@@ -52,7 +72,9 @@ class FakeLogReadRepo extends ILogReadRepo {
   }
   async saveReadModel(): Promise<void> {}
   async saveCheckpoint(): Promise<void> {}
-  async loadBoundedVisibleNodes(): Promise<any> { return { nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } }; }
+  async loadBoundedVisibleNodes(): Promise<PagedResult<ReadNode>> {
+    return { items: [], totalCount: 0, hasMore: false };
+  }
 
   async loadBoundedVisibleEdges(params: { userId: string; traceId: string; nodeIds: string[]; }): Promise<BoundedVisibleEdgesResult> {
     this.loadBoundedVisibleEdgesCalls.push(params);
@@ -62,14 +84,22 @@ class FakeLogReadRepo extends ILogReadRepo {
     };
   }
 
-  async loadBoundedProjectionNodes(params: { userId: string; traceId: string; }): Promise<BoundedProjectionNodesResult> {
+  async loadBoundedProjectionNodes(params: { userId: string; traceId: string; paging: PagingParams; }): Promise<PagedResult<ReadNode>> {
     this.loadBoundedProjectionNodesCalls.push(params);
+    if (this.loadBoundedProjectionNodesResult) {
+      return this.loadBoundedProjectionNodesResult;
+    }
     return {
-      nodes: [
+      items: [
         { id: "node-1", userId: params.userId, traceId: params.traceId, importanceLevel: 1, flowOrder: 1, materializedAt: 100 } as ReadNode
       ],
-      cap: { cap: 500, returnedCount: 1, capHit: true }
+      totalCount: 1,
+      hasMore: true
     };
+  }
+
+  async loadTraceSummary(params: { userId: string; traceId: string; }): Promise<ReadTraceSummary | null> {
+    return this.loadTraceSummaryResult;
   }
 }
 
@@ -157,7 +187,8 @@ describe("LogServiceImpl projection orchestration", () => {
     expect(readRepo.loadBoundedProjectionNodesCalls).toHaveLength(1);
     expect(readRepo.loadBoundedProjectionNodesCalls[0]).toEqual({
       userId: "u1",
-      traceId: "trace-1"
+      traceId: "trace-1",
+      paging: { offset: 0, limit: 500 }
     });
 
     expect(readRepo.loadBoundedVisibleEdgesCalls).toHaveLength(1);
@@ -206,7 +237,7 @@ describe("LogServiceImpl projection orchestration", () => {
   });
 
   test("source assertion: projectTraceGraph does not contain loadLatestReadModel", () => {
-    const filePath = join(process.cwd(), "src/services/log/internal/service-impl/LogServiceImpl.ts");
+    const filePath = join(process.cwd(), "hono-server/src/services/log/internal/service-impl/LogServiceImpl.ts");
     const content = readFileSync(filePath, "utf-8");
     
     // Find projectTraceGraph method body
@@ -217,7 +248,7 @@ describe("LogServiceImpl projection orchestration", () => {
   });
 
   test("source assertion: projectTraceGraph log metadata contains no raw payload keys", () => {
-    const filePath = join(process.cwd(), "src/services/log/internal/service-impl/LogServiceImpl.ts");
+    const filePath = join(process.cwd(), "hono-server/src/services/log/internal/service-impl/LogServiceImpl.ts");
     const content = readFileSync(filePath, "utf-8");
     const logMatch = content.match(/this\.logger\.trace\("projectTraceGraph", \{([\s\S]*?)\n    \}\);/);
 
@@ -237,6 +268,85 @@ describe("LogServiceImpl projection orchestration", () => {
     ]) {
       expect(logMetadata).not.toContain(forbiddenPattern);
     }
+  });
+
+  test("projectTraceGraph handles first page with default paging", async () => {
+    const { service, readRepo } = createSubject();
+
+    const result = await service.projectTraceGraph({
+      userId: "u1",
+      traceId: "trace-1",
+      threshold: 5
+    });
+
+    expect(result.metadata.paging).toMatchObject({
+      hasBefore: false,
+      hasAfter: true, // Mock defaults to hasMore: true
+      totalNodeCount: 1,
+      fromFlowOrder: 1,
+      toFlowOrder: 1
+    });
+    expect(result.metadata.paging.nextCursor).toBeDefined();
+    expect(result.metadata.paging.previousCursor).toBeNull();
+  });
+
+  test("projectTraceGraph handles forward paging with explicit cursor", async () => {
+    const { service, readRepo } = createSubject();
+    const cursor = Buffer.from("50:100").toString("base64"); // offset 50, materializedAt 100
+
+    readRepo.loadBoundedProjectionNodesResult = {
+      items: [
+        { id: "n51", userId: "u1", traceId: "t1", importanceLevel: 1, flowOrder: 51, materializedAt: 100 } as ReadNode,
+        { id: "n52", userId: "u1", traceId: "t1", importanceLevel: 1, flowOrder: 52, materializedAt: 100 } as ReadNode
+      ],
+      totalCount: 100,
+      hasMore: true
+    };
+
+    readRepo.loadTraceSummaryResult = {
+      ...readRepo.loadTraceSummaryResult!,
+      nodeCount: 100
+    };
+
+    const result = await service.projectTraceGraph({
+      userId: "u1",
+      traceId: "trace-1",
+      threshold: 5,
+      cursor,
+      limit: 10
+    });
+
+    expect(readRepo.loadBoundedProjectionNodesCalls[0].paging).toEqual({ offset: 50, limit: 10 });
+    expect(result.metadata.paging).toMatchObject({
+      hasBefore: true,
+      hasAfter: true,
+      totalNodeCount: 100,
+      fromFlowOrder: 51,
+      toFlowOrder: 52
+    });
+  });
+
+  test("projectTraceGraph throws ConflictError on stale cursor", async () => {
+    const { service } = createSubject();
+    const staleCursor = Buffer.from("0:50").toString("base64"); // materializedAt 50, summary is 100
+
+    await expect(service.projectTraceGraph({
+      userId: "u1",
+      traceId: "trace-1",
+      threshold: 5,
+      cursor: staleCursor
+    })).rejects.toThrow("Cursor is stale");
+  });
+
+  test("projectTraceGraph throws Error on malformed cursor", async () => {
+    const { service } = createSubject();
+
+    await expect(service.projectTraceGraph({
+      userId: "u1",
+      traceId: "trace-1",
+      threshold: 5,
+      cursor: "not-base64-at-all"
+    })).rejects.toThrow();
   });
 });
 
