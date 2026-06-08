@@ -56,6 +56,15 @@ export class InMemoryOutboxStore extends IOutboxStore {
     this.updateStatus(ids, "pending");
   }
 
+  async recoverStuck(olderThanMs: number): Promise<void> {
+    const cutoffTime = Date.now() - olderThanMs;
+    for (const event of this.events) {
+      if (event.status === "processing" && event.createdAt.getTime() < cutoffTime) {
+        event.status = "pending";
+      }
+    }
+  }
+
   // Helper method for assertions in tests
   getAllEvents(): OutboxEvent[] {
     return this.events;

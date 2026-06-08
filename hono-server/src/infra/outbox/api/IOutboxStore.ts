@@ -45,4 +45,10 @@ export abstract class IOutboxStore {
    * allowing them to be retried on subsequent polls.
    */
   abstract markFailed(ids: string[]): Promise<void>;
+
+  /**
+   * Reverts events stuck in 'processing' status back to 'pending'
+   * if they have been in that state longer than olderThanMs.
+   */
+  abstract recoverStuck(olderThanMs: number): Promise<void>;
 }
