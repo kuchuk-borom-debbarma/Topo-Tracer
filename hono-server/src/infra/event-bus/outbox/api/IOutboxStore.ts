@@ -1,4 +1,4 @@
-import { EventBusPublishEvent } from "../../event-bus/api/types";
+import { EventBusPublishEvent } from "../../api/types";
 
 export type OutboxEvent = {
   id: string;

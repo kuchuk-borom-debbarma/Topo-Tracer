@@ -1,5 +1,5 @@
 import { IOutboxStore, OutboxEvent } from "../api/IOutboxStore";
-import { EventBusPublishEvent } from "../../event-bus/api/types";
+import { EventBusPublishEvent } from "../../api/types";
 
 /**
  * In-memory implementation of IOutboxStore.

@@ -7,7 +7,7 @@ import {
 } from "../api/types";
 import { IEventBus } from "../api/IEventBus";
 import { IIdempotencyStore } from "../idempotency/api/IIdempotencyStore";
-import { IOutboxStore } from "../../outbox";
+import { IOutboxStore } from "../outbox";
 
 export class DevEventBus extends IEventBus {
   private readonly handlersByTopic = new Map<string, EventBusHandler[]>();

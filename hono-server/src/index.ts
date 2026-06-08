@@ -6,7 +6,7 @@ import { externalNotificationService } from "./services/external-notification";
 import { cache, SpoofCache } from "./infra/cache";
 import { logService, logIngestConsumer, readOptimisedAggregator } from "./services/log";
 import { eventBus } from "./infra/event-bus";
-import { PgOutboxStore } from "./infra/outbox";
+import { PgOutboxStore } from "./infra/event-bus/outbox";
 
 // Initialize event consumers on startup
 authEventConsumer.init().catch((err) => console.error("[AuthEventConsumer] Failed to start:", err));

@@ -4,8 +4,8 @@ import { DevEventBus } from "./DevEventBus";
 import { EventBusPublishedEvent } from "../api/types";
 import { InMemoryCache } from "../../cache/internal/InMemoryCache";
 import { CacheIdempotencyStore } from "../idempotency/internal/CacheIdempotencyStore";
-import { InMemoryOutboxStore } from "../../outbox/internal/InMemoryOutboxStore";
-import { OutboxRelay } from "../../outbox/internal/OutboxRelay";
+import { InMemoryOutboxStore } from "../outbox/internal/InMemoryOutboxStore";
+import { OutboxRelay } from "../outbox/internal/OutboxRelay";
 
 describe("DevEventBus - Publish and Subscribe Routing", () => {
   it("should route published events to subscribers of the matching topic", async () => {

@@ -1,5 +1,5 @@
 import { IOutboxStore } from "../api/IOutboxStore";
-import { IEventBus } from "../../event-bus/api/IEventBus";
+import { IEventBus } from "../../api/IEventBus";
 
 /**
  * Background outbox processor that periodically polls PostgreSQL outbox_events,

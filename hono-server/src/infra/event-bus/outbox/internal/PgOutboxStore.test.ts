@@ -22,7 +22,7 @@ mockSql.begin = mock(async (fn: any) => {
   return fn(mockSql);
 });
 
-(mock as any).module("../../db", () => {
+(mock as any).module("../../../db", () => {
   return {
     postgres: {
       getInitializedPostgresClient: () => mockSql,

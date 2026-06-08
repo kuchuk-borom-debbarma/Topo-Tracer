@@ -8,7 +8,7 @@ import {
   EventBusPublishOptions,
   EventBusSubscribeOptions,
 } from "../api/types";
-import { IOutboxStore } from "../../outbox";
+import { IOutboxStore } from "../outbox";
 import { IIdempotencyStore } from "../idempotency/api/IIdempotencyStore";
 
 /**

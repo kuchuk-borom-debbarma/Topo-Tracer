@@ -1,6 +1,6 @@
 import { IOutboxStore, OutboxEvent } from "../api/IOutboxStore";
-import { EventBusPublishEvent } from "../../event-bus/api/types";
-import { postgres } from "../../db";
+import { EventBusPublishEvent } from "../../api/types";
+import { postgres } from "../../../db";
 
 /**
  * PostgreSQL implementation of IOutboxStore.

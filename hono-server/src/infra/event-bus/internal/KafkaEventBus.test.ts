@@ -3,7 +3,7 @@ import { describe, expect, it, mock } from "bun:test";
 import { KafkaEventBus } from "./KafkaEventBus";
 import { ICache } from "../../cache/api/ICache";
 import { CacheIdempotencyStore } from "../idempotency/internal/CacheIdempotencyStore";
-import { InMemoryOutboxStore } from "../../outbox/internal/InMemoryOutboxStore";
+import { InMemoryOutboxStore } from "../outbox/internal/InMemoryOutboxStore";
 
 const mockProducerSend = mock(async () => {});
 const mockProducerConnect = mock(async () => {});

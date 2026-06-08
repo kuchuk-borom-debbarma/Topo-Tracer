@@ -2,7 +2,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import { OutboxRelay } from "./OutboxRelay";
 import { InMemoryOutboxStore } from "./InMemoryOutboxStore";
-import { IEventBus } from "../../event-bus/api/IEventBus";
+import { IEventBus } from "../../api/IEventBus";
 
 class MockEventBus extends IEventBus {
   publish = mock(async () => {});
