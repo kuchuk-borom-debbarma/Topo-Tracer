@@ -27,6 +27,14 @@ export type EventBusPublishOptions = {
    * dedupe key because dedupe is owned by each event's idempotencyId.
    */
   batchId?: string;
+  /**
+   * Database transaction context (e.g. postgres tx client) to participate in transactional outbox writes.
+   */
+  tx?: any;
+  /**
+   * Directive indicating that the publish call should bypass writing to the outbox store and send directly.
+   */
+  bypassOutbox?: boolean;
 };
 
 export type EventBusSubscribeOptions = {

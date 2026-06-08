@@ -6,15 +6,28 @@ import {
   EventBusSubscribeOptions,
 } from "../api/types";
 import { IEventBus } from "../api/IEventBus";
+import { IIdempotencyStore } from "../idempotency/api/IIdempotencyStore";
+import { IOutboxStore } from "../../outbox";
 
 export class DevEventBus extends IEventBus {
   private readonly handlersByTopic = new Map<string, EventBusHandler[]>();
 
+  constructor(
+    private readonly idempotencyStore: IIdempotencyStore,
+    private readonly outboxStore?: IOutboxStore,
+  ) {
+    super();
+  }
+
+  // fallow-ignore-next-line complexity
   async publish(
     events: EventBusPublishEvent[],
     options?: EventBusPublishOptions,
   ): Promise<void> {
-    void options;
+    if (this.outboxStore && options?.tx && !options?.bypassOutbox) {
+      await this.outboxStore.save(events, options.tx);
+      return;
+    }
 
     await this.deliverByTopic(this.groupByTopic(events));
   }
@@ -23,8 +36,52 @@ export class DevEventBus extends IEventBus {
     options: EventBusSubscribeOptions,
     handler: EventBusHandler,
   ): Promise<void> {
+    // To enforce consumer-side idempotency in development, we wrap the handler and filter out
+    // events that have already been processed by this consumerName.
+    // fallow-ignore-next-line complexity
+    const wrappedHandler: EventBusHandler = async (events) => {
+      const nonDuplicateEvents: EventBusPublishedEvent[] = [];
+      const seenInBatch = new Set<string>();
+
+      for (const event of events) {
+        if (!event.idempotencyId) {
+          nonDuplicateEvents.push(event);
+          continue;
+        }
+
+        if (seenInBatch.has(event.idempotencyId)) {
+          // Skip duplicate occurrences of the same event within the same batch.
+          continue;
+        }
+
+        const isDuplicate = await this.idempotencyStore.isProcessed(
+          options.consumerName,
+          event.idempotencyId,
+        );
+        
+        if (isDuplicate) {
+          // Skip duplicate event delivery for this consumer group
+          continue;
+        }
+
+        seenInBatch.add(event.idempotencyId);
+        nonDuplicateEvents.push(event);
+      }
+
+      if (nonDuplicateEvents.length > 0) {
+        await handler(nonDuplicateEvents);
+
+        // Mark these events as processed for this consumer group ONLY after the handler
+        // successfully resolves. If the handler fails, we do not update the store, allowing
+        // retry processing of the same events.
+        for (const idempotencyId of seenInBatch) {
+          await this.idempotencyStore.markProcessed(options.consumerName, idempotencyId);
+        }
+      }
+    };
+
     const handlers = this.handlersByTopic.get(options.topic) ?? [];
-    handlers.push(handler);
+    handlers.push(wrappedHandler);
     this.handlersByTopic.set(options.topic, handlers);
   }
 

@@ -122,7 +122,7 @@ describe("LogServiceImpl edge endpoint validation", () => {
     expect(eventBus.published).toHaveLength(0);
   });
 
-  test("accepts self-edges with non-empty endpoints", async () => {
+  test("accepts self-edges with non-empty endpoints and publishes reactively", async () => {
     const { service, writeRepo, eventBus } = createSubject();
     const edgeStart = createEdgeStart({
       fromNodeId: "node-a",
@@ -131,29 +131,16 @@ describe("LogServiceImpl edge endpoint validation", () => {
 
     await service.ingestNodesNEdges(createIngestInput([edgeStart]));
 
-    expect(writeRepo.calls).toHaveLength(1);
+    expect(writeRepo.calls).toHaveLength(0);
     expect(eventBus.published).toHaveLength(1);
     expect(eventBus.published[0]?.[0]).toMatchObject({
-      topic: "log.trace.ingested",
-      key: "trace-1",
+      topic: "log.telemetry.received",
+      key: "user-1",
       data: {
         userId: "user-1",
-        traceId: "trace-1",
+        edgeStarts: [edgeStart],
       },
     });
-  });
-
-  test("does not publish when persistence fails", async () => {
-    const { service, writeRepo, eventBus } = createSubject();
-    writeRepo.nextError = new Error("insert failed");
-    const edgeStart = createEdgeStart();
-
-    await expect(
-      service.ingestNodesNEdges(createIngestInput([edgeStart])),
-    ).rejects.toThrow("insert failed");
-
-    expect(writeRepo.calls).toHaveLength(1);
-    expect(eventBus.published).toHaveLength(0);
   });
 });
 

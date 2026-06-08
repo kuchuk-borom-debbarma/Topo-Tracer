@@ -97,15 +97,19 @@ export class AuthRepoPg extends IAuthRepo {
    * Inserts a temporary pending signup record.
    * Will execute an insert into the pending_users table.
    */
-  async insertPendingSignUpUser(data: {
-    username: string;
-    email: string;
-    password: string;
-  }): Promise<PendingUser> {
+  async insertPendingSignUpUser(
+    data: {
+      username: string;
+      email: string;
+      password: string;
+    },
+    tx?: any,
+  ): Promise<PendingUser> {
+    const client = tx ?? this.sql;
     const id = crypto.randomUUID();
     const passwordHash = await hashPassword(data.password);
 
-    const rows = await this.sql<any[]>`
+    const rows = await client<any[]>`
       INSERT INTO pending_users (id, username, email, password, created_at)
       VALUES (${id}, ${data.username}, ${data.email}, ${passwordHash}, NOW())
       RETURNING id, username, email, password
@@ -147,11 +151,15 @@ export class AuthRepoPg extends IAuthRepo {
    * Upserts the OTP verification code and token binding.
    * Will execute SQL upsert on token_otps table.
    */
-  async upsertUserTokenOTP(data: {
-    otp: string;
-    token: string;
-  }): Promise<TokenOTP> {
-    const rows = await this.sql<any[]>`
+  async upsertUserTokenOTP(
+    data: {
+      otp: string;
+      token: string;
+    },
+    tx?: any,
+  ): Promise<TokenOTP> {
+    const client = tx ?? this.sql;
+    const rows = await client<any[]>`
       INSERT INTO token_otps (id, token, otp, token_type, created_at)
       VALUES (${data.token}, ${data.token}, ${data.otp}, 'USER_SIGNUP', NOW())
       ON CONFLICT (id) DO UPDATE
@@ -275,5 +283,9 @@ export class AuthRepoPg extends IAuthRepo {
         WHERE token = ${data.token} AND token_type = ${data.tokenType}
       `;
     }
+  }
+
+  async transaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
+    return this.sql.begin(fn);
   }
 }

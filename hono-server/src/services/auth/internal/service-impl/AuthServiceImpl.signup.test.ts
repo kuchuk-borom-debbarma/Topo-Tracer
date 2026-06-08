@@ -4,10 +4,10 @@ import { createService, mockPending, mockTokenOtp, mockUser } from "./test-helpe
 
 describe("AuthServiceImpl - SignUp Flow", () => {
   it("should orchestrate startSignUp correctly", async () => {
-    const { service, repo, notification } = createService();
+    const { service, repo, notification, eventBus } = createService();
 
     (repo.insertPendingSignUpUser as any).mockResolvedValue(mockPending("pending-123"));
-    (repo.upsertUserTokenOTP as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "SIGN_UP"));
+    (repo.upsertUserTokenOTP as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "USER_SIGNUP"));
 
     const tokenOtpId = await service.startSignUp({
       username: "userA",
@@ -16,26 +16,59 @@ describe("AuthServiceImpl - SignUp Flow", () => {
     });
 
     expect(tokenOtpId).toBe("token-otp-456");
-    expect(repo.insertPendingSignUpUser).toHaveBeenCalledWith({
-      username: "userA",
-      email: "userA@test.com",
-      password: "password123",
-    });
-    expect(repo.upsertUserTokenOTP).toHaveBeenCalledWith({
-      token: "pending-123",
-      otp: "12345",
-    });
-    expect(notification.sendNotification).toHaveBeenCalledWith({
-      recipient: "userA@test.com",
-      subject: "Verify your TopoTracer registration",
-      body: "Your verification OTP code is: 12345",
-    });
+    expect(repo.insertPendingSignUpUser).toHaveBeenCalledWith(
+      {
+        username: "userA",
+        email: "userA@test.com",
+        password: "password123",
+      },
+      repo,
+    );
+    expect(repo.upsertUserTokenOTP).toHaveBeenCalledWith(
+      {
+        token: "pending-123",
+        otp: "12345",
+      },
+      repo,
+    );
+    expect(eventBus.publish).toHaveBeenCalledWith(
+      [
+        {
+          topic: "auth.signup.started",
+          idempotencyId: "auth.signup.started:pending-123",
+          key: "pending-123",
+          data: {
+            email: "userA@test.com",
+            otp: "12345",
+          },
+        },
+      ],
+      { tx: repo },
+    );
+    expect(notification.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("should rollback transaction and not publish event if user insertion fails", async () => {
+    const { service, repo, eventBus } = createService();
+
+    (repo.insertPendingSignUpUser as any).mockRejectedValue(new Error("Database write failure"));
+
+    await expect(
+      service.startSignUp({
+        username: "userA",
+        email: "userA@test.com",
+        password: "password123",
+      })
+    ).rejects.toThrow("Database write failure");
+
+    expect(repo.upsertUserTokenOTP).not.toHaveBeenCalled();
+    expect(eventBus.publish).not.toHaveBeenCalled();
   });
 
   it("should finishSignUp when OTP is correct", async () => {
     const { service, repo } = createService();
 
-    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "SIGN_UP"));
+    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "USER_SIGNUP"));
     (repo.getPendingUserById as any).mockResolvedValue(mockPending("pending-123"));
     (repo.insertUser as any).mockResolvedValue(mockUser("user-789"));
 
@@ -54,7 +87,7 @@ describe("AuthServiceImpl - SignUp Flow", () => {
   it("should throw on finishSignUp if OTP mismatches", async () => {
     const { service, repo } = createService();
 
-    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "SIGN_UP"));
+    (repo.getTokenOTPById as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "USER_SIGNUP"));
 
     await expect(
       service.finishSignUp({ token: "token-otp-456", otp: "wrong-otp" })
