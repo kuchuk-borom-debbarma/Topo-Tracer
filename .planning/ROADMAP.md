@@ -15,6 +15,9 @@
 - [ ] **Task 2.3: Integrate with Projector**: Ensure `LogGraphProjector` handles the windowed data correctly (it should, as it's window-agnostic).
 - [ ] **Task 2.4: Integration Tests**: Verify end-to-end paging through `LogServiceImpl.test.ts`.
 
+**Plans:** 1 plan
+- [ ] 02-01-PLAN.md — Implement cursor transformation, version safety (409 Conflict), and paging metadata calculation in LogServiceImpl.
+
 ## Phase 3: Frontend Alignment (Optional/Verification)
 - [ ] **Task 3.1: Verify Frontend Paging**: Check if Hono routes need updates to expose the new parameters.
 - [ ] **Task 3.2: API Documentation**: Ensure the new `cursor` and `limit` query params are documented or at least functional.
