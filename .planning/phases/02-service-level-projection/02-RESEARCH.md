@@ -126,10 +126,10 @@ const result: ProjectedGraphResult = {
 |---|-------|---------|---------------|
 | A1 | `ILogReadRepo` will be extended with `loadTraceSummary`. | Code Examples | Small: `loadLatestReadModel` can be used as a fallback but is less efficient. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Conflict Error Handling:** Should the `409 Conflict` be a custom Error class or a standard Hono/HTTP exception? 
-   - *Recommendation:* Use a custom `ConflictError` that the route handler can map to `409`.
+1. **Conflict Error Handling: (RESOLVED)** Should the `409 Conflict` be a custom Error class or a standard Hono/HTTP exception? 
+   - *Recommendation:* Use a custom `ConflictError` that the route handler can map to `409`. (Resolution: Logic will throw a `ConflictError` class).
 
 ## Environment Availability
 
