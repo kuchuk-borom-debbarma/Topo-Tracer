@@ -2,6 +2,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import { KafkaEventBus } from "./KafkaEventBus";
 import { ICache } from "../../cache/api/ICache";
+import { CacheIdempotencyStore } from "../idempotency/internal/CacheIdempotencyStore";
 
 const mockProducerSend = mock(async () => {});
 const mockProducerConnect = mock(async () => {});
@@ -24,8 +25,9 @@ const mockConsumer = {
   disconnect: mock(async () => {}),
 };
 
+const mockKafkaProducer = mock((config: any) => mockProducer);
 const mockKafka = mock(() => ({
-  producer: () => mockProducer,
+  producer: mockKafkaProducer,
   consumer: () => mockConsumer,
 }));
 
@@ -43,6 +45,7 @@ class MockCache extends ICache {
 
 const resetMocks = () => {
   eachBatchCallback = null;
+  (mockKafkaProducer as any).mockClear();
   (mockProducerSend as any).mockClear();
   (mockProducerConnect as any).mockClear();
   (mockConsumerConnect as any).mockClear();
@@ -51,15 +54,20 @@ const resetMocks = () => {
 };
 
 describe("KafkaEventBus Integration", () => {
-  it("should initialize client and publish records mapping key and headers", async () => {
+  it("should initialize client and publish records mapping key and headers with native idempotency and all acks", async () => {
     resetMocks();
     const cache = new MockCache();
-    const bus = new KafkaEventBus(["localhost:9092"], cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore);
     await bus.publish([
       { topic: "test-topic", idempotencyId: "id-123", key: "trace-key", data: { foo: "bar" } },
     ]);
 
     expect(mockKafka).toHaveBeenCalled();
+    expect(mockKafkaProducer).toHaveBeenCalledWith({
+      idempotent: true,
+      maxInFlightRequestsPerConnection: 5,
+    });
     expect(mockProducerConnect).toHaveBeenCalled();
     expect(mockProducerSend).toHaveBeenCalledWith({
       topic: "test-topic",
@@ -70,13 +78,15 @@ describe("KafkaEventBus Integration", () => {
           headers: { idempotencyId: "id-123" },
         },
       ],
+      acks: -1,
     });
   });
 
   it("should initialize client and subscribe with consumer groups", async () => {
     resetMocks();
     const cache = new MockCache();
-    const bus = new KafkaEventBus(["localhost:9092"], cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore);
     const handler = mock(async () => {});
     await bus.subscribe({ topic: "test-topic", consumerName: "group-abc" }, handler);
 
@@ -88,7 +98,8 @@ describe("KafkaEventBus Integration", () => {
   it("should filter out duplicate events within the same consumer group based on idempotencyId", async () => {
     resetMocks();
     const cache = new MockCache();
-    const bus = new KafkaEventBus(["localhost:9092"], cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore);
     const handler = mock(async () => {});
 
     await bus.subscribe({ topic: "test-topic", consumerName: "group-abc" }, handler);
@@ -147,7 +158,8 @@ describe("KafkaEventBus Integration", () => {
   it("should isolate deduplication across different consumer groups", async () => {
     resetMocks();
     const cache = new MockCache();
-    const bus = new KafkaEventBus(["localhost:9092"], cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore);
     const handlerA = mock(async () => {});
     const handlerB = mock(async () => {});
 
@@ -197,7 +209,8 @@ describe("KafkaEventBus Integration", () => {
   it("should not mark events as processed in cache if the handler throws an error", async () => {
     resetMocks();
     const cache = new MockCache();
-    const bus = new KafkaEventBus(["localhost:9092"], cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new KafkaEventBus(["localhost:9092"], idempotencyStore);
     
     // Handler that throws an error
     const handler = mock(async () => {

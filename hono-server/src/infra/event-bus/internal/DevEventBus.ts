@@ -6,12 +6,12 @@ import {
   EventBusSubscribeOptions,
 } from "../api/types";
 import { IEventBus } from "../api/IEventBus";
-import { ICache } from "../../cache/api/ICache";
+import { IIdempotencyStore } from "../idempotency/api/IIdempotencyStore";
 
 export class DevEventBus extends IEventBus {
   private readonly handlersByTopic = new Map<string, EventBusHandler[]>();
 
-  constructor(private readonly cache: ICache) {
+  constructor(private readonly idempotencyStore: IIdempotencyStore) {
     super();
   }
 
@@ -46,8 +46,10 @@ export class DevEventBus extends IEventBus {
           continue;
         }
 
-        const cacheKey = `eb:idemp:${options.consumerName}:${event.idempotencyId}`;
-        const isDuplicate = await this.cache.get<string>(cacheKey);
+        const isDuplicate = await this.idempotencyStore.isProcessed(
+          options.consumerName,
+          event.idempotencyId,
+        );
         
         if (isDuplicate) {
           // Skip duplicate event delivery for this consumer group
@@ -62,11 +64,10 @@ export class DevEventBus extends IEventBus {
         await handler(nonDuplicateEvents);
 
         // Mark these events as processed for this consumer group ONLY after the handler
-        // successfully resolves. If the handler fails, we do not update the cache, allowing
-        // retry processing of the same events. We use a 24-hour TTL (86,400 seconds).
+        // successfully resolves. If the handler fails, we do not update the store, allowing
+        // retry processing of the same events.
         for (const idempotencyId of seenInBatch) {
-          const cacheKey = `eb:idemp:${options.consumerName}:${idempotencyId}`;
-          await this.cache.set(cacheKey, "true", 86400);
+          await this.idempotencyStore.markProcessed(options.consumerName, idempotencyId);
         }
       }
     };

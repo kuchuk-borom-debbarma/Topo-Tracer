@@ -3,11 +3,13 @@ import { describe, expect, it, mock } from "bun:test";
 import { DevEventBus } from "./DevEventBus";
 import { EventBusPublishedEvent } from "../api/types";
 import { InMemoryCache } from "../../cache/internal/InMemoryCache";
+import { CacheIdempotencyStore } from "../idempotency/internal/CacheIdempotencyStore";
 
 describe("DevEventBus - Publish and Subscribe Routing", () => {
   it("should route published events to subscribers of the matching topic", async () => {
     const cache = new InMemoryCache();
-    const bus = new DevEventBus(cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new DevEventBus(idempotencyStore);
     const handler1 = mock(async (events: EventBusPublishedEvent[]) => {});
     const handler2 = mock(async (events: EventBusPublishedEvent[]) => {});
 
@@ -35,7 +37,8 @@ describe("DevEventBus - Publish and Subscribe Routing", () => {
 describe("DevEventBus - Shared Topic Multiple Handlers", () => {
   it("should support multiple handlers on the same topic", async () => {
     const cache = new InMemoryCache();
-    const bus = new DevEventBus(cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new DevEventBus(idempotencyStore);
     const handlerA = mock(async () => {});
     const handlerB = mock(async () => {});
 
@@ -54,7 +57,8 @@ describe("DevEventBus - Shared Topic Multiple Handlers", () => {
 describe("DevEventBus - Idempotency Deduplication", () => {
   it("should filter out duplicate events for the same consumerName but allow them for different consumerNames", async () => {
     const cache = new InMemoryCache();
-    const bus = new DevEventBus(cache);
+    const idempotencyStore = new CacheIdempotencyStore(cache);
+    const bus = new DevEventBus(idempotencyStore);
     const handler1 = mock(async () => {});
     const handler2 = mock(async () => {});
 

@@ -8,7 +8,7 @@ import {
   EventBusPublishOptions,
   EventBusSubscribeOptions,
 } from "../api/types";
-import { ICache } from "../../cache/api/ICache";
+import { IIdempotencyStore } from "../idempotency/api/IIdempotencyStore";
 
 /**
  * Kafka-backed Event Bus implementation using kafkajs.
@@ -21,7 +21,7 @@ export class KafkaEventBus extends IEventBus {
 
   constructor(
     brokers: string[],
-    private readonly cache: ICache,
+    private readonly idempotencyStore: IIdempotencyStore,
     clientId = "topo-tracer-hono",
   ) {
     super();
@@ -42,7 +42,10 @@ export class KafkaEventBus extends IEventBus {
     void options;
 
     if (!this.producer) {
-      this.producer = this.kafka.producer();
+      this.producer = this.kafka.producer({
+        idempotent: true,
+        maxInFlightRequestsPerConnection: 5,
+      });
       await this.producer.connect();
     }
 
@@ -67,6 +70,7 @@ export class KafkaEventBus extends IEventBus {
       this.producer!.send({
         topic,
         messages,
+        acks: -1,
       }),
     );
 
@@ -126,8 +130,10 @@ export class KafkaEventBus extends IEventBus {
             continue;
           }
 
-          const cacheKey = `eb:idemp:${options.consumerName}:${event.idempotencyId}`;
-          const isDuplicate = await this.cache.get<string>(cacheKey);
+          const isDuplicate = await this.idempotencyStore.isProcessed(
+            options.consumerName,
+            event.idempotencyId,
+          );
           
           if (isDuplicate) {
             // Drop duplicate deliveries (e.g. from partition rebalances, retries).
@@ -144,12 +150,10 @@ export class KafkaEventBus extends IEventBus {
           await handler(nonDuplicateEvents);
 
           // Mark these events as processed for this consumer group ONLY after the handler
-          // successfully resolves. If the handler fails, we do not update the cache, allowing
-          // the broker to retry processing of the same events. We use a 24-hour TTL (86,400 seconds)
-          // to balance storage utilization with safety against retries.
+          // successfully resolves. If the handler fails, we do not update the store, allowing
+          // the broker to retry processing of the same events.
           for (const idempotencyId of seenInBatch) {
-            const cacheKey = `eb:idemp:${options.consumerName}:${idempotencyId}`;
-            await this.cache.set(cacheKey, "true", 86400);
+            await this.idempotencyStore.markProcessed(options.consumerName, idempotencyId);
           }
         }
       },
