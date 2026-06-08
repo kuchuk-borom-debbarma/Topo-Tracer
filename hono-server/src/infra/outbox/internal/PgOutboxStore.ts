@@ -95,4 +95,13 @@ export class PgOutboxStore extends IOutboxStore {
       WHERE id = ANY(${ids})
     `;
   }
+
+  async recoverStuck(olderThanMs: number): Promise<void> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+    await this.sql`
+      UPDATE outbox_events
+      SET status = 'pending'
+      WHERE status = 'processing' AND created_at < ${cutoff}
+    `;
+  }
 }

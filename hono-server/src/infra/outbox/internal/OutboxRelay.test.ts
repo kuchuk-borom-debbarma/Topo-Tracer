@@ -78,4 +78,33 @@ describe("OutboxRelay", () => {
     // claimPending changes status from pending to processing
     expect(pending[0]?.status).toBe("processing");
   });
+
+  it("should recover events stuck in processing state", async () => {
+    const outboxStore = new InMemoryOutboxStore();
+    const eventBus = new MockEventBus();
+    const relay = new OutboxRelay(outboxStore, eventBus);
+
+    // Save a mock event
+    await outboxStore.save([
+      { topic: "test-topic-1", idempotencyId: "id-1", data: { msg: "hello" } },
+    ]);
+
+    // Claim it so it becomes 'processing'
+    const claimed = await outboxStore.claimPending();
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.status).toBe("processing");
+
+    // Manually manipulate the createdAt timestamp of the event to make it older than 5 minutes
+    const event = outboxStore.getAllEvents()[0];
+    if (event) {
+      event.createdAt = new Date(Date.now() - 6 * 60 * 1000);
+    }
+
+    // Run poll
+    await relay.poll();
+
+    // Verify it was recovered, published, and marked sent
+    expect(eventBus.publish).toHaveBeenCalled();
+    expect(outboxStore.getAllEvents()[0]?.status).toBe("sent");
+  });
 });
