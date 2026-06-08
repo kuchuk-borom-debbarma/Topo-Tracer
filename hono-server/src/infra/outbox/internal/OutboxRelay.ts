@@ -52,6 +52,9 @@ export class OutboxRelay {
     this.isRunning = true;
 
     try {
+      // Reclaim any outbox events stuck in 'processing' status for over 5 minutes (e.g. due to node crash)
+      await this.outboxStore.recoverStuck(5 * 60 * 1000);
+
       const claimedEvents = await this.outboxStore.claimPending(100);
       if (claimedEvents.length === 0) {
         return;
