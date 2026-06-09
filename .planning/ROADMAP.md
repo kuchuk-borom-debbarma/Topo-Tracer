@@ -23,7 +23,7 @@ Plans:
 
 **Goal:** Verify and harden the clock-skew correction engine.
 **Requirements:** [D-12, D-13, D-14, D-15, D-16, D-17, FR2, FR3, FR4, FR5, TR1, TR4]
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -36,4 +36,4 @@ Plans:
 
 **Wave 3** *(blocked on 02-02)*
 
-- [ ] 02-03-PLAN.md — Persistence Hardening (D-15)
+- [x] 02-03-PLAN.md — Persistence Hardening (D-15)
