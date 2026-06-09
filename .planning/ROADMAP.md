@@ -4,7 +4,7 @@
 
 **Goal:** Implement the causal clock-skew auto-correction engine in the trace materializer.
 **Requirements:** [FR1, FR2, FR3, FR4, FR5, TR1, TR2, TR3, TR4]
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -17,10 +17,23 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Verification (Integration and unit tests)
+- [x] 01-03-PLAN.md — Verification (Integration and unit tests)
 
 ## Phase 2: Verification & Hardening
 
-- [ ] **Task 2.1: Unit Tests**: Add edge-case tests (deep nesting, cycles, async edges).
-- [ ] **Task 2.2: Persistence Check**: Verify ClickHouse `read_nodes` and `read_edges` receive corrected timestamps.
-- [ ] **Task 2.3: Performance Audit**: Ensure topological fold remains efficient for large traces.
+**Goal:** Verify and harden the clock-skew correction engine.
+**Requirements:** [D-12, D-13, D-14, D-15, D-16, D-17, FR2, FR3, FR4, FR5, TR1, TR4]
+**Plans:** 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Performance Optimization (tinyqueue/Min-Heap)
+
+**Wave 2** *(blocked on 02-01)*
+
+- [ ] 02-02-PLAN.md — Stress and Edge Case Testing (D-14, D-16, D-17)
+
+**Wave 3** *(blocked on 02-02)*
+
+- [ ] 02-03-PLAN.md — Persistence Hardening (D-15)
