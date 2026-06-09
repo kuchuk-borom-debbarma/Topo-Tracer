@@ -2,27 +2,30 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: complete
-last_updated: "2026-06-08T20:00:00.000Z"
+status: unknown
+last_updated: "2026-06-09T05:46:39.989Z"
 progress:
   total_phases: 2
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
-# Project State: Durable Graph Window Paging [COMPLETE]
+# Project State: Causal Clock-Skew Auto-Correction
 
-## Summary
-The backend foundation for sliding-window paging is fully implemented and verified. The system supports memory-safe exploration of large traces via topological offsets and opaque, version-aware cursors.
+## Current Phase: Phase 1 (Engine Implementation)
+
+- [x] Project initialized.
+- [x] Requirements defined.
+- [x] Roadmap created.
 
 ## Recent Activity
-- Finalized `LogServiceImpl` integration tests.
-- Summarized project accomplishments.
-- Deferred frontend/route alignment per user request.
 
-## Key Accomplishments
-- **Repository:** `LogReadRepoClickHouse` supports `flow_order` filtering and `limit+1` probing.
-- **Service:** `LogServiceImpl` orchestrates paging with `409 Conflict` safety and rich metadata generation.
-- **Utility:** `CursorCodec` provides standardized Base64 `offset:materializedAt` serialization.
+- Researched `TraceReadModelMaterializer` and `flowOrder` logic.
+- Defined correction strategy: `child.startedAt = parent.startedAt + 1ms`.
+- Identified integration point in materializer loop.
+
+## Next Steps
+
+- Implement Task 1.1: Clock-Skew Logic.
