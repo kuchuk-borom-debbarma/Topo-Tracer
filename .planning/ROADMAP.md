@@ -1,27 +1,15 @@
-# Roadmap: Durable Graph Window Paging (V2 Windowing)
+# Roadmap: Causal Clock-Skew Auto-Correction
 
-## Phase 1: API & Repository Foundation [COMPLETE]
-- [x] **Task 1.1: Update API Types**: Modify `api/types.ts` to include paging metadata and updated `ProjectedGraphResult`.
-- [x] **Task 1.2: Update Repo Contract**: Add `offset` and `limit` to `ILogReadRepo` methods (`loadBoundedProjectionNodes`, etc.).
-- [x] **Task 1.3: Implement ClickHouse Paging**: Update `LogReadRepoClickHouse.ts` to use `flow_order >= {offset}` and `LIMIT {limit + 1}`.
-- [x] **Task 1.4: Unit Tests for Repo**: Verify paging logic in `LogReadRepoClickHouse.test.ts`.
+## Phase 1: Engine Implementation
+**Goal:** Engine Implementation for Causal Clock-Skew Auto-Correction.
+**Plans:** 3 plans
 
-**Plans:** 1 plan
-- [x] 01-01-PLAN.md — Define paging types, CursorCodec utility, and update ClickHouse repo implementation with limit+1 probing.
+Plans:
+- [ ] 01-01-PLAN.md — Schema and Type Updates (Explicit tracking fields)
+- [ ] 01-02-PLAN.md — Engine Implementation (correctClockSkew logic)
+- [ ] 01-03-PLAN.md — Verification (Integration and unit tests)
 
-## Phase 2: Service-Level Projection [COMPLETE]
-- [x] **Task 2.1: Update LogServiceImpl**: Pass `cursor` and `limit` from API through to the repository.
-- [x] **Task 2.2: Paging Metadata Calculation**: Implement logic to calculate `hasBefore`, `hasAfter`, `previousCursor`, and `nextCursor`.
-- [x] **Task 2.3: Integrate with Projector**: Ensure `LogGraphProjector` handles the windowed data correctly (it should, as it's window-agnostic).
-- [x] **Task 2.4: Integration Tests**: Verify end-to-end paging through `LogServiceImpl.test.ts`.
-
-**Plans:** 1 plan
-- [x] 02-01-PLAN.md — Implement cursor transformation, version safety (409 Conflict), and paging metadata calculation in LogServiceImpl.
-
-## Phase 3: Frontend Alignment [SKIPPED]
-> Deferred by user request. Backend foundation is complete and functional.
-
-**PROJECT COMPLETE**
-- Delivered: Repository-level windowing, CursorCodec, and Service-level orchestration.
-- Verified: 100% test coverage for paging logic and version safety.
-
+## Phase 2: Verification & Hardening
+- [ ] **Task 2.1: Unit Tests**: Add edge-case tests (deep nesting, cycles, async edges).
+- [ ] **Task 2.2: Persistence Check**: Verify ClickHouse `read_nodes` and `read_edges` receive corrected timestamps.
+- [ ] **Task 2.3: Performance Audit**: Ensure topological fold remains efficient for large traces.
