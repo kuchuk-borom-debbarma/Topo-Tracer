@@ -1,3 +1,4 @@
+import TinyQueue from "tinyqueue";
 import type { ReadNode, ReadEdge } from "../../api/types";
 import type { FlowOrderDiagnostics } from "./types";
 
@@ -5,7 +6,7 @@ import type { FlowOrderDiagnostics } from "./types";
  * Computes a deterministic topological order ("flowOrder") for trace nodes and detects graph cycles.
  * Uses a modified Kahn's algorithm:
  * 1. Computes node in-degrees based on incoming edges (ignoring orphan edges).
- * 2. Initializes candidates with in-degree = 0, sorted by startedAt (then ID).
+ * 2. Initializes candidates with in-degree = 0, using a priority queue for O(log N) management.
  * 3. Iteratively processes candidates, decrementing neighbors' degrees.
  * 4. Resolves cycles by forcing remaining unprocessed nodes into candidates if candidates becomes empty.
  */
@@ -59,14 +60,6 @@ export function computeFlowOrder(params: {
     inDegree.set(edge.toNodeId, (inDegree.get(edge.toNodeId) || 0) + 1);
   }
 
-  // 2. Identify root candidate nodes (in-degree = 0)
-  const candidates: ReadNode[] = [];
-  for (const node of nodes) {
-    if ((inDegree.get(node.id) || 0) === 0) {
-      candidates.push(node);
-    }
-  }
-
   // Sorting function to guarantee stable order based on start time
   const sortNodes = (a: ReadNode, b: ReadNode) => {
     if (a.startedAt !== b.startedAt) {
@@ -75,7 +68,13 @@ export function computeFlowOrder(params: {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   };
 
-  candidates.sort(sortNodes);
+  // 2. Identify root candidate nodes (in-degree = 0)
+  const candidates = new TinyQueue<ReadNode>([], sortNodes);
+  for (const node of nodes) {
+    if ((inDegree.get(node.id) || 0) === 0) {
+      candidates.push(node);
+    }
+  }
 
   let currentOrder = 0;
   const processed = new Set<string>();
@@ -91,10 +90,9 @@ export function computeFlowOrder(params: {
           candidates.push(node);
         }
       }
-      candidates.sort(sortNodes);
     }
 
-    const node = candidates.shift()!;
+    const node = candidates.pop()!;
     if (processed.has(node.id)) continue;
 
     flowOrderByNodeId.set(node.id, currentOrder++);
@@ -107,22 +105,12 @@ export function computeFlowOrder(params: {
       inDegree.set(neighborId, degree);
       if (degree === 0) {
         const neighborNode = nodeMap.get(neighborId)!;
-        // Insert into candidates list maintaining sort order
-        let inserted = false;
-        for (let i = 0; i < candidates.length; i++) {
-          if (sortNodes(neighborNode, candidates[i]) < 0) {
-            candidates.splice(i, 0, neighborNode);
-            inserted = true;
-            break;
-          }
-        }
-        if (!inserted) {
-          candidates.push(neighborNode);
-        }
+        candidates.push(neighborNode);
       }
     }
   }
 
   return { flowOrderByNodeId, diagnostics };
 }
+
 
