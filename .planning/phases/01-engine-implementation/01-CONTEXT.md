@@ -17,6 +17,10 @@ This phase implements the causal clock-skew auto-correction engine within the `T
 - **D-01: Strategy:** Minimal correction using `child.startedAt = parent.startedAt + 1ms`.
 - **D-02: Zero Tolerance:** Correct any detected skew, regardless of magnitude.
 - **D-03: Duration Preservation:** When shifting `startedAt`, also shift `endedAt` by the same delta to preserve the node's original duration.
+- **D-10: Explicit Tracking:** The `ReadNode` and `ReadEdge` structures will be extended to track corrections:
+  - `startedAt`: The corrected (active) timestamp.
+  - `originalStartedAt`: The raw timestamp from telemetry.
+  - `clockSkewMs`: The total delta applied (Correction - Raw).
 
 ### Edge Case Handling
 - **D-04: Multiple Parents:** In the rare case a node has multiple causal parents, it will be corrected against the **earliest parent** (the one with the smallest `startedAt`).
