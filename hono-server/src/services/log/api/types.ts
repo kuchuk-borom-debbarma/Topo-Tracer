@@ -56,6 +56,8 @@ export type ReadNode = {
   data: Record<string, string>;
   startedAt: number;
   endedAt: number | null;
+  originalStartedAt: number;
+  clockSkewMs: number;
   startMessage: string | null;
   endMessage: string | null;
   importanceLevel: number;
@@ -79,6 +81,8 @@ export type ReadEdge = {
   data: Record<string, string>;
   startedAt: number;
   endedAt: number | null;
+  originalStartedAt: number;
+  clockSkewMs: number;
   materializedAt: number;
 };
 
@@ -105,6 +109,7 @@ export type ReadTraceSummary = {
   diagOrphanEdges: number;
   diagInvalidImportance: number;
   diagClockSkew: number;
+  diagLimitExceeded: number;
 };
 
 /**
@@ -166,6 +171,8 @@ export type ProjectedNormalNode = {
   data: Record<string, string>;
   startedAt: number;
   endedAt: number | null;
+  originalStartedAt: number;
+  clockSkewMs: number;
   importanceLevel: number;
   flowOrder: number;
   materializedAt: number;
@@ -205,6 +212,8 @@ export type ProjectedGraphEdge = {
   edgeCount: number; // Aggregated edge count if connecting to/from ghost nodes
   startedAt: number;
   endedAt: number | null;
+  originalStartedAt: number;
+  clockSkewMs: number;
 };
 
 /**

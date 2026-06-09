@@ -18,6 +18,7 @@ interface MaterializationDiagnostics {
   diagNegativeDurations: number;
   diagInvalidImportance: number;
   diagClockSkew: number;
+  diagLimitExceeded: number;
 }
 
 /**
@@ -90,6 +91,7 @@ export class TraceReadModelMaterializer {
       diagNegativeDurations: 0,
       diagInvalidImportance: 0,
       diagClockSkew: 0,
+      diagLimitExceeded: 0,
     };
 
     // 4. Process raw node events (matching start with end)
@@ -186,6 +188,11 @@ export class TraceReadModelMaterializer {
   }): void {
     const { nodesArray, savedEdges, diags } = params;
 
+    // D-12: Capacity check
+    if (nodesArray.length > 50000) {
+      diags.diagLimitExceeded = 1;
+    }
+
     // 1. Pre-map children to their parents using savedEdges for O(1) parent lookup (D-04)
     const parentsByChildId = new Map<string, ReadNode[]>();
     const nodeById = new Map<string, ReadNode>(nodesArray.map((n) => [n.id, n]));
@@ -202,6 +209,9 @@ export class TraceReadModelMaterializer {
     // 2. Sort nodesArray by flowOrder (TR1, D-08) for single-pass cascading propagation
     nodesArray.sort((a, b) => a.flowOrder - b.flowOrder);
 
+    // Track depth to detect D-14 limits
+    const depthById = new Map<string, number>();
+
     // 3. Iterate through sorted nodes to detect and heal causal violations
     for (const node of nodesArray) {
       // D-10: Reset to raw state before applying fresh correction pass
@@ -209,6 +219,19 @@ export class TraceReadModelMaterializer {
       node.clockSkewMs = 0;
 
       const parents = parentsByChildId.get(node.id);
+      
+      // Calculate depth (D-14)
+      let currentDepth = 0;
+      if (parents && parents.length > 0) {
+        for (const p of parents) {
+          currentDepth = Math.max(currentDepth, (depthById.get(p.id) || 0) + 1);
+        }
+      }
+      depthById.set(node.id, currentDepth);
+      if (currentDepth > 5000) {
+        diags.diagLimitExceeded = 1;
+      }
+
       if (!parents || parents.length === 0) continue;
 
       // Determine the earliest parent start time (per D-04)
