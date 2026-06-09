@@ -1,7 +1,7 @@
 import { expect, test, describe } from "bun:test";
-import { TraceReadModelMaterializer } from "./TraceReadModelMaterializer";
+import { TraceReadModelMaterializer } from "../services/log/internal/materialization/TraceReadModelMaterializer";
 import { TraceGenerator } from "./TraceGenerator";
-import { FakeReadRepo, mockLogger } from "./test-helpers";
+import { FakeReadRepo, mockLogger } from "../services/log/internal/materialization/test-helpers";
 import { appendFile, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 

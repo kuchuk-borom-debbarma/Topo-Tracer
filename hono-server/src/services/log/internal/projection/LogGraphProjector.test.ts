@@ -16,6 +16,8 @@ describe("LogGraphProjector", () => {
     data: {},
     startedAt: 1000 + flowOrder,
     endedAt: 1100 + flowOrder,
+    originalStartedAt: 1000 + flowOrder,
+    clockSkewMs: 0,
     startMessage: `start ${id}`,
     endMessage: `end ${id}`,
     importanceLevel: importance,
@@ -35,6 +37,8 @@ describe("LogGraphProjector", () => {
     data: {},
     startedAt: 1000 + fromFlow,
     endedAt: 1100 + toFlow,
+    originalStartedAt: 1000 + fromFlow,
+    clockSkewMs: 0,
     materializedAt: Date.now(),
   });
 

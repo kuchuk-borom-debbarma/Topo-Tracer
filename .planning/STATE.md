@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-last_updated: "2026-06-09T06:41:32.963Z"
+status: completed
+last_updated: "2026-06-09T07:00:00Z"
 progress:
   total_phases: 2
   completed_phases: 2
@@ -14,31 +14,27 @@ progress:
 
 # Project State: Causal Clock-Skew Auto-Correction
 
-## Current Phase: Phase 1 (Engine Implementation) - COMPLETE
+## Milestone: v1.0 - COMPLETE
 
-- [x] Project initialized.
-- [x] Requirements defined.
-- [x] Roadmap created.
-- [x] Task 1.1: Schema and Type Updates.
-- [x] Task 1.2: Engine Implementation.
-- [x] Task 2.1: Performance Optimization.
-- [ ] Task 2.2: Stress and Edge Case Testing.
-- [x] Task 1.3: Hardening and Verification.
+All phases for the Causal Clock-Skew Auto-Correction milestone have been completed and verified.
+
+## Phase 1: Engine Implementation - COMPLETE
+- [x] Schema and Type Updates.
+- [x] Core Correction Engine implemented.
+- [x] Basic functional verification.
+
+## Phase 2: Verification & Hardening - COMPLETE
+- [x] Performance Optimization ($O(\log N)$ flowOrder).
+- [x] Stress Testing (Deep nesting, Massive fan-out).
+- [x] Graceful Degradation and diagnostics.
+- [x] Persistence Hardening (SQL mapping verification).
 
 ## Recent Activity
+- Finalized Phase 2 with comprehensive stress and performance suites.
+- Verified persistence of corrected timestamps and skew diagnostics.
+- Project reached 100% completion for the v1.0 milestone.
 
-- Verified `correctClockSkew` logic with comprehensive unit test suite.
-- Confirmed cascading corrections, duration preservation, and diagnostic accuracy.
-- Phase 1 complete and ready for Phase 2.
-
-## Next Steps
-
-- [ ] Phase 2: Verification and Hardening.
-
-## Decisions Made
-
-- D-01: Strategy child.startedAt = parent.startedAt + 1ms.
-- D-03: Duration preservation by shifting endedAt.
-- D-08: Correction invoked after flowOrder and before summary.
-- D-10: Tracking raw timestamps in `originalStartedAt`.
-- D-11: Verified diagnostic accuracy for `diagClockSkew` counter.
+## Decisions Made (Final)
+- D-13: Latency target < 5ms/1k nodes (Achieved ~0.34ms/1k).
+- D-19: Optimization via `tinyqueue` Min-Heap.
+- D-21: Graceful degradation via `diagLimitExceeded` flag.

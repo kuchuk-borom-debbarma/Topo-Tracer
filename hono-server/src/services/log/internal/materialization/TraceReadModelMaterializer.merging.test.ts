@@ -10,7 +10,8 @@ describe("TraceReadModelMaterializer - Event Merging and Diagnostics", () => {
     // Existing node n1 (started but not ended)
     const existingNode: ReadNode = {
       id: "n1", userId: "u1", traceId: "t1", nodeType: "span", data: {},
-      startedAt: 100, endedAt: null, startMessage: "start", endMessage: null,
+      startedAt: 100, endedAt: null, originalStartedAt: 100, clockSkewMs: 0,
+      startMessage: "start", endMessage: null,
       importanceLevel: 1, flowOrder: 0, materializedAt: 500
     };
     

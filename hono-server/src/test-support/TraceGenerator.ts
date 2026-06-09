@@ -1,5 +1,5 @@
-import type { ReadNode, ReadEdge } from "../../api/types";
-import type { NodeEventRow, EdgeEventRow } from "../repo/types";
+import type { ReadNode, ReadEdge } from "../services/log/api/types";
+import type { NodeEventRow, EdgeEventRow } from "../services/log/internal/repo/types";
 
 export class TraceGenerator {
   constructor(private userId: string, private traceId: string) {}

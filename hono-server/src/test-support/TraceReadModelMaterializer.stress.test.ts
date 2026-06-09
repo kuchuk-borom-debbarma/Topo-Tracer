@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { TraceReadModelMaterializer } from "./TraceReadModelMaterializer";
-import { ReadNode, ReadEdge, ReadTraceSummary } from "../../api/types";
-import { FakeReadRepo, mockLogger } from "./test-helpers";
+import { TraceReadModelMaterializer } from "../services/log/internal/materialization/TraceReadModelMaterializer";
+import { ReadNode, ReadEdge, ReadTraceSummary } from "../services/log/api/types";
+import { FakeReadRepo, mockLogger } from "../services/log/internal/materialization/test-helpers";
 
 describe("TraceReadModelMaterializer - Stress Tests", () => {
   it("D-14: handles a 5,000 level deep chain without stack overflow", async () => {
