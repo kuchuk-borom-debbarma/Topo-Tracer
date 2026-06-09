@@ -1,4 +1,5 @@
 import type { ReadNode, ReadEdge } from "../../api/types";
+import type { NodeEventRow, EdgeEventRow } from "../repo/types";
 
 export class TraceGenerator {
   constructor(private userId: string, private traceId: string) {}
@@ -11,6 +12,136 @@ export class TraceGenerator {
       key4: "value4",
       key5: "value5",
     };
+  }
+
+  generateRawChain(length: number, startTs: number): { nodeEvents: NodeEventRow[]; edgeEvents: EdgeEventRow[] } {
+    const nodeEvents: NodeEventRow[] = [];
+    const edgeEvents: EdgeEventRow[] = [];
+
+    for (let i = 0; i < length; i++) {
+      const nodeId = `node-${i}`;
+      // Node Start
+      nodeEvents.push({
+        id: nodeId,
+        user_id: this.userId,
+        trace_id: this.traceId,
+        event_type: 0,
+        started_at_ms: startTs + i * 10,
+        ended_at_ms: null,
+        node_type: "step",
+        data: this.createDefaultData(),
+        message: `Start ${i}`,
+        importance_level: 1,
+      });
+      // Node End
+      nodeEvents.push({
+        id: nodeId,
+        user_id: this.userId,
+        trace_id: this.traceId,
+        event_type: 1,
+        started_at_ms: null,
+        ended_at_ms: startTs + i * 10 + 5,
+        node_type: null,
+        data: {},
+        message: `End ${i}`,
+        importance_level: null,
+      });
+
+      if (i > 0) {
+        edgeEvents.push({
+          id: `edge-${i - 1}-${i}`,
+          user_id: this.userId,
+          trace_id: this.traceId,
+          event_type: 0,
+          started_at_ms: startTs + i * 10,
+          ended_at_ms: null,
+          edge_type: "follows",
+          from_node_id: `node-${i - 1}`,
+          to_node_id: nodeId,
+          data: {},
+        });
+      }
+    }
+
+    return { nodeEvents, edgeEvents };
+  }
+
+  generateRawFanOut(count: number, startTs: number): { nodeEvents: NodeEventRow[]; edgeEvents: EdgeEventRow[] } {
+    const nodeEvents: NodeEventRow[] = [];
+    const edgeEvents: EdgeEventRow[] = [];
+
+    const parentId = "parent";
+    // Parent Start
+    nodeEvents.push({
+      id: parentId,
+      user_id: this.userId,
+      trace_id: this.traceId,
+      event_type: 0,
+      started_at_ms: startTs,
+      ended_at_ms: null,
+      node_type: "parent",
+      data: this.createDefaultData(),
+      message: "Parent Start",
+      importance_level: 1,
+    });
+    // Parent End
+    nodeEvents.push({
+      id: parentId,
+      user_id: this.userId,
+      trace_id: this.traceId,
+      event_type: 1,
+      started_at_ms: null,
+      ended_at_ms: startTs + 1000,
+      node_type: null,
+      data: {},
+      message: "Parent End",
+      importance_level: null,
+    });
+
+    for (let i = 0; i < count; i++) {
+      const childId = `child-${i}`;
+      // Child Start
+      nodeEvents.push({
+        id: childId,
+        user_id: this.userId,
+        trace_id: this.traceId,
+        event_type: 0,
+        started_at_ms: startTs + 10 + i,
+        ended_at_ms: null,
+        node_type: "child",
+        data: this.createDefaultData(),
+        message: `Child Start ${i}`,
+        importance_level: 1,
+      });
+      // Child End
+      nodeEvents.push({
+        id: childId,
+        user_id: this.userId,
+        trace_id: this.traceId,
+        event_type: 1,
+        started_at_ms: null,
+        ended_at_ms: startTs + 20 + i,
+        node_type: null,
+        data: {},
+        message: `Child End ${i}`,
+        importance_level: null,
+      });
+
+      edgeEvents.push({
+        id: `edge-p-${i}`,
+        user_id: this.userId,
+        trace_id: this.traceId,
+        event_type: 0,
+        started_at_ms: startTs + 10 + i,
+        ended_at_ms: null,
+        edge_type: "child",
+        from_node_id: parentId,
+        to_node_id: childId,
+        data: {},
+      });
+    }
+
+    return { nodeEvents, edgeEvents };
   }
 
   generateChain(length: number, startTs: number): { nodes: ReadNode[]; edges: ReadEdge[] } {

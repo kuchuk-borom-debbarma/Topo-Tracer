@@ -1,0 +1,9 @@
+[
+  {
+    "timestamp": "2026-06-09T06:37:10.360Z",
+    "nodeCount": 50000,
+    "durationMs": 90.839458,
+    "memoryUsedMb": 36.2621431350708,
+    "heapUsedMb": 36.842143058776855
+  }
+]
