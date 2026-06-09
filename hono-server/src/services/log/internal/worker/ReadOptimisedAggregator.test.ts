@@ -85,16 +85,20 @@ class StatefulFakeReadRepo extends ILogReadRepo {
     this.checkpoint = { ...params.checkpoint };
   }
 
-  async loadBoundedVisibleNodes(): Promise<any> {
-    return { nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } };
+  async loadBoundedVisibleNodes(_params: any): Promise<any> {
+    return { items: [], totalCount: 0, hasMore: false };
   }
 
-  async loadBoundedVisibleEdges(): Promise<any> {
+  async loadBoundedVisibleEdges(_params: any): Promise<any> {
     return { edges: [], cap: { cap: 0, returnedCount: 0, capHit: false } };
   }
 
-  async loadBoundedProjectionNodes(): Promise<any> {
-    return { nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } };
+  async loadBoundedProjectionNodes(_params: any): Promise<any> {
+    return { items: [], totalCount: 0, hasMore: false };
+  }
+
+  async loadTraceSummary(_params: any): Promise<ReadTraceSummary | null> {
+    return this.summary ? { ...this.summary } : null;
   }
 }
 

@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_READ_NODES_TABLE}
   flow_order Int32 COMMENT 'Deterministic execution order within the trace',
   started_at_ms UInt64 COMMENT 'UTC start timestamp in milliseconds',
   ended_at_ms Nullable(UInt64) COMMENT 'UTC end timestamp in milliseconds; null if not finished',
+  original_started_at_ms UInt64 COMMENT 'Original UTC start timestamp before clock-skew correction',
+  clock_skew_ms Int64 COMMENT 'Applied clock-skew correction in milliseconds',
   node_type String COMMENT 'Categorical type of the node',
   data Map(String, String) COMMENT 'Merged key/value payload from node lifecycle events',
   start_message Nullable(String) COMMENT 'Message captured at node start',
@@ -85,6 +87,8 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_READ_EDGES_TABLE}
   edge_type String COMMENT 'Categorical type of the edge',
   started_at_ms UInt64 COMMENT 'UTC start timestamp in milliseconds',
   ended_at_ms Nullable(UInt64) COMMENT 'UTC end timestamp in milliseconds; null if not finished',
+  original_started_at_ms UInt64 COMMENT 'Original UTC start timestamp before clock-skew correction',
+  clock_skew_ms Int64 COMMENT 'Applied clock-skew correction in milliseconds',
   data Map(String, String) COMMENT 'Merged key/value payload from edge lifecycle events',
   materialized_at_ms UInt64 COMMENT 'Version field: materialization timestamp in milliseconds'
 )
