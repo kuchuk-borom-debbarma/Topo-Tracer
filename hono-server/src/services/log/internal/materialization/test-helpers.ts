@@ -9,9 +9,10 @@ export class FakeReadRepo extends ILogReadRepo {
   loadRawEventsAfterCheckpoint = mock(async () => ({ nodeEvents: [], edgeEvents: [] })) as any;
   saveReadModel = mock(async () => {}) as any;
   saveCheckpoint = mock(async () => {}) as any;
-  loadBoundedVisibleNodes = mock(async () => ({ nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } })) as any;
+  loadBoundedVisibleNodes = mock(async () => ({ items: [], totalCount: 0, hasMore: false })) as any;
   loadBoundedVisibleEdges = mock(async () => ({ edges: [], cap: { cap: 0, returnedCount: 0, capHit: false } })) as any;
-  loadBoundedProjectionNodes = mock(async () => ({ nodes: [], cap: { cap: 0, returnedCount: 0, capHit: false } })) as any;
+  loadBoundedProjectionNodes = mock(async () => ({ items: [], totalCount: 0, hasMore: false })) as any;
+  loadTraceSummary = mock(async () => null) as any;
 }
 
 export const mockLogger = {

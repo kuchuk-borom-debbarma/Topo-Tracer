@@ -1,0 +1,11 @@
+{
+  "projectName": "Causal Clock-Skew Auto-Correction",
+  "stack": {
+    "backend": "Hono / ClickHouse"
+  },
+  "preferences": {
+    "correctionStrategy": "minimal",
+    "skewThreshold": 0,
+    "persistence": "read_model_only"
+  }
+}

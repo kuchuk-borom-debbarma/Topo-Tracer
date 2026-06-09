@@ -108,6 +108,8 @@ export class LogGraphProjector {
           data: node.data,
           startedAt: node.startedAt,
           endedAt: node.endedAt,
+          originalStartedAt: node.originalStartedAt,
+          clockSkewMs: node.clockSkewMs,
           importanceLevel: node.importanceLevel,
           flowOrder: node.flowOrder,
           materializedAt: node.materializedAt,
@@ -147,6 +149,7 @@ export class LogGraphProjector {
       if (existing) {
         existing.edgeCount++;
         existing.startedAt = Math.min(existing.startedAt, edge.startedAt);
+        existing.originalStartedAt = Math.min(existing.originalStartedAt, edge.originalStartedAt);
         if (edge.endedAt !== null) {
           existing.endedAt = Math.max(existing.endedAt || -Infinity, edge.endedAt);
         }
@@ -159,6 +162,8 @@ export class LogGraphProjector {
           edgeCount: 1,
           startedAt: edge.startedAt,
           endedAt: edge.endedAt,
+          originalStartedAt: edge.originalStartedAt,
+          clockSkewMs: edge.clockSkewMs,
         });
       }
     }

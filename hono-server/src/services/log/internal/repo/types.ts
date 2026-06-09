@@ -47,6 +47,8 @@ export type ReadNodeRow = {
   data: Record<string, string>;
   started_at_ms: number;
   ended_at_ms: number | null;
+  original_started_at_ms: number;
+  clock_skew_ms: number;
   start_message: string | null;
   end_message: string | null;
   importance_level: number;
@@ -69,6 +71,8 @@ export type ReadEdgeRow = {
   data: Record<string, string>;
   started_at_ms: number;
   ended_at_ms: number | null;
+  original_started_at_ms: number;
+  clock_skew_ms: number;
   materialized_at_ms: number;
 };
 

@@ -1,27 +1,39 @@
-# Roadmap: Durable Graph Window Paging (V2 Windowing)
+# Roadmap: Causal Clock-Skew Auto-Correction
 
-## Phase 1: API & Repository Foundation [COMPLETE]
-- [x] **Task 1.1: Update API Types**: Modify `api/types.ts` to include paging metadata and updated `ProjectedGraphResult`.
-- [x] **Task 1.2: Update Repo Contract**: Add `offset` and `limit` to `ILogReadRepo` methods (`loadBoundedProjectionNodes`, etc.).
-- [x] **Task 1.3: Implement ClickHouse Paging**: Update `LogReadRepoClickHouse.ts` to use `flow_order >= {offset}` and `LIMIT {limit + 1}`.
-- [x] **Task 1.4: Unit Tests for Repo**: Verify paging logic in `LogReadRepoClickHouse.test.ts`.
+## Phase 1: Engine Implementation
 
-**Plans:** 1 plan
-- [x] 01-01-PLAN.md — Define paging types, CursorCodec utility, and update ClickHouse repo implementation with limit+1 probing.
+**Goal:** Implement the causal clock-skew auto-correction engine in the trace materializer.
+**Requirements:** [FR1, FR2, FR3, FR4, FR5, TR1, TR2, TR3, TR4]
+**Plans:** 3/3 plans complete
 
-## Phase 2: Service-Level Projection [COMPLETE]
-- [x] **Task 2.1: Update LogServiceImpl**: Pass `cursor` and `limit` from API through to the repository.
-- [x] **Task 2.2: Paging Metadata Calculation**: Implement logic to calculate `hasBefore`, `hasAfter`, `previousCursor`, and `nextCursor`.
-- [x] **Task 2.3: Integrate with Projector**: Ensure `LogGraphProjector` handles the windowed data correctly (it should, as it's window-agnostic).
-- [x] **Task 2.4: Integration Tests**: Verify end-to-end paging through `LogServiceImpl.test.ts`.
+Plans:
+**Wave 1**
 
-**Plans:** 1 plan
-- [x] 02-01-PLAN.md — Implement cursor transformation, version safety (409 Conflict), and paging metadata calculation in LogServiceImpl.
+- [x] 01-01-PLAN.md — Schema and Type Updates (Explicit tracking fields)
 
-## Phase 3: Frontend Alignment [SKIPPED]
-> Deferred by user request. Backend foundation is complete and functional.
+**Wave 2** *(blocked on Wave 1 completion)*
 
-**PROJECT COMPLETE**
-- Delivered: Repository-level windowing, CursorCodec, and Service-level orchestration.
-- Verified: 100% test coverage for paging logic and version safety.
+- [x] 01-02-PLAN.md — Engine Implementation (correctClockSkew logic)
 
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 01-03-PLAN.md — Verification (Integration and unit tests)
+
+## Phase 2: Verification & Hardening
+
+**Goal:** Verify and harden the clock-skew correction engine.
+**Requirements:** [D-12, D-13, D-14, D-15, D-16, D-17, FR2, FR3, FR4, FR5, TR1, TR4]
+**Plans:** 3/3 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 02-01-PLAN.md — Performance Optimization (tinyqueue/Min-Heap)
+
+**Wave 2** *(blocked on 02-01)*
+
+- [x] 02-02-PLAN.md — Stress and Edge Case Testing (D-14, D-16, D-17)
+
+**Wave 3** *(blocked on 02-02)*
+
+- [x] 02-03-PLAN.md — Persistence Hardening (D-15)

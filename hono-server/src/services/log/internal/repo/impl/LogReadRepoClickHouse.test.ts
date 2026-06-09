@@ -470,3 +470,59 @@ describe("LogReadRepoClickHouse bounded projection edge reads", () => {
     });
   });
 });
+
+describe("LogReadRepoClickHouse persistence mapping hardening (D-15, FR5)", () => {
+  test("saveReadModel correctly maps corrected timestamps and skew diagnostics for nodes", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    const correctedNode = createTestNode({
+      id: "node-corrected",
+      startedAt: 1050, // Corrected value
+      originalStartedAt: 1000, // Raw value from log
+      clockSkewMs: 50, // Delta
+    });
+
+    await repo.saveReadModel({
+      userId: "user-1",
+      traceId: "trace-1",
+      nodes: [correctedNode],
+      edges: [],
+      summary: createTestSummary(),
+      materializedAt: 3000,
+    });
+
+    const nodeInsert = fakeClient.inserts.find(i => i.table === CLICKHOUSE_READ_NODES_TABLE);
+    expect(nodeInsert).toBeDefined();
+    expect(nodeInsert?.values[0]).toMatchObject({
+      id: "node-corrected",
+      started_at_ms: 1050,
+      original_started_at_ms: 1000,
+      clock_skew_ms: 50,
+    });
+  });
+
+  test("saveReadModel correctly maps trace summary skew diagnostics (FR5)", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    const summaryWithSkew = createTestSummary({
+      diagClockSkew: 42, // Total number of corrections in trace
+    });
+
+    await repo.saveReadModel({
+      userId: "user-1",
+      traceId: "trace-1",
+      nodes: [],
+      edges: [],
+      summary: summaryWithSkew,
+      materializedAt: 3000,
+    });
+
+    const summaryInsert = fakeClient.inserts.find(i => i.table === CLICKHOUSE_TRACE_SUMMARIES_TABLE);
+    expect(summaryInsert).toBeDefined();
+    expect(summaryInsert?.values[0]).toMatchObject({
+      diagnostic_clock_skew_count: 42,
+    });
+  });
+});

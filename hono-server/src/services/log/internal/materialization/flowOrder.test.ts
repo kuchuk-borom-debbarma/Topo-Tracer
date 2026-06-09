@@ -9,6 +9,8 @@ describe("computeFlowOrder", () => {
     nodeType: "span",
     data: {},
     endedAt: null,
+    originalStartedAt: 0,
+    clockSkewMs: 0,
     startMessage: null,
     endMessage: null,
     importanceLevel: 1,
@@ -19,6 +21,7 @@ describe("computeFlowOrder", () => {
     ...baseNode,
     id,
     startedAt,
+    originalStartedAt: startedAt,
     flowOrder: 0,
   });
 
@@ -34,6 +37,8 @@ describe("computeFlowOrder", () => {
     data: {},
     startedAt: Date.now(),
     endedAt: null,
+    originalStartedAt: Date.now(),
+    clockSkewMs: 0,
     materializedAt: Date.now(),
   });
 

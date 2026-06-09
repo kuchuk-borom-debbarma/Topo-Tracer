@@ -109,6 +109,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(data, materialized_at_ms) as data,
             argMax(started_at_ms, materialized_at_ms) as started_at_ms,
             argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
+            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
             argMax(start_message, materialized_at_ms) as start_message,
             argMax(end_message, materialized_at_ms) as end_message,
             argMax(importance_level, materialized_at_ms) as importance_level,
@@ -135,7 +137,9 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(data, materialized_at_ms) as data,
             argMax(started_at_ms, materialized_at_ms) as started_at_ms,
             argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            max(materialized_at_ms) as materialized_at_ms
+            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
+            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
+            argMax(materialized_at_ms, materialized_at_ms) as materialized_at_ms
           FROM ${CLICKHOUSE_READ_EDGES_TABLE}
           WHERE user_id = {userId:String} AND trace_id = {traceId:String}
           GROUP BY id
@@ -170,6 +174,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         data: row.data,
         startedAt: row.started_at_ms,
         endedAt: row.ended_at_ms,
+        originalStartedAt: row.original_started_at_ms,
+        clockSkewMs: row.clock_skew_ms,
         startMessage: row.start_message,
         endMessage: row.end_message,
         importanceLevel: row.importance_level,
@@ -188,6 +194,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         data: row.data,
         startedAt: row.started_at_ms,
         endedAt: row.ended_at_ms,
+        originalStartedAt: row.original_started_at_ms,
+        clockSkewMs: row.clock_skew_ms,
         materializedAt: row.materialized_at_ms,
       })),
       summary: summaryRows.length > 0 ? {
@@ -304,6 +312,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
               argMax(data, materialized_at_ms) as data,
               argMax(started_at_ms, materialized_at_ms) as started_at_ms,
               argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+              argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
+              argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
               argMax(start_message, materialized_at_ms) as start_message,
               argMax(end_message, materialized_at_ms) as end_message,
               argMax(importance_level, materialized_at_ms) as importance_level,
@@ -342,6 +352,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       data: row.data,
       startedAt: row.started_at_ms,
       endedAt: row.ended_at_ms,
+      originalStartedAt: row.original_started_at_ms,
+      clockSkewMs: row.clock_skew_ms,
       startMessage: row.start_message,
       endMessage: row.end_message,
       importanceLevel: row.importance_level,
@@ -392,7 +404,9 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(data, materialized_at_ms) as data,
             argMax(started_at_ms, materialized_at_ms) as started_at_ms,
             argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            max(materialized_at_ms) as materialized_at_ms
+            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
+            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
+            argMax(materialized_at_ms, materialized_at_ms) as materialized_at_ms
           FROM ${CLICKHOUSE_READ_EDGES_TABLE}
           WHERE user_id = {userId:String} AND trace_id = {traceId:String}
           GROUP BY id
@@ -426,6 +440,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       data: row.data,
       startedAt: row.started_at_ms,
       endedAt: row.ended_at_ms,
+      originalStartedAt: row.original_started_at_ms,
+      clockSkewMs: row.clock_skew_ms,
       materializedAt: row.materialized_at_ms,
     }));
 
@@ -463,6 +479,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(data, materialized_at_ms) as data,
             argMax(started_at_ms, materialized_at_ms) as started_at_ms,
             argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
+            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
             argMax(start_message, materialized_at_ms) as start_message,
             argMax(end_message, materialized_at_ms) as end_message,
             argMax(importance_level, materialized_at_ms) as importance_level,
@@ -498,6 +516,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       data: row.data,
       startedAt: row.started_at_ms,
       endedAt: row.ended_at_ms,
+      originalStartedAt: row.original_started_at_ms,
+      clockSkewMs: row.clock_skew_ms,
       startMessage: row.start_message,
       endMessage: row.end_message,
       importanceLevel: row.importance_level,
@@ -638,6 +658,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       data: node.data,
       started_at_ms: node.startedAt,
       ended_at_ms: node.endedAt,
+      original_started_at_ms: node.originalStartedAt,
+      clock_skew_ms: node.clockSkewMs,
       start_message: node.startMessage,
       end_message: node.endMessage,
       importance_level: node.importanceLevel,
@@ -659,6 +681,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       data: edge.data,
       started_at_ms: edge.startedAt,
       ended_at_ms: edge.endedAt,
+      original_started_at_ms: edge.originalStartedAt,
+      clock_skew_ms: edge.clockSkewMs,
       materialized_at_ms: edge.materializedAt,
     }));
   }
