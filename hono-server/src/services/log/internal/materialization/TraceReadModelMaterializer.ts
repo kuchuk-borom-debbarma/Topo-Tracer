@@ -127,7 +127,10 @@ export class TraceReadModelMaterializer {
       diags,
     });
 
-    // 8. Compile the aggregate diagnostics and metadata summary
+    // 8. Correct causal clock skew violations (D-07, D-08)
+    this.correctClockSkew({ nodesArray, savedEdges, diags });
+
+    // 9. Compile the aggregate diagnostics and metadata summary
     const summary = this.buildSummary({
       userId,
       traceId,
@@ -137,7 +140,7 @@ export class TraceReadModelMaterializer {
       flowDiagnostics,
     });
 
-    // 9. Compute next event checkpoint offset positions
+    // 10. Compute next event checkpoint offset positions
     const nextCheckpoint = this.buildNextCheckpoint({
       userId,
       traceId,
@@ -146,7 +149,7 @@ export class TraceReadModelMaterializer {
       edgeEvents,
     });
 
-    // 10. Persist read model first, then the checkpoint
+    // 11. Persist read model first, then the checkpoint
     // Materialization follows a "write read model, then checkpoint" rule to ensure
     // that a crash during save results in a safe retry from the old checkpoint.
     await this.readRepo.saveReadModel({
@@ -174,6 +177,86 @@ export class TraceReadModelMaterializer {
       diagCycles: flowDiagnostics.diagCycles,
       diagOrphanEdges: flowDiagnostics.diagOrphanEdges,
     });
+  }
+
+  private correctClockSkew(params: {
+    nodesArray: ReadNode[];
+    savedEdges: ReadEdge[];
+    diags: MaterializationDiagnostics;
+  }): void {
+    const { nodesArray, savedEdges, diags } = params;
+
+    // 1. Pre-map children to their parents using savedEdges for O(1) parent lookup (D-04)
+    const parentsByChildId = new Map<string, ReadNode[]>();
+    const nodeById = new Map<string, ReadNode>(nodesArray.map((n) => [n.id, n]));
+
+    for (const edge of savedEdges) {
+      const parent = nodeById.get(edge.fromNodeId);
+      if (parent) {
+        const parents = parentsByChildId.get(edge.toNodeId) || [];
+        parents.push(parent);
+        parentsByChildId.set(edge.toNodeId, parents);
+      }
+    }
+
+    // 2. Sort nodesArray by flowOrder (TR1, D-08) for single-pass cascading propagation
+    nodesArray.sort((a, b) => a.flowOrder - b.flowOrder);
+
+    // 3. Iterate through sorted nodes to detect and heal causal violations
+    for (const node of nodesArray) {
+      // D-10: Reset to raw state before applying fresh correction pass
+      node.startedAt = node.originalStartedAt;
+      node.clockSkewMs = 0;
+
+      const parents = parentsByChildId.get(node.id);
+      if (!parents || parents.length === 0) continue;
+
+      // Determine the earliest parent start time (per D-04)
+      let minParentStart = Infinity;
+      for (const parent of parents) {
+        minParentStart = Math.min(minParentStart, parent.startedAt);
+      }
+
+      if (minParentStart === Infinity) continue;
+
+      // If node.startedAt < minParentStart (violation detected)
+      if (node.startedAt < minParentStart) {
+        // Calculate delta = minParentStart + 1 - node.startedAt (per D-01, D-02)
+        const delta = minParentStart + 1 - node.startedAt;
+
+        // Update node.startedAt and node.endedAt (preserving duration per D-03)
+        node.startedAt += delta;
+        if (node.endedAt !== null) {
+          node.endedAt += delta;
+        }
+
+        // Set node.clockSkewMs = delta (D-10)
+        node.clockSkewMs = delta;
+
+        // Increment diags.diagClockSkew (per FR5)
+        diags.diagClockSkew++;
+      }
+    }
+
+    // 4. Align savedEdges with their corrected fromNode
+    for (const edge of savedEdges) {
+      const parent = nodeById.get(edge.fromNodeId);
+      if (parent) {
+        // Reset edge correction to raw
+        edge.startedAt = edge.originalStartedAt;
+        edge.clockSkewMs = 0;
+
+        // Shift to align with parent if necessary (ensuring causal consistency for edges)
+        if (edge.startedAt < parent.startedAt) {
+          const delta = parent.startedAt - edge.originalStartedAt;
+          edge.startedAt = parent.startedAt;
+          if (edge.endedAt !== null) {
+            edge.endedAt += delta;
+          }
+          edge.clockSkewMs = delta;
+        }
+      }
+    }
   }
 
   private handleNodeStart(
@@ -211,6 +294,8 @@ export class TraceReadModelMaterializer {
       nodeType: event.node_type ?? existing?.nodeType ?? "span",
       data: event.data ?? existing?.data ?? {},
       startedAt: event.started_at_ms,
+      originalStartedAt: event.started_at_ms,
+      clockSkewMs: existing?.clockSkewMs ?? 0,
       startMessage: event.message ?? existing?.startMessage ?? null,
       importanceLevel: importance,
       endedAt: existing?.endedAt ?? null,
@@ -275,6 +360,8 @@ export class TraceReadModelMaterializer {
       toNodeId: event.to_node_id ?? existing?.toNodeId ?? "",
       data: event.data ?? existing?.data ?? {},
       startedAt: event.started_at_ms,
+      originalStartedAt: event.started_at_ms,
+      clockSkewMs: existing?.clockSkewMs ?? 0,
       endedAt: existing?.endedAt ?? null,
       fromFlowOrder: existing?.fromFlowOrder ?? 0,
       toFlowOrder: existing?.toFlowOrder ?? 0,
