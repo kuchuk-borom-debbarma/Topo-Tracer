@@ -4,16 +4,16 @@
 
 **Goal:** Implement the causal clock-skew auto-correction engine in the trace materializer.
 **Requirements:** [FR1, FR2, FR3, FR4, FR5, TR1, TR2, TR3, TR4]
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Schema and Type Updates (Explicit tracking fields)
+- [x] 01-01-PLAN.md — Schema and Type Updates (Explicit tracking fields)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Engine Implementation (correctClockSkew logic)
+- [x] 01-02-PLAN.md — Engine Implementation (correctClockSkew logic)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
