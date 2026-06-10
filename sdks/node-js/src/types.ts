@@ -61,6 +61,16 @@ export type TracerConfig = {
   serviceName: string;
   batchIntervalMs: number;
   maxQueueSize: number;
+  exporter?: ITelemetryExporter;
+};
+
+/**
+ * Options for starting a new span.
+ */
+export type SpanOptions = {
+  parent?: any; // Avoiding circular dependency with Span for now
+  importanceLevel?: ImportanceLevel;
+  data?: Record<string, string>;
 };
 
 /**
