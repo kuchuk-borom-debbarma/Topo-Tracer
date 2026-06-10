@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "test": "bun test",
+    "bench": "bun run ./tests/performance.bench.ts",
     "build": "bun build ./src/index.ts --outdir ./dist",
     "prepublishOnly": "bun run build"
   },
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "bun-types": "latest",
+    "mitata": "^1.0.34",
     "typescript": "^5.0.0"
   },
   "peerDependencies": {
