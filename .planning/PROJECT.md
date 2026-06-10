@@ -1,22 +1,22 @@
-# Project: Causal Clock-Skew Auto-Correction
+# Project: Topo-Tracer Node.js SDK (Fresh Start)
 
 ## Context
-In distributed microservices, separate servers often suffer from clock skew. If a parent node on Server A calls a child node on Server B, the telemetry may report the child node started before the parent call. This leads to negative durations, broken graph layouts, and failed diagnostic checks in Topo-Tracer.
+As Topo-Tracer migrates to a Hono-based backend, we need a fresh, modern Node.js SDK that is easy for developers to integrate. The existing SDK is being replaced by this "Fresh Start" version in `sdks/node-js` to improve maintainability, type safety, and ease of use.
 
 ## Goals
-- Build an auto-correction engine in `TraceReadModelMaterializer`.
-- Detect causal violations where `child.startedAt < parent.startedAt`.
-- Adjust child timestamps to align causally (e.g., `parent.startedAt + 1ms`).
-- Persist corrected timestamps to the read-optimized ClickHouse tables.
-- Keep raw telemetry events unchanged for auditing.
+- **Ease of Use**: Provide a fluent and intuitive API for instrumenting applications.
+- **TypeScript-First**: Ensure first-class type safety for all SDK features.
+- **Efficient Exporting**: Implement smart batching and reliable delivery to the Hono backend.
+- **Modern Stack**: Target Node.js 18+ using native `fetch` and modern TypeScript patterns.
+- **Hono Integration**: Align perfectly with the `ILogService` ingestion contracts in `hono-server`.
 
 ## Technical Strategy
-- **Topological Traversal**: Leverage the `flowOrder` computed during materialization to process nodes in causal sequence.
-- **Timestamp Dampening**: When a causal violation is detected, shift the child's `startedAt` and `endedAt` to be >= parent's `startedAt`.
-- **Diagnostic Reporting**: Update the `diagClockSkew` counter to reflect corrected violations.
-- **Integration Point**: Add a `correctClockSkew` step in `TraceReadModelMaterializer.materializeTrace` after topological ordering but before persistence.
+- **Modular Design**: Separate core tracing logic from the exporting mechanism.
+- **Batch Exporter**: Implement a debounced batch exporter to minimize network overhead.
+- **Native Fetch**: Use the native `fetch` API for maximum compatibility across environments.
+- **Explicit Relationships**: Focus on explicit edge creation to match Topo-Tracer's graph model.
 
 ## Constraints
-- Minimal correction: `child.startedAt = parent.startedAt + 1ms`.
-- Zero tolerance: Correct even 1ms skew.
-- Read Model Only: Corrected data lives in `read_nodes` and `read_edges`.
+- **Zero-Dependency Core**: Minimize external dependencies to reduce security surface and bundle size.
+- **Node.js 18+**: Utilize built-in features like `fetch` and `WebCrypto` for UUIDs.
+- **Performance**: Ensure instrumentation overhead is negligible.

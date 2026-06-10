@@ -1,11 +1,5 @@
 {
-  "projectName": "Causal Clock-Skew Auto-Correction",
-  "stack": {
-    "backend": "Hono / ClickHouse"
-  },
-  "preferences": {
-    "correctionStrategy": "minimal",
-    "skewThreshold": 0,
-    "persistence": "read_model_only"
-  }
+  "project_name": "Node.js SDK (Fresh Start)",
+  "version": "1.0",
+  "auto_mode": true
 }
