@@ -33,5 +33,75 @@
     "durationMs": 93.83112499999999,
     "memoryUsedMb": 35.88593864440918,
     "heapUsedMb": 43.65613079071045
+  },
+  {
+    "timestamp": "2026-06-10T18:11:53.536Z",
+    "nodeCount": 50000,
+    "durationMs": 87.712083,
+    "memoryUsedMb": 35.38341522216797,
+    "heapUsedMb": 44.905150413513184
+  },
+  {
+    "timestamp": "2026-06-10T18:12:02.687Z",
+    "nodeCount": 50000,
+    "durationMs": 92.181584,
+    "memoryUsedMb": 34.7313289642334,
+    "heapUsedMb": 45.322059631347656
+  },
+  {
+    "timestamp": "2026-06-10T18:15:22.906Z",
+    "nodeCount": 50000,
+    "durationMs": 82.44712499999997,
+    "memoryUsedMb": 0,
+    "heapUsedMb": 43.46809482574463
+  },
+  {
+    "timestamp": "2026-06-10T18:17:53.141Z",
+    "nodeCount": 50000,
+    "durationMs": 90.19462500000003,
+    "memoryUsedMb": 79.93693542480469,
+    "heapUsedMb": 128.03859329223633
+  },
+  {
+    "timestamp": "2026-06-10T18:18:19.640Z",
+    "nodeCount": 50000,
+    "durationMs": 117.46937500000001,
+    "memoryUsedMb": 36.454949378967285,
+    "heapUsedMb": 45.54451560974121
+  },
+  {
+    "timestamp": "2026-06-10T18:19:08.808Z",
+    "nodeCount": 50000,
+    "durationMs": 83.974584,
+    "memoryUsedMb": 0,
+    "heapUsedMb": 42.65768909454346
+  },
+  {
+    "timestamp": "2026-06-10T18:26:16.544Z",
+    "nodeCount": 50000,
+    "durationMs": 106.056333,
+    "memoryUsedMb": 36.96249198913574,
+    "heapUsedMb": 43.98874092102051
+  },
+  {
+    "timestamp": "2026-06-10T18:26:35.757Z",
+    "nodeCount": 50000,
+    "durationMs": 109.457292,
+    "memoryUsedMb": 35.87981033325195,
+    "heapUsedMb": 43.889719009399414
+  },
+  {
+    "timestamp": "2026-06-10T18:27:30.751Z",
+    "nodeCount": 50000,
+    "durationMs": 108.34408400000001,
+    "memoryUsedMb": 40.243661880493164,
+    "heapUsedMb": 60.36108684539795
+  },
+  {
+    "timestamp": "2026-06-10T18:28:55.577Z",
+    "nodeCount": 50000,
+    "durationMs": 113.866625,
+    "memoryUsedMb": 37.5554895401001,
+    "heapUsedMb": 44.58069133758545
   }
 ]

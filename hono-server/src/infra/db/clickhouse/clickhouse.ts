@@ -9,6 +9,7 @@ import {
   type AppBindings,
   type AppEnv,
 } from "../../../common/env";
+import { CLICKHOUSE_SCHEMA_STATEMENTS } from "./schema";
 
 export type ClickHouseEnvConfig = {
   url: string;
@@ -24,6 +25,7 @@ export type ClickHouseContext = Context<ClickHouseEnv>;
 // Simple singleton: long-lived servers keep this for the process lifetime, and
 // Workers keep it when the isolate is reused. A cold Worker isolate starts empty.
 let clickHouseClient: ClickHouseClient | undefined;
+let clickHouseBootstrapped = false;
 
 const getClickHouseStringEnv = (
   c: ClickHouseContext,
@@ -56,6 +58,42 @@ export const createClickHouseClient = (
   return createClient(config);
 };
 
+/**
+ * Direct initialization helper for ClickHouse client.
+ * Used for background tasks/daemons that start before any HTTP requests or outside a Hono Context.
+ */
+export const initializeClickHouseClientDirectly = (
+  config?: ClickHouseClientConfigOptions,
+): ClickHouseClient => {
+  if (!clickHouseClient) {
+    const finalConfig = config ?? {
+      url: process.env.CLICKHOUSE_URL ?? "http://localhost:8123",
+      username: process.env.CLICKHOUSE_USERNAME ?? "default",
+      password: process.env.CLICKHOUSE_PASSWORD ?? "password",
+      database: process.env.CLICKHOUSE_DATABASE ?? "default",
+    };
+    clickHouseClient = createClickHouseClient(finalConfig);
+  }
+  return clickHouseClient;
+};
+
+/**
+ * Initializes the ClickHouse client and ensures all database tables and materialized views are created.
+ * Used during application boot/startup. Runs migrations exactly once per isolate lifecycle.
+ */
+export const bootstrapClickHouse = async (
+  config?: ClickHouseClientConfigOptions,
+): Promise<ClickHouseClient> => {
+  const client = initializeClickHouseClientDirectly(config);
+  if (!clickHouseBootstrapped) {
+    for (const statement of CLICKHOUSE_SCHEMA_STATEMENTS) {
+      await client.exec({ query: statement });
+    }
+    clickHouseBootstrapped = true;
+  }
+  return client;
+};
+
 // Env bindings come from Hono context, so the first request creates the client.
 // After that, use the singleton whenever the runtime keeps this module alive.
 export const getClickHouseClient = (c: ClickHouseContext): ClickHouseClient => {
@@ -79,7 +117,8 @@ export const initClickHouse: MiddlewareHandler<ClickHouseEnv> = async (
   c,
   next,
 ) => {
-  getClickHouseClient(c);
+  const config = getClickHouseClientConfig(c);
+  await bootstrapClickHouse(config);
   await next();
 };
 

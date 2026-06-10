@@ -58,19 +58,20 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         ORDER BY updated_at_ms DESC
         LIMIT 1
       `,
-      format: "JSONEachRow",
+      format: "JSON",
       query_params: {
         userId: params.userId,
         traceId: params.traceId,
       },
     });
 
-    const rows = await result.json<ReadCheckpointRow>();
+    const jsonRes = await result.json<any>();
+    const rows = (Array.isArray(jsonRes) ? jsonRes : (jsonRes.data || [])) as ReadCheckpointRow[];
     if (rows.length === 0) {
       return null;
     }
 
-    const row = rows[0];
+    const row = rows[0]!;
     return {
       userId: row.user_id,
       traceId: row.trace_id,
@@ -104,57 +105,60 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         query: `
           SELECT 
             id,
-            argMax(user_id, materialized_at_ms) as user_id,
-            argMax(trace_id, materialized_at_ms) as trace_id,
-            argMax(node_type, materialized_at_ms) as node_type,
-            argMax(data, materialized_at_ms) as data,
-            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
-            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
-            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
-            argMax(start_message, materialized_at_ms) as start_message,
-            argMax(end_message, materialized_at_ms) as end_message,
-            argMax(importance_level, materialized_at_ms) as importance_level,
-            argMax(flow_order, materialized_at_ms) as flow_order,
-            max(materialized_at_ms) as materialized_at_ms
-          FROM ${CLICKHOUSE_READ_NODES_TABLE}
-          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+            argMax(n.user_id, n.materialized_at_ms) as user_id,
+            argMax(n.trace_id, n.materialized_at_ms) as trace_id,
+            argMax(n.node_type, n.materialized_at_ms) as node_type,
+            argMax(n.data, n.materialized_at_ms) as data,
+            argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
+            argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
+            argMax(n.original_started_at_ms, n.materialized_at_ms) as original_started_at_ms,
+            argMax(n.clock_skew_ms, n.materialized_at_ms) as clock_skew_ms,
+            argMax(n.start_message, n.materialized_at_ms) as start_message,
+            argMax(n.end_message, n.materialized_at_ms) as end_message,
+            argMax(n.importance_level, n.materialized_at_ms) as importance_level,
+            argMax(n.flow_order, n.materialized_at_ms) as flow_order,
+            max(n.materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_NODES_TABLE} as n
+          WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}
           GROUP BY id
         `,
-        format: "JSONEachRow",
+        format: "JSON",
         query_params: commonParams,
       }),
       client.query({
         query: `
           SELECT 
             id,
-            argMax(user_id, materialized_at_ms) as user_id,
-            argMax(trace_id, materialized_at_ms) as trace_id,
-            argMax(edge_type, materialized_at_ms) as edge_type,
-            argMax(from_node_id, materialized_at_ms) as from_node_id,
-            argMax(to_node_id, materialized_at_ms) as to_node_id,
-            argMax(from_flow_order, materialized_at_ms) as from_flow_order,
-            argMax(to_flow_order, materialized_at_ms) as to_flow_order,
-            argMax(data, materialized_at_ms) as data,
-            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
-            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
-            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
-            argMax(materialized_at_ms, materialized_at_ms) as materialized_at_ms
-          FROM ${CLICKHOUSE_READ_EDGES_TABLE}
-          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+            argMax(e.user_id, e.materialized_at_ms) as user_id,
+            argMax(e.trace_id, e.materialized_at_ms) as trace_id,
+            argMax(e.edge_type, e.materialized_at_ms) as edge_type,
+            argMax(e.from_node_id, e.materialized_at_ms) as from_node_id,
+            argMax(e.to_node_id, e.materialized_at_ms) as to_node_id,
+            argMax(e.from_flow_order, e.materialized_at_ms) as from_flow_order,
+            argMax(e.to_flow_order, e.materialized_at_ms) as to_flow_order,
+            argMax(e.data, e.materialized_at_ms) as data,
+            argMax(e.started_at_ms, e.materialized_at_ms) as started_at_ms,
+            argMax(e.ended_at_ms, e.materialized_at_ms) as ended_at_ms,
+            argMax(e.original_started_at_ms, e.materialized_at_ms) as original_started_at_ms,
+            argMax(e.clock_skew_ms, e.materialized_at_ms) as clock_skew_ms,
+            max(e.materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_EDGES_TABLE} as e
+          WHERE e.user_id = {userId:String} AND e.trace_id = {traceId:String}
           GROUP BY id
         `,
-        format: "JSONEachRow",
+        format: "JSON",
         query_params: commonParams,
       }),
       this.loadTraceSummary(params),
     ]);
 
-    const [nodeRows, edgeRows] = await Promise.all([
-      nodesResult.json<ReadNodeRow>(),
-      edgesResult.json<ReadEdgeRow>(),
+    const [nodesJson, edgesJson] = await Promise.all([
+      nodesResult.json<any>(),
+      edgesResult.json<any>(),
     ]);
+
+    const nodeRows = (Array.isArray(nodesJson) ? nodesJson : (nodesJson.data || [])) as ReadNodeRow[];
+    const edgeRows = (Array.isArray(edgesJson) ? edgesJson : (edgesJson.data || [])) as ReadEdgeRow[];
 
     return {
       nodes: nodeRows.map(row => ({
@@ -226,7 +230,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
               tuple({lastNodeEventTime:UInt64}, {lastNodeEventId:String}, {lastNodeEventType:UInt8})
           ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
         `,
-        format: "JSONEachRow",
+        format: "JSON",
         query_params: {
           userId: params.userId,
           traceId: params.traceId,
@@ -243,7 +247,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
               tuple({lastEdgeEventTime:UInt64}, {lastEdgeEventId:String}, {lastEdgeEventType:UInt8})
           ORDER BY if(event_type = 0, assumeNotNull(started_at_ms), assumeNotNull(ended_at_ms)), id, event_type
         `,
-        format: "JSONEachRow",
+        format: "JSON",
         query_params: {
           userId: params.userId,
           traceId: params.traceId,
@@ -254,9 +258,14 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       }),
     ]);
 
+    const [nodesJson, edgesJson] = await Promise.all([
+      nodeResult.json<any>(),
+      edgeResult.json<any>(),
+    ]);
+
     return {
-      nodeEvents: await nodeResult.json<NodeEventRow>(),
-      edgeEvents: await edgeResult.json<EdgeEventRow>(),
+      nodeEvents: (Array.isArray(nodesJson) ? nodesJson : (nodesJson.data || [])) as NodeEventRow[],
+      edgeEvents: (Array.isArray(edgesJson) ? edgesJson : (edgesJson.data || [])) as EdgeEventRow[],
     };
   }
 
@@ -280,21 +289,21 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           SELECT * FROM (
             SELECT 
               id,
-              argMax(user_id, materialized_at_ms) as user_id,
-              argMax(trace_id, materialized_at_ms) as trace_id,
-              argMax(node_type, materialized_at_ms) as node_type,
-              argMax(data, materialized_at_ms) as data,
-              argMax(started_at_ms, materialized_at_ms) as started_at_ms,
-              argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-              argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
-              argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
-              argMax(start_message, materialized_at_ms) as start_message,
-              argMax(end_message, materialized_at_ms) as end_message,
-              argMax(importance_level, materialized_at_ms) as importance_level,
-              argMax(flow_order, materialized_at_ms) as flow_order,
-              max(materialized_at_ms) as materialized_at_ms
-            FROM ${CLICKHOUSE_READ_NODES_TABLE}
-            WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+              argMax(n.user_id, n.materialized_at_ms) as user_id,
+              argMax(n.trace_id, n.materialized_at_ms) as trace_id,
+              argMax(n.node_type, n.materialized_at_ms) as node_type,
+              argMax(n.data, n.materialized_at_ms) as data,
+              argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
+              argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
+              argMax(n.original_started_at_ms, n.materialized_at_ms) as original_started_at_ms,
+              argMax(n.clock_skew_ms, n.materialized_at_ms) as clock_skew_ms,
+              argMax(n.start_message, n.materialized_at_ms) as start_message,
+              argMax(n.end_message, n.materialized_at_ms) as end_message,
+              argMax(n.importance_level, n.materialized_at_ms) as importance_level,
+              argMax(n.flow_order, n.materialized_at_ms) as flow_order,
+              max(n.materialized_at_ms) as materialized_at_ms
+            FROM ${CLICKHOUSE_READ_NODES_TABLE} as n
+            WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}
             GROUP BY id
           )
           WHERE importance_level <= {threshold:Int32}
@@ -303,7 +312,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         ORDER BY flow_order ASC, id ASC
         LIMIT {limit:UInt32}
       `,
-      format: "JSONEachRow",
+      format: "JSON",
       query_params: {
         userId: params.userId,
         traceId: params.traceId,
@@ -313,10 +322,11 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       },
     });
 
-    const rows = await result.json<ReadNodeRow & { total_node_count: number }>();
+    const jsonRes = await result.json<any>();
+    const rows = (Array.isArray(jsonRes) ? jsonRes : (jsonRes.data || [])) as (ReadNodeRow & { total_node_count: number })[];
     const hasMore = rows.length > limit;
     const finalRows = hasMore ? rows.slice(0, limit) : rows;
-    const totalCount = rows.length > 0 ? Number(rows[0].total_node_count) : 0;
+    const totalCount = rows.length > 0 ? Number(rows[0]!.total_node_count) : 0;
 
     const nodes: ReadNode[] = finalRows.map(row => ({
       id: row.id,
@@ -368,28 +378,28 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         SELECT * FROM (
           SELECT 
             id,
-            argMax(user_id, materialized_at_ms) as user_id,
-            argMax(trace_id, materialized_at_ms) as trace_id,
-            argMax(edge_type, materialized_at_ms) as edge_type,
-            argMax(from_node_id, materialized_at_ms) as from_node_id,
-            argMax(to_node_id, materialized_at_ms) as to_node_id,
-            argMax(from_flow_order, materialized_at_ms) as from_flow_order,
-            argMax(to_flow_order, materialized_at_ms) as to_flow_order,
-            argMax(data, materialized_at_ms) as data,
-            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
-            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
-            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
-            argMax(materialized_at_ms, materialized_at_ms) as materialized_at_ms
-          FROM ${CLICKHOUSE_READ_EDGES_TABLE}
-          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+            argMax(e.user_id, e.materialized_at_ms) as user_id,
+            argMax(e.trace_id, e.materialized_at_ms) as trace_id,
+            argMax(e.edge_type, e.materialized_at_ms) as edge_type,
+            argMax(e.from_node_id, e.materialized_at_ms) as from_node_id,
+            argMax(e.to_node_id, e.materialized_at_ms) as to_node_id,
+            argMax(e.from_flow_order, e.materialized_at_ms) as from_flow_order,
+            argMax(e.to_flow_order, e.materialized_at_ms) as to_flow_order,
+            argMax(e.data, e.materialized_at_ms) as data,
+            argMax(e.started_at_ms, e.materialized_at_ms) as started_at_ms,
+            argMax(e.ended_at_ms, e.materialized_at_ms) as ended_at_ms,
+            argMax(e.original_started_at_ms, e.materialized_at_ms) as original_started_at_ms,
+            argMax(e.clock_skew_ms, e.materialized_at_ms) as clock_skew_ms,
+            max(e.materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_EDGES_TABLE} as e
+          WHERE e.user_id = {userId:String} AND e.trace_id = {traceId:String}
           GROUP BY id
         )
         WHERE has({nodeIds:Array(String)}, from_node_id) OR has({nodeIds:Array(String)}, to_node_id)
         ORDER BY least(from_flow_order, to_flow_order) ASC, id ASC
         LIMIT {limit:UInt32}
       `,
-      format: "JSONEachRow",
+      format: "JSON",
       query_params: {
         userId: params.userId,
         traceId: params.traceId,
@@ -398,7 +408,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       },
     });
 
-    const rows = await result.json<ReadEdgeRow>();
+    const jsonRes = await result.json<any>();
+    const rows = (Array.isArray(jsonRes) ? jsonRes : (jsonRes.data || [])) as ReadEdgeRow[];
     const capHit = rows.length > DEFAULT_PROJECTION_EDGE_CAP;
     const finalRows = capHit ? rows.slice(0, DEFAULT_PROJECTION_EDGE_CAP) : rows;
 
@@ -447,28 +458,28 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         SELECT *, count(*) OVER() as total_node_count FROM (
           SELECT 
             id,
-            argMax(user_id, materialized_at_ms) as user_id,
-            argMax(trace_id, materialized_at_ms) as trace_id,
-            argMax(node_type, materialized_at_ms) as node_type,
-            argMax(data, materialized_at_ms) as data,
-            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
-            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            argMax(original_started_at_ms, materialized_at_ms) as original_started_at_ms,
-            argMax(clock_skew_ms, materialized_at_ms) as clock_skew_ms,
-            argMax(start_message, materialized_at_ms) as start_message,
-            argMax(end_message, materialized_at_ms) as end_message,
-            argMax(importance_level, materialized_at_ms) as importance_level,
-            argMax(flow_order, materialized_at_ms) as flow_order,
-            max(materialized_at_ms) as materialized_at_ms
-          FROM ${CLICKHOUSE_READ_NODES_TABLE}
-          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+            argMax(n.user_id, n.materialized_at_ms) as user_id,
+            argMax(n.trace_id, n.materialized_at_ms) as trace_id,
+            argMax(n.node_type, n.materialized_at_ms) as node_type,
+            argMax(n.data, n.materialized_at_ms) as data,
+            argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
+            argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
+            argMax(n.original_started_at_ms, n.materialized_at_ms) as original_started_at_ms,
+            argMax(n.clock_skew_ms, n.materialized_at_ms) as clock_skew_ms,
+            argMax(n.start_message, n.materialized_at_ms) as start_message,
+            argMax(n.end_message, n.materialized_at_ms) as end_message,
+            argMax(n.importance_level, n.materialized_at_ms) as importance_level,
+            argMax(n.flow_order, n.materialized_at_ms) as flow_order,
+            max(n.materialized_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_READ_NODES_TABLE} as n
+          WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}
           GROUP BY id
         )
         WHERE flow_order >= {offset:UInt32}
         ORDER BY flow_order ASC, id ASC
         LIMIT {limit:UInt32}
       `,
-      format: "JSONEachRow",
+      format: "JSON",
       query_params: {
         userId: params.userId,
         traceId: params.traceId,
@@ -477,10 +488,11 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       },
     });
 
-    const rows = await result.json<ReadNodeRow & { total_node_count: number }>();
+    const jsonRes = await result.json<any>();
+    const rows = (Array.isArray(jsonRes) ? jsonRes : (jsonRes.data || [])) as (ReadNodeRow & { total_node_count: number })[];
     const hasMore = rows.length > limit;
     const finalRows = hasMore ? rows.slice(0, limit) : rows;
-    const totalCount = rows.length > 0 ? Number(rows[0].total_node_count) : 0;
+    const totalCount = rows.length > 0 ? Number(rows[0]!.total_node_count) : 0;
 
     const nodes: ReadNode[] = finalRows.map(row => ({
       id: row.id,
@@ -538,7 +550,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           WHERE user_id = {userId:String} AND trace_id = {traceId:String}
           GROUP BY user_id, trace_id
         `,
-        format: "JSONEachRow",
+        format: "JSON",
         query_params: commonParams,
       }),
       client.query({
@@ -548,15 +560,18 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           ORDER BY materialized_at_ms DESC
           LIMIT 1
         `,
-        format: "JSONEachRow",
+        format: "JSON",
         query_params: commonParams,
       }),
     ]);
 
-    const [rtRows, workerRows] = await Promise.all([
+    const [rtJson, workerJson] = await Promise.all([
       rtResult.json<any>(),
-      workerResult.json<TraceSummaryRow>(),
+      workerResult.json<any>(),
     ]);
+
+    const rtRows = (Array.isArray(rtJson) ? rtJson : (rtJson.data || [])) as any[];
+    const workerRows = (Array.isArray(workerJson) ? workerJson : (workerJson.data || [])) as TraceSummaryRow[];
 
     if (rtRows.length === 0 && workerRows.length === 0) {
       return null;
@@ -613,20 +628,28 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
 
     const client = this.getClient();
 
+    const BATCH_SIZE = 100;
+
     if (nodeRows.length > 0) {
-      await client.insert({
-        table: CLICKHOUSE_READ_NODES_TABLE,
-        values: nodeRows,
-        format: "JSONEachRow",
-      });
+      for (let i = 0; i < nodeRows.length; i += BATCH_SIZE) {
+        const batch = nodeRows.slice(i, i + BATCH_SIZE);
+        await client.insert({
+          table: CLICKHOUSE_READ_NODES_TABLE,
+          values: batch,
+          format: "JSONEachRow",
+        });
+      }
     }
 
     if (edgeRows.length > 0) {
-      await client.insert({
-        table: CLICKHOUSE_READ_EDGES_TABLE,
-        values: edgeRows,
-        format: "JSONEachRow",
-      });
+      for (let i = 0; i < edgeRows.length; i += BATCH_SIZE) {
+        const batch = edgeRows.slice(i, i + BATCH_SIZE);
+        await client.insert({
+          table: CLICKHOUSE_READ_EDGES_TABLE,
+          values: batch,
+          format: "JSONEachRow",
+        });
+      }
     }
 
     await client.insert({

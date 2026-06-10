@@ -157,8 +157,8 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
 (
   user_id String COMMENT 'User id that owns the trace',
   trace_id String COMMENT 'Unique trace id',
-  node_count SimpleAggregateFunction(sum, UInt32) COMMENT 'Real-time count of distinct nodes',
-  edge_count SimpleAggregateFunction(sum, UInt32) COMMENT 'Real-time count of distinct edges',
+  node_count SimpleAggregateFunction(sum, UInt64) COMMENT 'Real-time count of distinct nodes',
+  edge_count SimpleAggregateFunction(sum, UInt64) COMMENT 'Real-time count of distinct edges',
   min_importance_level SimpleAggregateFunction(min, Nullable(Int32)) COMMENT 'Minimum importance level found',
   max_importance_level SimpleAggregateFunction(max, Nullable(Int32)) COMMENT 'Maximum importance level found',
   started_at_ms SimpleAggregateFunction(min, Nullable(UInt64)) COMMENT 'Earliest start timestamp',
@@ -175,13 +175,13 @@ TO ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
 AS SELECT
   user_id,
   trace_id,
-  countIf(id, event_type = 0) as node_count,
-  0 as edge_count,
+  toUInt64(countIf(id, event_type = 0)) as node_count,
+  toUInt64(0) as edge_count,
   minIf(importance_level, event_type = 0) as min_importance_level,
   maxIf(importance_level, event_type = 0) as max_importance_level,
   minIf(started_at_ms, event_type = 0) as started_at_ms,
   maxIf(ended_at_ms, event_type = 1) as ended_at_ms,
-  max(if(event_type = 0, started_at_ms, ended_at_ms)) as updated_at_ms
+  max(if(event_type = 0, ${CLICKHOUSE_NODE_EVENTS_TABLE}.started_at_ms, ${CLICKHOUSE_NODE_EVENTS_TABLE}.ended_at_ms)) as updated_at_ms
 FROM ${CLICKHOUSE_NODE_EVENTS_TABLE}
 GROUP BY user_id, trace_id;
 `;
@@ -192,13 +192,13 @@ TO ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
 AS SELECT
   user_id,
   trace_id,
-  0 as node_count,
-  countIf(id, event_type = 0) as edge_count,
-  Null as min_importance_level,
-  Null as max_importance_level,
+  toUInt64(0) as node_count,
+  toUInt64(countIf(id, event_type = 0)) as edge_count,
+  cast(null, 'Nullable(Int32)') as min_importance_level,
+  cast(null, 'Nullable(Int32)') as max_importance_level,
   minIf(started_at_ms, event_type = 0) as started_at_ms,
   maxIf(ended_at_ms, event_type = 1) as ended_at_ms,
-  max(if(event_type = 0, started_at_ms, ended_at_ms)) as updated_at_ms
+  max(if(event_type = 0, ${CLICKHOUSE_EDGE_EVENTS_TABLE}.started_at_ms, ${CLICKHOUSE_EDGE_EVENTS_TABLE}.ended_at_ms)) as updated_at_ms
 FROM ${CLICKHOUSE_EDGE_EVENTS_TABLE}
 GROUP BY user_id, trace_id;
 `;

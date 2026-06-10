@@ -309,7 +309,7 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
 
     const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
     expect(query).toBeDefined();
-    expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
+    expect(query?.query).toContain("WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}");
     expect(query?.query).toContain("importance_level <= {threshold:Int32}");
     expect(query?.query).toContain("flow_order >= {offset:UInt32}");
     expect(query?.query).toContain("ORDER BY flow_order ASC, id ASC");
@@ -443,7 +443,7 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
 
     const query = fakeClient.queries.find(q => q.query.includes(CLICKHOUSE_READ_NODES_TABLE));
     expect(query).toBeDefined();
-    expect(query?.query).toContain("WHERE user_id = {userId:String} AND trace_id = {traceId:String}");
+    expect(query?.query).toContain("WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}");
     expect(query?.query).not.toContain("importance_level <=");
     expect(query?.query_params).toMatchObject({
       userId: "u1",

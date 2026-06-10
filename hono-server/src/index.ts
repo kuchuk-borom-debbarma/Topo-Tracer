@@ -11,15 +11,18 @@ import { requestTracingMiddleware } from "./infra/tracing/middleware";
 
 const outboxRelay = new OutboxRelay(outboxStore, eventBus);
 
-// Bootstrap Postgres database and start the outbox relay background daemon on startup
-postgres.bootstrapPostgres()
+// Bootstrap Postgres and ClickHouse databases and start the outbox relay background daemon on startup
+Promise.all([
+  postgres.bootstrapPostgres(),
+  clickhouse.bootstrapClickHouse(),
+])
   .then(() => {
-    console.log("[Postgres] Database bootstrapped and schemas verified.");
+    console.log("[Database] Postgres and ClickHouse databases bootstrapped and schemas verified.");
     outboxRelay.start();
     console.log("[OutboxRelay] Background outbox relay daemon started.");
   })
   .catch((err) => {
-    console.error("[Postgres] Bootstrapping failed:", err);
+    console.error("[Database] Bootstrapping failed:", err);
   });
 
 // Initialize event consumers on startup
