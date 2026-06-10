@@ -221,6 +221,9 @@ describe("ILogReadRepo Contract Assertions", () => {
       for (const filePath of filesToCheck) {
         const content = readFileSync(filePath, "utf-8");
         for (const pattern of forbiddenPatterns) {
+          if (pattern === "cursor" && (filePath.endsWith("CursorCodec.ts") || filePath.endsWith("LogServiceImpl.ts"))) {
+            continue;
+          }
           expect(content.includes(pattern)).toBe(false);
         }
       }

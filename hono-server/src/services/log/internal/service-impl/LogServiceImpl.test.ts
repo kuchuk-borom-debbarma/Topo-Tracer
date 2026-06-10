@@ -237,7 +237,9 @@ describe("LogServiceImpl projection orchestration", () => {
   });
 
   test("source assertion: projectTraceGraph does not contain loadLatestReadModel", () => {
-    const filePath = join(process.cwd(), "hono-server/src/services/log/internal/service-impl/LogServiceImpl.ts");
+    // @ts-ignore
+    const currentDir = import.meta.dir;
+    const filePath = join(currentDir, "LogServiceImpl.ts");
     const content = readFileSync(filePath, "utf-8");
     
     // Find projectTraceGraph method body
@@ -248,7 +250,9 @@ describe("LogServiceImpl projection orchestration", () => {
   });
 
   test("source assertion: projectTraceGraph log metadata contains no raw payload keys", () => {
-    const filePath = join(process.cwd(), "hono-server/src/services/log/internal/service-impl/LogServiceImpl.ts");
+    // @ts-ignore
+    const currentDir = import.meta.dir;
+    const filePath = join(currentDir, "LogServiceImpl.ts");
     const content = readFileSync(filePath, "utf-8");
     const logMatch = content.match(/this\.logger\.trace\("projectTraceGraph", \{([\s\S]*?)\n    \}\);/);
 

@@ -6,7 +6,9 @@ import { join } from "path";
 
 describe("TraceReadModelMaterializer - Source Boundary Assertions", () => {
   it("source assertion: materializer does not log a full summary as diagnostics", () => {
-    const filePath = join(process.cwd(), "src/services/log/internal/materialization/TraceReadModelMaterializer.ts");
+    // @ts-ignore
+    const currentDir = import.meta.dir;
+    const filePath = join(currentDir, "TraceReadModelMaterializer.ts");
     const content = readFileSync(filePath, "utf-8");
     const logMatch = content.match(/logger\.info\("Materialized trace", \{([\s\S]*?)\n    \}\);/);
 

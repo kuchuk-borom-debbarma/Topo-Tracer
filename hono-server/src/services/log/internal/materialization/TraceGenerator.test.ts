@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { TraceGenerator } from "./TraceGenerator";
+import { TraceGenerator } from "../../../../test-support/TraceGenerator";
 
 describe("TraceGenerator", () => {
   const gen = new TraceGenerator("user-1", "trace-1");
