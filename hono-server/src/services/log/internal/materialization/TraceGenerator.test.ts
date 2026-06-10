@@ -8,20 +8,20 @@ describe("TraceGenerator", () => {
     const { nodes, edges } = gen.generateChain(5, 1000);
     expect(nodes.length).toBe(5);
     expect(edges.length).toBe(4);
-    expect(nodes[0].id).toBe("node-0");
-    expect(nodes[4].id).toBe("node-4");
-    expect(edges[0].fromNodeId).toBe("node-0");
-    expect(edges[0].toNodeId).toBe("node-1");
+    expect(nodes[0].id).toBe("trace-1-node-0");
+    expect(nodes[4].id).toBe("trace-1-node-4");
+    expect(edges[0].fromNodeId).toBe("trace-1-node-0");
+    expect(edges[0].toNodeId).toBe("trace-1-node-1");
   });
 
   test("generateFanOut creates correct number of nodes and edges", () => {
     const { nodes, edges } = gen.generateFanOut(5, 1000);
     expect(nodes.length).toBe(6); // 1 parent + 5 children
     expect(edges.length).toBe(5);
-    expect(nodes[0].id).toBe("parent");
-    expect(nodes[1].id).toBe("child-0");
-    expect(edges[0].fromNodeId).toBe("parent");
-    expect(edges[0].toNodeId).toBe("child-0");
+    expect(nodes[0].id).toBe("trace-1-parent");
+    expect(nodes[1].id).toBe("trace-1-child-0");
+    expect(edges[0].fromNodeId).toBe("trace-1-parent");
+    expect(edges[0].toNodeId).toBe("trace-1-child-0");
   });
 
   test("injectSkew modifies node timestamp", () => {

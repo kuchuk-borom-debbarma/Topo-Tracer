@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { parseTraceParent, formatTraceParent, uuidToHex } from "./context";
 import { InternalTracer, SpansBuffer } from "./InternalTracer";
 import { eventBus } from "../event-bus";
+import { getStringEnvValue } from "../../common/env";
 
 /**
  * Hono global request tracing middleware.
@@ -18,6 +19,12 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
     // Skip self-tracing for health checks or favicon requests to reduce database noise
     const path = c.req.path;
     if (path === "/" || path === "/favicon.ico") {
+      await next();
+      return;
+    }
+
+    const disableSelfTracing = getStringEnvValue(c, "DISABLE_SELF_TRACING") === "true";
+    if (disableSelfTracing) {
       await next();
       return;
     }
@@ -90,7 +97,7 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
     });
 
     // Determine the tenant/user owning this telemetry run
-    const userId = c.req.header("X-User-Id") || "system-self-tracing";
+    const userId = c.get("userId") || c.req.header("X-User-Id") || "system-self-tracing";
 
     if (spansBuffer.nodeStarts.length > 0) {
       const payload = {

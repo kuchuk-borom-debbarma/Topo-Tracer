@@ -9,6 +9,14 @@ import { User } from "../../api/types";
 import { ICache } from "../../../../infra/cache/api/ICache";
 import { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
 import { InternalTracer } from "../../../../infra/tracing/InternalTracer";
+import * as crypto from "crypto";
+
+/**
+ * Generates a secure, cryptographically random 6-digit numeric OTP.
+ */
+function generateSecureOTP(): string {
+  return crypto.randomInt(100000, 999999).toString();
+}
 
 /**
  * Authentication Service implementation.
@@ -75,7 +83,7 @@ export class AuthServiceImpl extends IAuthService {
             // 2. Generate a verification code OTP linked to the pending user token
             const tokenOTP = await this.authRepo.upsertUserTokenOTP({
               token: inserted.id,
-              otp: "12345", // TODO: Replace placeholder with random OTP generator for production
+              otp: generateSecureOTP(),
             }, tx);
 
             // 3. Publish signup event to trigger async email notification
@@ -229,7 +237,7 @@ export class AuthServiceImpl extends IAuthService {
       // 2. Insert new TokenOTP entry (allowing multiple active reset tokens as per design to avoid overwrite spam)
       const tokenOTP = await this.authRepo.insertUserTokenOTP({
         token: user.id,
-        otp: "12345", // TODO: Replace placeholder with secure random generator
+        otp: generateSecureOTP(),
         tokenType: "PASSWORD_RESET",
       });
 

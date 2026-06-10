@@ -19,7 +19,7 @@ export class TraceGenerator {
     const edgeEvents: EdgeEventRow[] = [];
 
     for (let i = 0; i < length; i++) {
-      const nodeId = `node-${i}`;
+      const nodeId = `${this.traceId}-node-${i}`;
       // Node Start
       nodeEvents.push({
         id: nodeId,
@@ -49,14 +49,14 @@ export class TraceGenerator {
 
       if (i > 0) {
         edgeEvents.push({
-          id: `edge-${i - 1}-${i}`,
+          id: `${this.traceId}-edge-${i - 1}-${i}`,
           user_id: this.userId,
           trace_id: this.traceId,
           event_type: 0,
           started_at_ms: startTs + i * 10,
           ended_at_ms: null,
           edge_type: "follows",
-          from_node_id: `node-${i - 1}`,
+          from_node_id: `${this.traceId}-node-${i - 1}`,
           to_node_id: nodeId,
           data: {},
         });
@@ -70,7 +70,7 @@ export class TraceGenerator {
     const nodeEvents: NodeEventRow[] = [];
     const edgeEvents: EdgeEventRow[] = [];
 
-    const parentId = "parent";
+    const parentId = `${this.traceId}-parent`;
     // Parent Start
     nodeEvents.push({
       id: parentId,
@@ -99,7 +99,7 @@ export class TraceGenerator {
     });
 
     for (let i = 0; i < count; i++) {
-      const childId = `child-${i}`;
+      const childId = `${this.traceId}-child-${i}`;
       // Child Start
       nodeEvents.push({
         id: childId,
@@ -128,7 +128,7 @@ export class TraceGenerator {
       });
 
       edgeEvents.push({
-        id: `edge-p-${i}`,
+        id: `${this.traceId}-edge-p-${i}`,
         user_id: this.userId,
         trace_id: this.traceId,
         event_type: 0,
@@ -149,7 +149,7 @@ export class TraceGenerator {
     const edges: ReadEdge[] = [];
 
     for (let i = 0; i < length; i++) {
-      const nodeId = `node-${i}`;
+      const nodeId = `${this.traceId}-node-${i}`;
       nodes.push({
         id: nodeId,
         userId: this.userId,
@@ -169,11 +169,11 @@ export class TraceGenerator {
 
       if (i > 0) {
         edges.push({
-          id: `edge-${i - 1}-${i}`,
+          id: `${this.traceId}-edge-${i - 1}-${i}`,
           userId: this.userId,
           traceId: this.traceId,
           edgeType: "follows",
-          fromNodeId: `node-${i - 1}`,
+          fromNodeId: `${this.traceId}-node-${i - 1}`,
           toNodeId: nodeId,
           fromFlowOrder: 0,
           toFlowOrder: 0,
@@ -194,7 +194,7 @@ export class TraceGenerator {
     const nodes: ReadNode[] = [];
     const edges: ReadEdge[] = [];
 
-    const parentId = "parent";
+    const parentId = `${this.traceId}-parent`;
     nodes.push({
       id: parentId,
       userId: this.userId,
@@ -213,7 +213,7 @@ export class TraceGenerator {
     });
 
     for (let i = 0; i < count; i++) {
-      const childId = `child-${i}`;
+      const childId = `${this.traceId}-child-${i}`;
       nodes.push({
         id: childId,
         userId: this.userId,
@@ -232,7 +232,7 @@ export class TraceGenerator {
       });
 
       edges.push({
-        id: `edge-p-${i}`,
+        id: `${this.traceId}-edge-p-${i}`,
         userId: this.userId,
         traceId: this.traceId,
         edgeType: "child",

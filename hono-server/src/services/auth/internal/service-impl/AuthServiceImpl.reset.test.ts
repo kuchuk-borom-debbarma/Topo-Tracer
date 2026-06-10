@@ -16,7 +16,7 @@ describe("AuthServiceImpl - Password Reset Flow", () => {
     expect(token).toBe("reset-token-otp");
     expect(repo.insertUserTokenOTP).toHaveBeenCalledWith({
       token: "user-789",
-      otp: "12345",
+      otp: expect.stringMatching(/^\d{6}$/),
       tokenType: "PASSWORD_RESET",
     });
     expect(notification.sendNotification).toHaveBeenCalledWith({

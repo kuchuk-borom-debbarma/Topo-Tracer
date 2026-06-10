@@ -8,6 +8,8 @@ import { logService, logIngestConsumer, readOptimisedAggregator } from "./servic
 import { eventBus } from "./infra/event-bus";
 import { outboxStore, OutboxRelay } from "./infra/event-bus/outbox";
 import { requestTracingMiddleware } from "./infra/tracing/middleware";
+import { jwtAuthMiddleware } from "./infra/auth/middleware";
+import { getStringEnvValue } from "./common/env";
 
 const outboxRelay = new OutboxRelay(outboxStore, eventBus);
 
@@ -82,21 +84,14 @@ app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
 
-app.post("/api/v1/ingest", async (c) => {
-  const _apiKey = c.req.header("X-API-Key");
-  const userIdHeader = c.req.header("X-User-Id");
+app.post("/api/v1/ingest", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
   
   const body = await c.req.json();
   
   // Basic validation
   if (!body.nodeStarts || !body.edgeStarts || !body.nodeEnds || !body.edgeEnds) {
     return c.json({ error: "Missing required fields (nodeStarts, edgeStarts, nodeEnds, edgeEnds)" }, 400);
-  }
-
-  const userId = userIdHeader || body.userId;
-
-  if (!userId) {
-    return c.json({ error: "Missing userId (must be provided in X-User-Id header or body)" }, 400);
   }
 
   try {
@@ -149,11 +144,65 @@ app.post("/api/v1/auth/signup/finish", async (c) => {
   }
 });
 
-app.get("/api/v1/traces/:traceId/summary", async (c) => {
-  const userId = c.req.header("X-User-Id");
-  if (!userId) {
-    return c.json({ error: "Missing X-User-Id header" }, 400);
+app.post("/api/v1/auth/login", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.email || !body.password) {
+      return c.json({ error: "Missing required fields (email, password)" }, 400);
+    }
+    const jwtSecret = getStringEnvValue(c, "JWT_SECRET") || "default-secret-key";
+    const token = await authService.getAuthToken({
+      email: body.email,
+      password: body.password,
+      jwtSecret,
+    });
+    return c.json({ token });
+  } catch (error: any) {
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
   }
+});
+
+app.get("/api/v1/auth/me", jwtAuthMiddleware(), async (c) => {
+  return c.json({ user: c.get("user") });
+});
+
+app.post("/api/v1/auth/reset-password/start", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.email) {
+      return c.json({ error: "Missing required field (email)" }, 400);
+    }
+    const token = await authService.startResetPassword({
+      email: body.email,
+    });
+    return c.json({ token });
+  } catch (error: any) {
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
+app.post("/api/v1/auth/reset-password/finish", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.token || !body.otp || !body.newPassword) {
+      return c.json({ error: "Missing required fields (token, otp, newPassword)" }, 400);
+    }
+    await authService.finishResetPassword({
+      token: body.token,
+      otp: body.otp,
+      newPassword: body.newPassword,
+    });
+    return c.json({ success: true });
+  } catch (error: any) {
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
+app.get("/api/v1/traces/:traceId/summary", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
   const traceId = c.req.param("traceId");
 
   try {
@@ -169,11 +218,8 @@ app.get("/api/v1/traces/:traceId/summary", async (c) => {
   }
 });
 
-app.get("/api/v1/traces/:traceId/graph", async (c) => {
-  const userId = c.req.header("X-User-Id");
-  if (!userId) {
-    return c.json({ error: "Missing X-User-Id header" }, 400);
-  }
+app.get("/api/v1/traces/:traceId/graph", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
   const traceId = c.req.param("traceId");
   const threshold = Number(c.req.query("threshold") || "0");
   const cursor = c.req.query("cursor");

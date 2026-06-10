@@ -11,9 +11,13 @@ export type AppBindings = Record<string, unknown> & {
   JWT_SECRET?: string;
   POSTGRES_URL?: string;
   KAFKA_BROKERS?: string;
+  DISABLE_SELF_TRACING?: string;
 };
 
-export type AppVariables = Record<string, unknown>;
+export type AppVariables = Record<string, unknown> & {
+  userId?: string;
+  user?: any;
+};
 
 export type AppEnv = {
   Bindings: AppBindings;

@@ -7,6 +7,7 @@ export type PostgresEnv = AppEnv;
 type PostgresContext = Context<PostgresEnv>;
 
 let sqlClient: postgres.Sql | undefined;
+let postgresBootstrapped = false;
 
 /**
  * Direct initialization helper for PostgreSQL client.
@@ -61,8 +62,11 @@ export const getInitializedPostgresClient = (): postgres.Sql => {
  */
 export const bootstrapPostgres = async (connectionString?: string): Promise<postgres.Sql> => {
   const sql = initializePostgresClientDirectly(connectionString);
-  for (const statement of POSTGRES_SCHEMA_STATEMENTS) {
-    await sql.unsafe(statement);
+  if (!postgresBootstrapped) {
+    for (const statement of POSTGRES_SCHEMA_STATEMENTS) {
+      await sql.unsafe(statement);
+    }
+    postgresBootstrapped = true;
   }
   return sql;
 };

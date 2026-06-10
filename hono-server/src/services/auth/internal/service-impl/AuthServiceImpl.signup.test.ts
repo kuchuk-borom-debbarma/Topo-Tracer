@@ -29,7 +29,7 @@ describe("AuthServiceImpl - SignUp Flow", () => {
     expect(repo.upsertUserTokenOTP).toHaveBeenCalledWith(
       {
         token: "pending-123",
-        otp: "12345",
+        otp: expect.stringMatching(/^\d{6}$/),
       },
       repo,
     );
