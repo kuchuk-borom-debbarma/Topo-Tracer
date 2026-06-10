@@ -1,21 +1,38 @@
-# Requirements: Node.js SDK (Fresh Start)
+# Requirements - Node.js Tracing SDK
 
-## Functional Requirements (FR)
-- [ ] **FR-1: Tracer Lifecycle**: Initialize and configure the SDK with backend URL and service metadata.
-- [ ] **FR-2: Span Management**: Start, end, and record metadata on spans (nodes).
-- [ ] **FR-3: Explicit Edges**: Create edges between spans with optional labels and importance levels.
-- [ ] **FR-4: Importance Levels**: Support setting importance on nodes and edges for backend projection.
-- [ ] **FR-5: Batch Export**: Automatically batch events and send them to the backend ingest endpoint.
-- [ ] **FR-6: Flush/Shutdown**: Support manual flushing and graceful shutdown to ensure no data loss.
+## Functional Requirements
+- **FR-01: Manual Span Management**
+  - Ability to start and end nodes (spans).
+  - Ability to create edges (relationships) between nodes.
+  - Support for custom metadata (tags/data) on nodes and edges.
+- **FR-02: Trace Context Propagation**
+  - Automatic TraceID generation.
+  - Support for importance levels to guide projection filtering.
+- **FR-03: Batching & Async Ingestion**
+  - Collect events in memory and send in batches.
+  - Asynchronous sending to avoid blocking the main thread.
+  - Configurable batch size and flush interval.
+- **FR-04: Retry Logic**
+  - Configurable retry attempts for failed ingestion requests.
+  - Exponential backoff strategy.
+- **FR-05: API Key Authentication**
+  - SDK must include an API key in headers for all ingestion requests.
 
-## Technical Requirements (TR)
-- [x] **TR-1: TypeScript Implementation**: Full type coverage for all public and internal APIs.
-- [ ] **TR-2: Runtime Compatibility**: Support Node.js 18+ and modern runtimes (Bun, Deno).
-- [ ] **TR-3: Error Resilience**: Handle network failures with retries and exponential backoff.
-- [x] **TR-4: Zero Dependencies**: Avoid npm dependencies for the core SDK logic.
-- [x] **TR-5: Backend Alignment**: Match `IngestNodeStart`, `IngestNodeEnd`, etc., types from `hono-server`.
+## Non-Functional Requirements
+- **NFR-01: Low Overhead** - Minimal CPU and memory impact on the host application.
+- **NFR-02: Zero Dependencies** - Minimize external dependencies to avoid bloat and conflicts.
+- **NFR-03: Type Safety** - Full TypeScript support for better developer experience.
 
-## Design Requirements (DR)
-- **DR-1: Fluent API**: `tracer.startSpan('name').end()` style API.
-- **DR-2: Thread Safety**: Ensure concurrent spans don't leak state.
-- **DR-3: Trace Context**: Support propagation of trace IDs across asynchronous boundaries.
+## Ingestion API (Hono Server)
+- **Endpoint:** `POST /api/v1/ingest`
+- **Payload:**
+  ```json
+  {
+    "userId": "string",
+    "nodeStarts": [...],
+    "edgeStarts": [...],
+    "nodeEnds": [...],
+    "edgeEnds": [...]
+  }
+  ```
+- **Auth:** `X-API-Key` header.

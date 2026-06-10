@@ -1,5 +1,12 @@
 {
-  "project_name": "Node.js SDK (Fresh Start)",
-  "version": "1.0",
-  "auto_mode": true
+  "mode": "default",
+  "features": {
+    "research": true,
+    "requirements": true,
+    "roadmap": true
+  },
+  "sdk": {
+    "language": "typescript",
+    "platform": "node-js"
+  }
 }

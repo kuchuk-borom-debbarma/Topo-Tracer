@@ -1,41 +1,36 @@
-# Phase 1 Context: Core Foundation (Node.js SDK)
+# Phase 1 Context: Core SDK Foundation & Server Ingestion
 
-## Decisions
+## Overview
+Phase 1 focuses on establishing the communication bridge between the Node.js SDK and the Hono backend. This includes creating the ingestion endpoint in the server and the basic client structure in the SDK.
 
-### Module System: ESM-only
-- **Decision:** The SDK will be implemented as a pure ESM package.
-- **Rationale:** Aligns with modern Node.js standards (18+) and simplifies the "Fresh Start" by avoiding CJS/ESM dual-maintenance.
+## Decisions & Constraints
 
-### Async Context: AsyncLocalStorage (ALM)
-- **Decision:** Use `AsyncLocalStorage` to automatically track the "Active Span".
-- **Strategy:** 
-  - `tracer.startSpan(name)` will automatically pick up the active span from ALM as the parent.
-  - **Edge Cases:** If ALM context is lost (e.g., across legacy library boundaries), users can manually pass a `parentSpan` in the options.
-  - **Performance:** ALM is highly optimized in Node 18+; overhead is negligible for standard instrumentation.
+### 1. User Identity & Authentication
+- **User Identification:** For this phase, the `userId` will be provided by the user during SDK initialization and sent with every ingestion request.
+- **Authentication:** Formal API key validation logic is **deferred**. The server will accept the `X-API-Key` header but will not validate it against a database yet.
+- **Future-proofing:** The ingestion payload structure remains compatible with the server's `ILogService.ingestNodesNEdges` contract.
 
-### API Design: Implicit Edges via Nesting
-- **Decision:** The primary way to create graph links is through nesting.
-- **API:** `parentSpan.startChild(name)` or `tracer.startSpan(name)` (which uses ALM to find the parent).
-- **Behavior:** Starting a "Child" span automatically emits:
-  1. `IngestNodeStart` for the new span.
-  2. `IngestEdgeStart` from the parent to the new span.
-- **Manual Edges:** `tracer.addEdge(from, to, label)` will still be available for non-nested causal links.
+### 2. Hono Server Ingestion Endpoint
+- **Path:** `POST /api/v1/ingest`
+- **Controller Logic:** The route handler will extract the payload, pass it directly to `logService.ingestNodesNEdges`, and return `200 OK` upon successful completion of the service call.
+- **Middleware:** A placeholder middleware will be created to extract the `X-API-Key` and `userId` (if provided via headers/payload).
 
-### Batching & Exporting
-- **Decision:** Use a debounced batching strategy with native `fetch`.
-- **Interval:** 5 minutes (default, as requested).
-- **Size Limit:** 1,000 events per batch (approx 1MB payload).
-- **Shutdown:** Implement `tracer.shutdown()` and `tracer.flush()` to ensure the final buffer is sent before process exit.
+### 3. SDK Project Structure & Tooling
+- **Location:** `sdks/node-js/`
+- **Runtime/Tooling:** **Bun** for package management, testing, and development.
+- **Pattern:** **Fluent API** for span management (e.g., `tracer.startNode(...).setData(...).end()`).
+- **Context:** **AsyncLocalStorage** for automatic parent-child edge creation.
+- **Distribution:** Configured to be **npm publish-ready**.
 
-### Core Implementation
-- **Zero-Dependency:** Use `globalThis.crypto.randomUUID()` for IDs and `globalThis.fetch` for networking.
-- **Types:** Align strictly with `hono-server/src/services/log/api/types.ts`.
+### 4. Communication Strategy
+- **Protocol:** HTTP/1.1 (JSON).
+- **Format:** The SDK will initially send events immediately (synchronously) to verify the server-side wiring before Phase 2's batching implementation.
 
-## Open Questions / Risks
-- **5 Minute Flush:** 5 minutes is quite long for high-traffic apps; we should ensure users can easily tune this down to 5-10 seconds.
-- **Node.js < 18:** This SDK will explicitly NOT support older Node versions due to reliance on `fetch` and `crypto.randomUUID`.
+## Reusable Assets & Patterns
+- **Server:** Use the existing `ClickHouse` and `Postgres` middleware patterns found in `hono-server/src/infra/db`.
+- **Server:** Follow the service-repo-contract pattern established in `hono-server/src/services/log`.
+- **SDK:** Model the `Span` and `Tracer` types after the existing `ILogService` types in `hono-server/src/services/log/api/types.ts`.
 
-## Next Steps
-- Initialize `sdks/node-js` with `package.json` (type: module).
-- Define shared types in `src/types.ts`.
-- Implement `Tracer` with `AsyncLocalStorage`.
+## Open Questions (Deferred to Research)
+- Best way to handle process-exit cleanup in Node.js to ensure final events are flushed (relevant for Phase 2, but good to keep in mind).
+- Precise payload mapping between SDK-native objects and server-expected `IngestNodeStart`, etc.

@@ -24,9 +24,9 @@
   - Support for context extraction and injection.
 
 ## Phase 3: Developer Experience & Hardening
-- [ ] **3.1: Documentation & Examples**
+- [x] **3.1: Documentation & Examples**
   - Add README and usage examples.
-- [ ] **3.2: Unit & Integration Tests**
+- [x] **3.2: Unit & Integration Tests**
   - Exhaustive testing of batching, retries, and server compatibility.
-- [ ] **3.3: Performance Benchmarking**
+- [x] **3.3: Performance Benchmarking**
   - Measure overhead and throughput.

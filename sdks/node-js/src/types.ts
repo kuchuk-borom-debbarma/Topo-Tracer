@@ -1,21 +1,33 @@
-export type IngestNodeStart = {
+export interface TracerConfig {
+  endpoint: string;
+  apiKey: string;
+  userId: string;
+  serviceName?: string;
+  batchSize?: number;
+  flushInterval?: number;
+  maxRetries?: number;
+  retryDelay?: number;
+  onDrop?: (events: IngestBatch, reason: string) => void;
+}
+
+export interface IngestNodeStart {
   id: string;
   traceId: string;
   nodeType: string;
   data: Record<string, string>;
-  startMessage?: string;
+  startMessage: string;
   startedAt: number;
   importanceLevel: number;
-};
+}
 
-export type IngestNodeEnd = {
+export interface IngestNodeEnd {
   id: string;
   traceId: string;
   endedAt: number;
   endMessage?: string;
-};
+}
 
-export type IngestEdgeStart = {
+export interface IngestEdgeStart {
   id: string;
   traceId: string;
   edgeType: string;
@@ -23,19 +35,17 @@ export type IngestEdgeStart = {
   toNodeId: string;
   data: Record<string, string>;
   startedAt: number;
-};
+}
 
-export type IngestEdgeEnd = {
+export interface IngestEdgeEnd {
   id: string;
   traceId: string;
   endedAt: number;
-};
+}
 
-export type TracerConfig = {
-  endpoint: string;
-  apiKey: string;
-  userId: string;
-  batchSize?: number;
-  flushInterval?: number;
-  onDrop?: (error: Error, data: any) => void;
-};
+export interface IngestBatch {
+  nodeStarts: IngestNodeStart[];
+  edgeStarts: IngestEdgeStart[];
+  nodeEnds: IngestNodeEnd[];
+  edgeEnds: IngestEdgeEnd[];
+}

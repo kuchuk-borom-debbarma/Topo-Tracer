@@ -18,6 +18,12 @@ export class Span {
     return this;
   }
 
+  setAttribute(key: string, value: any): this {
+    if (this.ended) return this;
+    this.data[key] = String(value);
+    return this;
+  }
+
   setAllData(data: Record<string, string>): this {
     if (this.ended) return this;
     this.data = { ...this.data, ...data };

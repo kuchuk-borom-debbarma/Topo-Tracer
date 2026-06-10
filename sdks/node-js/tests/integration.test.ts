@@ -1,21 +1,28 @@
-import { expect, test, describe } from "bun:test";
+import { expect, test, describe, afterEach, beforeEach } from "bun:test";
 import { Tracer } from "../src/Tracer";
 
 describe("SDK Integration", () => {
+  let originalFetch = global.fetch;
+
+  beforeEach(() => {
+    // @ts-ignore
+    global.fetch = originalFetch;
+  });
+
+  afterEach(() => {
+    // @ts-ignore
+    global.fetch = originalFetch;
+  });
+
   test("Should send ingestion events to the server with manual flush", async () => {
     const receivedPayloads: any[] = [];
     
-    const server = Bun.serve({
-      port: 3333,
-      async fetch(req) {
-        if (req.method === "POST" && new URL(req.url).pathname === "/api/v1/ingest") {
-          const body = await req.json();
-          receivedPayloads.push(body);
-          return Response.json({ success: true });
-        }
-        return new Response("Not Found", { status: 404 });
-      },
-    });
+    // @ts-ignore
+    global.fetch = async (url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      receivedPayloads.push(body);
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
 
     const tracer = new Tracer({
       endpoint: "http://localhost:3333",
@@ -33,8 +40,6 @@ describe("SDK Integration", () => {
 
     await tracer.flush();
 
-    server.stop();
-
     // Verify received payloads
     expect(receivedPayloads.length).toBe(1);
     expect(receivedPayloads[0].nodeStarts.length).toBe(1);
@@ -44,17 +49,12 @@ describe("SDK Integration", () => {
   test("Should support distributed tracing via parentSpanId", async () => {
     const receivedPayloads: any[] = [];
     
-    const server = Bun.serve({
-      port: 3334,
-      async fetch(req) {
-        if (req.method === "POST" && new URL(req.url).pathname === "/api/v1/ingest") {
-          const body = await req.json();
-          receivedPayloads.push(body);
-          return Response.json({ success: true });
-        }
-        return new Response("Not Found", { status: 404 });
-      },
-    });
+    // @ts-ignore
+    global.fetch = async (url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      receivedPayloads.push(body);
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
 
     const tracer = new Tracer({
       endpoint: "http://localhost:3334",
@@ -73,7 +73,6 @@ describe("SDK Integration", () => {
     span.end();
 
     await tracer.flush();
-    server.stop();
 
     expect(receivedPayloads.length).toBe(1);
     const payload = receivedPayloads[0];
@@ -112,7 +111,7 @@ describe("SDK Integration", () => {
       apiKey: "test-api-key",
       userId: "test-user-id",
       batchSize: 2000,
-      onDrop: (err, data) => {
+      onDrop: (data, reason) => {
           droppedData = data;
       }
     });

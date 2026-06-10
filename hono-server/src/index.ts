@@ -32,4 +32,36 @@ app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
 
+app.post("/api/v1/ingest", async (c) => {
+  const _apiKey = c.req.header("X-API-Key");
+  const userIdHeader = c.req.header("X-User-Id");
+  
+  const body = await c.req.json();
+  
+  // Basic validation
+  if (!body.nodeStarts || !body.edgeStarts || !body.nodeEnds || !body.edgeEnds) {
+    return c.json({ error: "Missing required fields (nodeStarts, edgeStarts, nodeEnds, edgeEnds)" }, 400);
+  }
+
+  const userId = userIdHeader || body.userId;
+
+  if (!userId) {
+    return c.json({ error: "Missing userId (must be provided in X-User-Id header or body)" }, 400);
+  }
+
+  try {
+    await logService.ingestNodesNEdges({
+      userId,
+      nodeStarts: body.nodeStarts,
+      edgeStarts: body.edgeStarts,
+      nodeEnds: body.nodeEnds,
+      edgeEnds: body.edgeEnds,
+    });
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("[IngestRoute] Ingestion failed:", error);
+    return c.json({ error: "Internal Server Error" }, 500);
+  }
+});
+
 export default app;

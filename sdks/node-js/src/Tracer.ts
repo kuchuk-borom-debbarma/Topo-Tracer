@@ -4,7 +4,8 @@ import {
   IngestNodeStart, 
   IngestEdgeStart, 
   IngestNodeEnd, 
-  IngestEdgeEnd 
+  IngestEdgeEnd,
+  IngestBatch
 } from "./types";
 import { Span } from "./Span";
 import { randomUUID } from "crypto";
@@ -12,15 +13,17 @@ import { randomUUID } from "crypto";
 const HARD_BATCH_CAP = 1000;
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_FLUSH_INTERVAL = 5000;
+const DEFAULT_MAX_RETRIES = 5;
+const DEFAULT_RETRY_DELAY = 1000;
 
 export class Tracer {
   private readonly storage = new AsyncLocalStorage<Span>();
   private readonly config: TracerConfig;
-  private buffer = {
-    nodeStarts: [] as IngestNodeStart[],
-    edgeStarts: [] as IngestEdgeStart[],
-    nodeEnds: [] as IngestNodeEnd[],
-    edgeEnds: [] as IngestEdgeEnd[],
+  private buffer: IngestBatch = {
+    nodeStarts: [],
+    edgeStarts: [],
+    nodeEnds: [],
+    edgeEnds: [],
   };
   private flushTimer: any = null;
   private isFlushing = false;
@@ -29,6 +32,8 @@ export class Tracer {
     this.config = {
       batchSize: DEFAULT_BATCH_SIZE,
       flushInterval: DEFAULT_FLUSH_INTERVAL,
+      maxRetries: DEFAULT_MAX_RETRIES,
+      retryDelay: DEFAULT_RETRY_DELAY,
       ...config,
     };
     
@@ -41,6 +46,32 @@ export class Tracer {
       process.on("SIGINT", () => this.shutdown());
       process.on("beforeExit", () => this.shutdown());
     }
+  }
+
+  /**
+   * Fluent API for automatic context propagation.
+   */
+  async trace<T>(name: string, fn: (span: Span) => Promise<T> | T): Promise<T> {
+    const span = this.startNode({ name });
+    return this.storage.run(span, async () => {
+      try {
+        const result = await fn(span);
+        return result;
+      } catch (error) {
+        span.setAttribute("error", true);
+        span.setAttribute("error.message", (error as Error).message);
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+  }
+
+  /**
+   * Alias for startNode to match example expectations.
+   */
+  createSpan(name: string, options?: any): Span {
+    return this.startNode({ name, ...options });
   }
 
   startNode(options: { 
@@ -113,17 +144,13 @@ export class Tracer {
       traceId: context.traceId,
       nodeType: "external",
       data: {},
+      startMessage: "external",
       startedAt: Date.now(),
       importanceLevel: 0,
     }, () => {});
   }
 
-  private addToBuffer(data: {
-    nodeStarts: IngestNodeStart[];
-    edgeStarts: IngestEdgeStart[];
-    nodeEnds: IngestNodeEnd[];
-    edgeEnds: IngestEdgeEnd[];
-  }) {
+  private addToBuffer(data: IngestBatch) {
     const totalCurrent = this.buffer.nodeStarts.length + 
                        this.buffer.edgeStarts.length + 
                        this.buffer.nodeEnds.length + 
@@ -135,11 +162,10 @@ export class Tracer {
                     data.edgeEnds.length;
 
     if (totalCurrent + incoming > HARD_BATCH_CAP) {
-      const error = new Error("Buffer overflow - dropping events");
       if (this.config.onDrop) {
-        this.config.onDrop(error, data);
+        this.config.onDrop(data, "Buffer overflow - dropping events");
       } else {
-        console.warn(`[Topo-Tracer SDK] ${error.message}`);
+        console.warn(`[Topo-Tracer SDK] Buffer overflow - dropping events`);
       }
       return;
     }
@@ -158,13 +184,15 @@ export class Tracer {
   async flush(): Promise<void> {
     if (this.isFlushing) return;
     
-    const nodeStarts = [...this.buffer.nodeStarts];
-    const edgeStarts = [...this.buffer.edgeStarts];
-    const nodeEnds = [...this.buffer.nodeEnds];
-    const edgeEnds = [...this.buffer.edgeEnds];
+    const batch: IngestBatch = {
+      nodeStarts: [...this.buffer.nodeStarts],
+      edgeStarts: [...this.buffer.edgeStarts],
+      nodeEnds: [...this.buffer.nodeEnds],
+      edgeEnds: [...this.buffer.edgeEnds],
+    };
 
-    if (nodeStarts.length === 0 && edgeStarts.length === 0 && 
-        nodeEnds.length === 0 && edgeEnds.length === 0) {
+    if (batch.nodeStarts.length === 0 && batch.edgeStarts.length === 0 && 
+        batch.nodeEnds.length === 0 && batch.edgeEnds.length === 0) {
       return;
     }
 
@@ -175,19 +203,20 @@ export class Tracer {
 
     this.isFlushing = true;
     try {
-      await this.ingestWithRetry({ nodeStarts, edgeStarts, nodeEnds, edgeEnds });
+      await this.ingestWithRetry(batch, this.config.maxRetries || DEFAULT_MAX_RETRIES);
     } catch (error) {
        if (this.config.onDrop) {
-         this.config.onDrop(error as Error, { nodeStarts, edgeStarts, nodeEnds, edgeEnds });
+         this.config.onDrop(batch, `Failed to send batch after ${this.config.maxRetries} retries: ${(error as Error).message}`);
        } else {
          console.error(`[Topo-Tracer SDK] Ingestion failed after retries:`, error);
        }
+       throw error;
     } finally {
       this.isFlushing = false;
     }
   }
 
-  private async ingestWithRetry(data: any, retries = 5): Promise<void> {
+  private async ingestWithRetry(data: IngestBatch, retries: number): Promise<void> {
     let lastError: Error | null = null;
     for (let i = 0; i < retries; i++) {
       try {
@@ -196,7 +225,7 @@ export class Tracer {
       } catch (error) {
         lastError = error as Error;
         if (i < retries - 1) {
-          const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+          const delay = Math.pow(2, i) * (this.config.retryDelay || DEFAULT_RETRY_DELAY) + Math.random() * 1000;
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -204,12 +233,7 @@ export class Tracer {
     throw lastError || new Error("Ingestion failed after retries");
   }
 
-  private async ingest(data: {
-    nodeStarts: IngestNodeStart[];
-    edgeStarts: IngestEdgeStart[];
-    nodeEnds: IngestNodeEnd[];
-    edgeEnds: IngestEdgeEnd[];
-  }): Promise<void> {
+  private async ingest(data: IngestBatch): Promise<void> {
     const payload = {
       userId: this.config.userId,
       ...data,
@@ -235,6 +259,6 @@ export class Tracer {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
     }
-    await this.flush();
+    await this.flush().catch(() => {});
   }
 }

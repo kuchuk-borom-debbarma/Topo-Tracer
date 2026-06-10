@@ -1,22 +1,20 @@
-# Project: Topo-Tracer Node.js SDK (Fresh Start)
+# Project: Topo-Tracer Node.js SDK
+
+## Overview
+A lightweight, custom Node.js SDK for structured tracing, designed to ingest lifecycle events (nodes and edges) into the Topo-Tracer Hono server.
 
 ## Context
-As Topo-Tracer migrates to a Hono-based backend, we need a fresh, modern Node.js SDK that is easy for developers to integrate. The existing SDK is being replaced by this "Fresh Start" version in `sdks/node-js` to improve maintainability, type safety, and ease of use.
+- **Backend:** Hono-based server with ClickHouse and Postgres.
+- **Goal:** Provide a developer-friendly API for instrumenting Node.js applications with structured traces.
+- **Key Concepts:** Nodes (start/end), Edges (start/end), TraceID, Importance Levels.
 
-## Goals
-- **Ease of Use**: Provide a fluent and intuitive API for instrumenting applications.
-- **TypeScript-First**: Ensure first-class type safety for all SDK features.
-- **Efficient Exporting**: Implement smart batching and reliable delivery to the Hono backend.
-- **Modern Stack**: Target Node.js 18+ using native `fetch` and modern TypeScript patterns.
-- **Hono Integration**: Align perfectly with the `ILogService` ingestion contracts in `hono-server`.
-
-## Technical Strategy
-- **Modular Design**: Separate core tracing logic from the exporting mechanism.
-- **Batch Exporter**: Implement a debounced batch exporter to minimize network overhead.
-- **Native Fetch**: Use the native `fetch` API for maximum compatibility across environments.
-- **Explicit Relationships**: Focus on explicit edge creation to match Topo-Tracer's graph model.
+## Tech Stack
+- **Language:** TypeScript
+- **Runtime:** Node.js
+- **Communication:** HTTP/REST with JSON payload.
+- **Auth:** API Key based.
 
 ## Constraints
-- **Zero-Dependency Core**: Minimize external dependencies to reduce security surface and bundle size.
-- **Node.js 18+**: Utilize built-in features like `fetch` and `WebCrypto` for UUIDs.
-- **Performance**: Ensure instrumentation overhead is negligible.
+- **No OTel:** Custom implementation as requested.
+- **Efficiency:** Batching and asynchronous sending to minimize impact on application performance.
+- **Reliability:** Retry logic for transient network failures.

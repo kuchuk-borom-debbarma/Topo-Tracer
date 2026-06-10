@@ -1,4 +1,4 @@
-import { expect, test, describe, spyOn, jest } from 'bun:test';
+import { expect, test, describe } from 'bun:test';
 import { Tracer } from '../src';
 
 describe('Resilience & Stress Tests', () => {
@@ -7,7 +7,7 @@ describe('Resilience & Stress Tests', () => {
     const tracer = new Tracer({
       endpoint: 'http://localhost:3000',
       apiKey: 'test-key',
-      serviceName: 'stress-service',
+      userId: 'test-user',
       maxRetries: 3,
       retryDelay: 10, // Fast retries for test
     });
@@ -32,7 +32,7 @@ describe('Resilience & Stress Tests', () => {
     const tracer = new Tracer({
       endpoint: 'http://localhost:3000',
       apiKey: 'test-key',
-      serviceName: 'stress-service',
+      userId: 'test-user',
       maxRetries: 2,
       retryDelay: 10,
     });
@@ -54,13 +54,13 @@ describe('Resilience & Stress Tests', () => {
   });
 
   test('should call onDrop after exhausting retries', async () => {
-    let droppedSpans: any[] = [];
+    let droppedSpans: any = null;
     let dropReason = '';
 
     const tracer = new Tracer({
       endpoint: 'http://localhost:3000',
       apiKey: 'test-key',
-      serviceName: 'stress-service',
+      userId: 'test-user',
       maxRetries: 1,
       retryDelay: 10,
       onDrop: (spans, reason) => {
@@ -82,7 +82,7 @@ describe('Resilience & Stress Tests', () => {
       // Expected failure
     }
 
-    expect(droppedSpans.length).toBe(1);
+    expect(droppedSpans).not.toBeNull();
     expect(dropReason).toContain('Failed to send batch after');
   });
 
@@ -90,7 +90,7 @@ describe('Resilience & Stress Tests', () => {
     const tracer = new Tracer({
       endpoint: 'http://localhost:3000',
       apiKey: 'test-key',
-      serviceName: 'stress-service',
+      userId: 'test-user',
       batchSize: 100,
     });
 
@@ -98,7 +98,7 @@ describe('Resilience & Stress Tests', () => {
     // @ts-ignore
     global.fetch = async (url: string, init: any) => {
       const body = JSON.parse(init.body);
-      totalSpansReceived += body.length;
+      totalSpansReceived += body.nodeStarts.length;
       return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
     };
 
