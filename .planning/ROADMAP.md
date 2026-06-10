@@ -2,8 +2,8 @@
 
 ## Phase 1: Core Foundation
 **Goal:** Implement the basic SDK structure and types with behavioral verification.
-**Plans:** 3 plans
-- [ ] 01-01-PLAN.md — Initialize package and define core telemetry types.
+**Plans:** 1/3 plans executed
+- [x] 01-01-PLAN.md — Initialize package and define core telemetry types.
 - [ ] 01-02-PLAN.md — Implement Tracer and Span with ALS, implicit/explicit edges, and core tests.
 - [ ] 01-03-PLAN.md — Implement BatchExporter with configurable intervals and batching tests.
 
