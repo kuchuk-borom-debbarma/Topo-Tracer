@@ -3,7 +3,7 @@ import type { ReadNode, ReadEdge } from "../../api/types";
 import type { FlowOrderDiagnostics } from "./types";
 
 /**
- * Computes a deterministic topological order ("flowOrder") for trace nodes and detects graph cycles.
+ * Computes a deterministic topological order ("flowOrder") for trace nodes and detects flow cycles.
  * Uses a modified Kahn's algorithm:
  * 1. Computes node in-degrees based on incoming edges (ignoring orphan edges).
  * 2. Initializes candidates with in-degree = 0, using a priority queue for O(log N) management.
@@ -82,7 +82,7 @@ export function computeFlowOrder(params: {
   // 3. Process candidate nodes sequentially
   while (candidates.length > 0 || processed.size < nodes.length) {
     if (candidates.length === 0) {
-      // Graph cycle detected (unprocessed nodes remain but all have in-degree > 0)
+      // Flow cycle detected (unprocessed nodes remain but all have in-degree > 0)
       diagnostics.diagCycles++;
       // Break the cycle by forcing all unprocessed nodes to candidates
       for (const node of nodes) {

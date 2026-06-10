@@ -66,10 +66,10 @@ describe("ILogReadRepo Contract Assertions", () => {
     test("should export Phase 5 projection types", () => {
       expect(content.includes("export type ProjectedNormalNode")).toBe(true);
       expect(content.includes("export type ProjectedGhostNode")).toBe(true);
-      expect(content.includes("export type ProjectedGraphNode")).toBe(true);
-      expect(content.includes("export type ProjectedGraphEdge")).toBe(true);
-      expect(content.includes("export type ProjectedGraphMetadata")).toBe(true);
-      expect(content.includes("export type ProjectedGraphResult")).toBe(true);
+      expect(content.includes("export type ProjectedFlowNode")).toBe(true);
+      expect(content.includes("export type ProjectedFlowEdge")).toBe(true);
+      expect(content.includes("export type ProjectedFlowMetadata")).toBe(true);
+      expect(content.includes("export type ProjectedFlowResult")).toBe(true);
       expect(content.includes("export type BoundedProjectionNodesResult")).toBe(true);
     });
 
@@ -90,7 +90,7 @@ describe("ILogReadRepo Contract Assertions", () => {
       }
     });
 
-    test("ProjectedGraphMetadata should have projection metadata fields", () => {
+    test("ProjectedFlowMetadata should have projection metadata fields", () => {
       const fields = [
         "threshold",
         "returnedNodeCount",
@@ -177,7 +177,7 @@ describe("ILogReadRepo Contract Assertions", () => {
       const forbidden = [
         "loadAllNodesForProjection", 
         "loadAllEdgesForProjection", 
-        "getProjectedGraph", 
+        "getProjectedFlow", 
         "loadGhosts"
       ];
       for (const name of forbidden) {
@@ -221,7 +221,11 @@ describe("ILogReadRepo Contract Assertions", () => {
       for (const filePath of filesToCheck) {
         const content = readFileSync(filePath, "utf-8");
         for (const pattern of forbiddenPatterns) {
-          if (pattern === "cursor" && (filePath.endsWith("CursorCodec.ts") || filePath.endsWith("LogServiceImpl.ts"))) {
+          if (pattern === "cursor" && (
+            filePath.endsWith("CursorCodec.ts") || 
+            filePath.endsWith("LogServiceImpl.ts") ||
+            filePath.endsWith("ILogService.ts")
+          )) {
             continue;
           }
           expect(content.includes(pattern)).toBe(false);

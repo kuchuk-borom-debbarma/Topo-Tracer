@@ -5,8 +5,8 @@
     "": {
       "name": "hono-server",
       "dependencies": {
-        "@clickhouse/client-web": "^1.19.0",
-        "hono": "^4.12.23",
+        "@clickhouse/client-web": "^1.20.0",
+        "hono": "^4.12.25",
         "kafkajs": "^2.2.4",
         "postgres": "^3.4.9",
         "tinyqueue": "3.0.0",
@@ -21,9 +21,9 @@
     },
   },
   "packages": {
-    "@clickhouse/client-common": ["@clickhouse/client-common@1.19.0", "", {}, "sha512-HHQw7MUt1aFquSlnoQhlRO8e7zhRw7rJZFNSYiHP2wxzEVeoI0cX8kKoTp+xlVySvFi8s0mAC3bi8D031xmIQg=="],
+    "@clickhouse/client-common": ["@clickhouse/client-common@1.20.0", "", {}, "sha512-s0oDSwxQyJO/Xwne6sNE7xTAlms72Hq2AHzHAB9oSOBfiaXTzQOyHQrhufJ9ldPJTwr4L47/RxG1i6I0I8Xy9A=="],
 
-    "@clickhouse/client-web": ["@clickhouse/client-web@1.19.0", "", { "dependencies": { "@clickhouse/client-common": "1.19.0" } }, "sha512-5o3Ka8I0gg6g8gMvzZ48fQ0n/ih952s5ONT53+Dh+d/HtWU70P84fWxj/t/FNrNiSELvBBuc7KNDdvJ3P3Ta2Q=="],
+    "@clickhouse/client-web": ["@clickhouse/client-web@1.20.0", "", { "dependencies": { "@clickhouse/client-common": "1.20.0" } }, "sha512-K8EuXjclFROx2yKRsDMy+NS2Q/e52BFNfUzhoyk/K0igX1jFmJD1TyXuVayZPsfhkh2k0Q6p6P2RlR80QpzjrQ=="],
 
     "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
 
@@ -197,7 +197,7 @@
 
     "fsevents": ["fsevents@2.3.3", "", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
 
-    "hono": ["hono@4.12.23", "", {}, "sha512-eIaZ9qDgu7XV0pxOCrg7/WhnQ6Ivm22UcxhXx/A3dcbqbbYgBEkc6e/J/s7j2tS96zoB0S9VBdLwQNCWwUo4LA=="],
+    "hono": ["hono@4.12.25", "", {}, "sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ=="],
 
     "kafkajs": ["kafkajs@2.2.4", "", {}, "sha512-j/YeapB1vfPT2iOIUn/vxdyKEuhuY2PxMBvf5JWux6iSaukAccrMtXEY/Lb7OvavDhOWME589bpLrEdnVHjfjA=="],
 

@@ -1,0 +1,8 @@
+{
+  "workflow": "gsd-standard",
+  "preferences": {
+    "auto_approve_research": true,
+    "require_tests": true,
+    "style": "contract-first"
+  }
+}

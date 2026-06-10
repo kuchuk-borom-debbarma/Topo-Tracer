@@ -11,8 +11,8 @@
     "fallow:fix": "fallow fix --dry-run"
   },
   "dependencies": {
-    "@clickhouse/client-web": "^1.19.0",
-    "hono": "^4.12.23",
+    "@clickhouse/client-web": "^1.20.0",
+    "hono": "^4.12.25",
     "kafkajs": "^2.2.4",
     "postgres": "^3.4.9",
     "tinyqueue": "3.0.0",

@@ -3,7 +3,7 @@ import {
   IngestEdgeStart,
   IngestNodeEnd,
   IngestNodeStart,
-  ProjectedGraphResult,
+  ProjectedFlowResult,
 } from "./types";
 
 /**
@@ -33,18 +33,22 @@ export abstract class ILogService {
   }): Promise<void>;
 
   /**
-   * Projects a read-optimized trace graph bounded by a specific importance threshold.
+   * Projects a read-optimized trace flow bounded by a specific importance threshold.
    * 
    * @param data.userId - Owner of the trace (for multi-tenant safety).
    * @param data.traceId - Target trace ID to fetch.
-   * @param data.threshold - Maximum importance level to include in the projected graph window.
-   * @returns Bounded graph projection with nodes, edges, and flow diagnostics.
+   * @param data.threshold - Maximum importance level to include in the projected flow window.
+   * @param data.cursor - Optional cursor for stable paging.
+   * @param data.limit - Optional maximum number of nodes to return in this result.
+   * @returns Bounded flow projection with nodes, edges, and flow diagnostics.
    */
-  abstract projectTraceGraph(data: {
+  abstract projectTraceFlow(data: {
     userId: string;
     traceId: string;
     threshold: number;
-  }): Promise<ProjectedGraphResult>;
+    cursor?: string;
+    limit?: number;
+  }): Promise<ProjectedFlowResult>;
 
   /**
    * Retrieves the latest summary statistics and diagnostics for a trace.

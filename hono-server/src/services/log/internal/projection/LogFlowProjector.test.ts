@@ -1,8 +1,8 @@
 import { describe, it, expect } from "bun:test";
-import { LogGraphProjector } from "./LogGraphProjector";
+import { LogFlowProjector } from "./LogFlowProjector";
 import { ReadNode, ReadEdge, ProjectionReadCap } from "../../api/types";
 
-describe("LogGraphProjector", () => {
+describe("LogFlowProjector", () => {
   const userId = "user-1";
   const traceId = "trace-1";
   const nodeCap: ProjectionReadCap = { cap: 100, returnedCount: 0, capHit: false };
@@ -42,7 +42,7 @@ describe("LogGraphProjector", () => {
     materializedAt: Date.now(),
   });
 
-  const projector = new LogGraphProjector();
+  const projector = new LogFlowProjector();
 
   it("threshold visibility: returns nodes with importanceLevel <= threshold", () => {
     const nodes = [

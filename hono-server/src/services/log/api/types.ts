@@ -23,7 +23,7 @@ export type IngestNodeEnd = {
 
 /**
  * Raw Edge Start event shape for telemetry ingestion.
- * Edges model the direct causal relationships in the trace graph.
+ * Edges model the direct causal relationships in the trace flow.
  */
 export type IngestEdgeStart = {
   id: string;
@@ -159,7 +159,7 @@ export type BoundedVisibleEdgesResult = {
   cap: ProjectionReadCap;
 };
 
-// --- Projected Graph structures ---
+// --- Projected Flow structures ---
 
 /**
  * A normal trace node included in the projected visualization window.
@@ -179,7 +179,7 @@ export type ProjectedNormalNode = {
 };
 
 /**
- * An aggregated pseudo-node ("Ghost") representing a subgraph of hidden nodes
+ * An aggregated pseudo-node ("Ghost") representing a subflow of hidden nodes
  * that did not meet the active importance threshold filter.
  */
 export type ProjectedGhostNode = {
@@ -199,12 +199,12 @@ export type ProjectedGhostNode = {
 /**
  * Union type representing visual nodes in the UI workspace.
  */
-export type ProjectedGraphNode = ProjectedNormalNode | ProjectedGhostNode;
+export type ProjectedFlowNode = ProjectedNormalNode | ProjectedGhostNode;
 
 /**
  * Projected connection between nodes (either normal or ghosted).
  */
-export type ProjectedGraphEdge = {
+export type ProjectedFlowEdge = {
   id: string;
   fromNodeId: string;
   toNodeId: string;
@@ -217,9 +217,9 @@ export type ProjectedGraphEdge = {
 };
 
 /**
- * Diagnostic and paging metadata regarding the graph projection.
+ * Diagnostic and paging metadata regarding the flow projection.
  */
-export type ProjectedGraphMetadata = {
+export type ProjectedFlowMetadata = {
   threshold: number;
   returnedNodeCount: number;
   returnedEdgeCount: number;
@@ -241,12 +241,12 @@ export type ProjectedGraphMetadata = {
 };
 
 /**
- * Complete response structure representing the visible trace graph window.
+ * Complete response structure representing the visible trace flow window.
  */
-export type ProjectedGraphResult = {
-  nodes: ProjectedGraphNode[];
-  edges: ProjectedGraphEdge[];
-  metadata: ProjectedGraphMetadata;
+export type ProjectedFlowResult = {
+  nodes: ProjectedFlowNode[];
+  edges: ProjectedFlowEdge[];
+  metadata: ProjectedFlowMetadata;
 };
 
 /**

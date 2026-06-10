@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { clickhouse, postgres } from "./infra/db";
-// Wire services to keep them active in the module graph and prevent Fallow warnings
+// Wire services to keep them active in the service registry and prevent Fallow warnings
 import { authService, authEventConsumer } from "./services/auth";
 import { externalNotificationService } from "./services/external-notification";
 import { cache, SpoofCache } from "./infra/cache";
@@ -218,24 +218,36 @@ app.get("/api/v1/traces/:traceId/summary", jwtAuthMiddleware(), async (c) => {
   }
 });
 
-app.get("/api/v1/traces/:traceId/graph", jwtAuthMiddleware(), async (c) => {
+app.get("/api/v1/traces/:traceId/flow", jwtAuthMiddleware(), async (c) => {
   const userId = c.get("userId")!;
   const traceId = c.req.param("traceId");
-  const threshold = Number(c.req.query("threshold") || "0");
+
+  // Robust Validation
+  const thresholdRaw = c.req.query("threshold") || "0";
+  const limitRaw = c.req.query("limit") || "1000";
   const cursor = c.req.query("cursor");
-  const limit = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
+
+  const threshold = parseInt(thresholdRaw, 10);
+  if (isNaN(threshold) || threshold < 0) {
+    return c.json({ error: "Invalid threshold: must be a non-negative integer" }, 400);
+  }
+
+  const limit = parseInt(limitRaw, 10);
+  if (isNaN(limit) || limit < 1 || limit > 1000) {
+    return c.json({ error: "Invalid limit: must be an integer between 1 and 1000" }, 400);
+  }
 
   try {
-    const graph = await logService.projectTraceGraph({
+    const flow = await logService.projectTraceFlow({
       userId,
       traceId,
       threshold,
       cursor,
       limit,
     });
-    return c.json(graph);
+    return c.json(flow);
   } catch (error: any) {
-    console.error("[GraphRoute] Failed to project trace graph:", error);
+    console.error("[FlowRoute] Failed to project trace flow:", error);
     const status = error.statusCode || 500;
     return c.json({ error: error.message || "Internal Server Error" }, status);
   }

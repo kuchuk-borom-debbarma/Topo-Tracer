@@ -10,7 +10,7 @@ import {
 import { NodeEventRow, EdgeEventRow } from "./types";
 
 /**
- * Default upper limits for row queries when projecting graphs.
+ * Default upper limits for row queries when projecting flows.
  * Prevents returning excessive rows which would crash memory or UI rendering.
  */
 export const DEFAULT_PROJECTION_NODE_CAP = 500;
@@ -20,7 +20,7 @@ export const DEFAULT_PROJECTION_EDGE_CAP = 2000;
  * Interface contract for the Log Read Repository.
  * Following code-base.md guidelines:
  * - Decouples service logic from database clients (like ClickHouse).
- * - Declares methods for reading checkpoints, raw events, read models, and projected graph segments.
+ * - Declares methods for reading checkpoints, raw events, read models, and projected flow segments.
  * - Uses object parameters on all methods.
  */
 export abstract class ILogReadRepo {
@@ -100,7 +100,7 @@ export abstract class ILogReadRepo {
 
   /**
    * Loads all materialized nodes for a trace, up to the safety cap in paging.
-   * Used as the first pass during threshold-based sub-graph projection.
+   * Used as the first pass during threshold-based sub-flow projection.
    */
   abstract loadBoundedProjectionNodes(params: {
     userId: string;

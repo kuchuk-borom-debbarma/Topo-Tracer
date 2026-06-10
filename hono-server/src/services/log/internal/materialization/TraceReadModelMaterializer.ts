@@ -41,7 +41,7 @@ export class TraceReadModelMaterializer {
    * 2. Loads the existing materialized read model (nodes & edges) to continue building onto them.
    * 3. Queries any raw node and edge events appended to the event log since that checkpoint.
    * 4. Iteratively processes raw start/end events to update/fold node and edge status.
-   * 5. Computes topological flow ordering of the updated trace graph (detecting cycles/orphans).
+   * 5. Computes topological flow ordering of the updated trace flow (detecting cycles/orphans).
    * 6. Builds the updated ReadTraceSummary stats and diagnostics.
    * 7. Saves the rebuilt read-model elements first.
    * 8. Saves the new checkpoint second to mark progress.

@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
   diagnostic_missing_starts_count UInt32 COMMENT 'Count of end events with no matching start',
   diagnostic_missing_ends_count UInt32 COMMENT 'Count of nodes/edges that never finished',
   diagnostic_negative_duration_count UInt32 COMMENT 'Count of events where end < start',
-  diagnostic_cycle_count UInt32 COMMENT 'Count of detected cycles in the graph',
+  diagnostic_cycle_count UInt32 COMMENT 'Count of detected cycles in the flow',
   diagnostic_orphan_edge_count UInt32 COMMENT 'Count of edges pointing to missing nodes',
   diagnostic_invalid_importance_count UInt32 COMMENT 'Count of nodes with importance outside expected range',
   diagnostic_clock_skew_count UInt32 COMMENT 'Count of events appearing before their logical cause',

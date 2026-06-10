@@ -396,7 +396,7 @@ describe("LogReadRepoClickHouse bounded projection node reads", () => {
     const forbidden = [
       "snapped",
       "aggregate edge", // we use 'edges' table but not 'aggregate'
-      "getProjectedGraph",
+      "getProjectedFlow",
       "/telemetry",
       "frontend",
       "sdk/nodejs",

@@ -2,20 +2,20 @@ import {
   ReadNode,
   ReadEdge,
   ProjectionReadCap,
-  ProjectedGraphResult,
+  ProjectedFlowResult,
   ProjectedNormalNode,
   ProjectedGhostNode,
-  ProjectedGraphNode,
-  ProjectedGraphEdge
+  ProjectedFlowNode,
+  ProjectedFlowEdge
 } from "../../api/types";
 
 
 /**
- * Projects a raw materialized trace sub-graph by filtering nodes based on an importance threshold.
+ * Projects a raw materialized trace sub-flow by filtering nodes based on an importance threshold.
  * Nodes exceeding the threshold are collapsed ("ghosted") into aggregated placeholder nodes.
  * Edges are snapped and consolidated (aggregated) to reference the new projected nodes.
  */
-export class LogGraphProjector {
+export class LogFlowProjector {
   /**
    * Projects nodes and edges into normal/ghost groupings.
    * Steps:
@@ -35,7 +35,7 @@ export class LogGraphProjector {
     edges: ReadEdge[];
     nodeCap: ProjectionReadCap;
     edgeCap: ProjectionReadCap;
-  }): ProjectedGraphResult {
+  }): ProjectedFlowResult {
     const { traceId, threshold, nodes, edges, nodeCap, edgeCap } = params;
 
     // 1. Sort nodes by flowOrder ASC, id ASC
@@ -44,7 +44,7 @@ export class LogGraphProjector {
       return a.id.localeCompare(b.id);
     });
 
-    const projectedNodes: ProjectedGraphNode[] = [];
+    const projectedNodes: ProjectedFlowNode[] = [];
     const nodeProjectionById = new Map<string, string>(); // original id -> projected id (normal or ghost)
     const ghostNodesById = new Map<string, ProjectedGhostNode>();
 
@@ -123,7 +123,7 @@ export class LogGraphProjector {
 
     // 2. Edge snapping and aggregation
     let omittedEdgeCount = 0;
-    const aggregateEdges = new Map<string, ProjectedGraphEdge>();
+    const aggregateEdges = new Map<string, ProjectedFlowEdge>();
 
     for (const edge of edges) {
       const projectedFromId = nodeProjectionById.get(edge.fromNodeId);

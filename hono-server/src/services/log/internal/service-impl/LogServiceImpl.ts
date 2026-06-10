@@ -8,16 +8,16 @@ import {
   IngestNodeStart,
   IngestNodeEnd,
   IngestEdgeEnd,
-  ProjectedGraphResult,
+  ProjectedFlowResult,
 } from "../../api/types";
 import { createLogWriteRepo, createLogReadRepo } from "../repo";
 import { ILogWriteRepo } from "../repo/ILogWriteRepo";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
-import { LogGraphProjector } from "../projection/LogGraphProjector";
+import { LogFlowProjector } from "../projection/LogFlowProjector";
 import { decodeCursor, encodeCursor } from "../util/CursorCodec";
 
 /**
- * Default upper limits for row queries when projecting graphs.
+ * Default upper limits for row queries when projecting flows.
  */
 const DEFAULT_PROJECTION_NODE_CAP = 500;
 const MAX_PROJECTION_NODE_CAP = 1000;
@@ -35,21 +35,21 @@ export class LogServiceImpl extends ILogService {
   readonly writeRepo: ILogWriteRepo;
   readonly readRepo: ILogReadRepo;
   readonly eventBus: IEventBus;
-  readonly projector: LogGraphProjector;
+  readonly projector: LogFlowProjector;
 
   constructor(
     logger: Logger<unknown>,
     eventBus: IEventBus,
     writeRepo?: ILogWriteRepo,
     readRepo?: ILogReadRepo,
-    projector?: LogGraphProjector,
+    projector?: LogFlowProjector,
   ) {
     super();
     this.logger = logger.getSubLogger({ name: "LogServiceImpl" });
     this.eventBus = eventBus;
     this.writeRepo = writeRepo ?? createLogWriteRepo(this.logger);
     this.readRepo = readRepo ?? createLogReadRepo(this.logger);
-    this.projector = projector ?? new LogGraphProjector();
+    this.projector = projector ?? new LogFlowProjector();
   }
 
   /**
@@ -118,20 +118,20 @@ export class LogServiceImpl extends ILogService {
   }
 
   /**
-   * Projects a trace graph filtered by importance threshold.
+   * Projects a trace flow filtered by importance threshold.
    * Steps:
    * 1. Loads nodes from the read-optimized tables within a maximum read cap.
    * 2. Loads visible edges linking those loaded nodes within a cap.
-   * 3. Invokes the LogGraphProjector utility to collapse hidden nodes into ghost nodes.
+   * 3. Invokes the LogFlowProjector utility to collapse hidden nodes into ghost nodes.
    */
   // fallow-ignore-next-line complexity
-  async projectTraceGraph(data: {
+  async projectTraceFlow(data: {
     userId: string;
     traceId: string;
     threshold: number;
     cursor?: string;
     limit?: number;
-  }): Promise<ProjectedGraphResult> {
+  }): Promise<ProjectedFlowResult> {
     const { userId, traceId, threshold, cursor, limit: providedLimit } = data;
 
     const limit = Math.min(providedLimit ?? DEFAULT_PROJECTION_NODE_CAP, MAX_PROJECTION_NODE_CAP);
@@ -210,7 +210,7 @@ export class LogServiceImpl extends ILogService {
       toFlowOrder: boundedNodes.items.length > 0 ? boundedNodes.items[boundedNodes.items.length - 1].flowOrder : 0,
     };
 
-    this.logger.trace("projectTraceGraph", {
+    this.logger.trace("projectTraceFlow", {
       userId,
       traceId,
       threshold,

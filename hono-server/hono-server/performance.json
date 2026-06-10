@@ -159,5 +159,12 @@
     "durationMs": 95.28816700000002,
     "memoryUsedMb": 35.87882995605469,
     "heapUsedMb": 45.976372718811035
+  },
+  {
+    "timestamp": "2026-06-10T20:45:18.295Z",
+    "nodeCount": 50000,
+    "durationMs": 91.04183300000005,
+    "memoryUsedMb": 36.51864147186279,
+    "heapUsedMb": 44.49186897277832
   }
 ]

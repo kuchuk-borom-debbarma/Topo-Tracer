@@ -24,7 +24,7 @@ import type {
 import type { ILogWriteRepo } from "../repo/ILogWriteRepo";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { LogServiceImpl } from "./LogServiceImpl";
-import { LogGraphProjector } from "../projection/LogGraphProjector";
+import { LogFlowProjector } from "../projection/LogFlowProjector";
 
 type IngestInput = Parameters<LogServiceImpl["ingestNodesNEdges"]>[0];
 
@@ -176,10 +176,10 @@ describe("LogServiceImpl edge endpoint validation", () => {
 });
 
 describe("LogServiceImpl projection orchestration", () => {
-  test("projectTraceGraph orchestrates bounded reads and projector", async () => {
+  test("projectTraceFlow orchestrates bounded reads and projector", async () => {
     const { service, readRepo, capturedLogs } = createSubject();
 
-    const result = await service.projectTraceGraph({
+    const result = await service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 2
@@ -205,7 +205,7 @@ describe("LogServiceImpl projection orchestration", () => {
     expect(result.metadata.threshold).toBe(2);
 
     // Logging assertion
-    const projectionLog = capturedLogs.find(l => l.args.includes("projectTraceGraph"));
+    const projectionLog = capturedLogs.find(l => l.args.includes("projectTraceFlow"));
     expect(projectionLog).toBeDefined();
     const metadata = projectionLog!.args.find((a: any) => typeof a === "object");
     expect(metadata).toMatchObject({
@@ -237,25 +237,25 @@ describe("LogServiceImpl projection orchestration", () => {
     }
   });
 
-  test("source assertion: projectTraceGraph does not contain loadLatestReadModel", () => {
+  test("source assertion: projectTraceFlow does not contain loadLatestReadModel", () => {
     // @ts-ignore
     const currentDir = import.meta.dir;
     const filePath = join(currentDir, "LogServiceImpl.ts");
     const content = readFileSync(filePath, "utf-8");
     
-    // Find projectTraceGraph method body
-    const methodMatch = content.match(/async projectTraceGraph[\s\S]*?\{([\s\S]*?)\n  \}/);
+    // Find projectTraceFlow method body
+    const methodMatch = content.match(/async projectTraceFlow[\s\S]*?\{([\s\S]*?)\n  \}/);
     expect(methodMatch).not.toBeNull();
     const methodBody = methodMatch![1];
     expect(methodBody).not.toContain("loadLatestReadModel");
   });
 
-  test("source assertion: projectTraceGraph log metadata contains no raw payload keys", () => {
+  test("source assertion: projectTraceFlow log metadata contains no raw payload keys", () => {
     // @ts-ignore
     const currentDir = import.meta.dir;
     const filePath = join(currentDir, "LogServiceImpl.ts");
     const content = readFileSync(filePath, "utf-8");
-    const logMatch = content.match(/this\.logger\.trace\("projectTraceGraph", \{([\s\S]*?)\n    \}\);/);
+    const logMatch = content.match(/this\.logger\.trace\("projectTraceFlow", \{([\s\S]*?)\n    \}\);/);
 
     expect(logMatch).not.toBeNull();
     const logMetadata = logMatch![1];
@@ -275,10 +275,10 @@ describe("LogServiceImpl projection orchestration", () => {
     }
   });
 
-  test("projectTraceGraph handles first page with default paging", async () => {
+  test("projectTraceFlow handles first page with default paging", async () => {
     const { service, readRepo } = createSubject();
 
-    const result = await service.projectTraceGraph({
+    const result = await service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5
@@ -295,7 +295,7 @@ describe("LogServiceImpl projection orchestration", () => {
     expect(result.metadata.paging.previousCursor).toBeNull();
   });
 
-  test("projectTraceGraph handles forward paging with explicit cursor", async () => {
+  test("projectTraceFlow handles forward paging with explicit cursor", async () => {
     const { service, readRepo } = createSubject();
     const cursor = Buffer.from("50:100").toString("base64"); // offset 50, materializedAt 100
 
@@ -313,7 +313,7 @@ describe("LogServiceImpl projection orchestration", () => {
       nodeCount: 100
     };
 
-    const result = await service.projectTraceGraph({
+    const result = await service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5,
@@ -331,11 +331,11 @@ describe("LogServiceImpl projection orchestration", () => {
     });
   });
 
-  test("projectTraceGraph throws ConflictError on stale cursor", async () => {
+  test("projectTraceFlow throws ConflictError on stale cursor", async () => {
     const { service } = createSubject();
     const staleCursor = Buffer.from("0:50").toString("base64"); // materializedAt 50, summary is 100
 
-    await expect(service.projectTraceGraph({
+    await expect(service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5,
@@ -343,10 +343,10 @@ describe("LogServiceImpl projection orchestration", () => {
     })).rejects.toThrow("Cursor is stale");
   });
 
-  test("projectTraceGraph throws Error on malformed cursor", async () => {
+  test("projectTraceFlow throws Error on malformed cursor", async () => {
     const { service } = createSubject();
 
-    await expect(service.projectTraceGraph({
+    await expect(service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5,
@@ -379,7 +379,7 @@ const createSubject = (): {
   const writeRepo = new FakeLogWriteRepo();
   const readRepo = new FakeLogReadRepo();
   const eventBus = new FakeEventBus();
-  const projector = new LogGraphProjector();
+  const projector = new LogFlowProjector();
   const service = new LogServiceImpl(logger, eventBus, writeRepo, readRepo, projector);
 
   return { service, writeRepo, readRepo, eventBus, logger, capturedLogs };
