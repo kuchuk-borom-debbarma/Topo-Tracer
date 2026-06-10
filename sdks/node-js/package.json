@@ -1,0 +1,35 @@
+{
+  "name": "@topo-tracer/node-sdk",
+  "version": "0.1.0",
+  "description": "Node.js SDK for Topo-Tracer graph-based telemetry",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "bench": "bun run ./tests/performance.bench.ts",
+    "build": "bun build ./src/index.ts --outdir ./dist",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "tracing",
+    "telemetry",
+    "graph",
+    "topo-tracer",
+    "node-sdk"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "bun-types": "latest",
+    "mitata": "^1.0.34",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  }
+}

@@ -1,11 +1,12 @@
 {
-  "projectName": "Causal Clock-Skew Auto-Correction",
-  "stack": {
-    "backend": "Hono / ClickHouse"
+  "mode": "default",
+  "features": {
+    "research": true,
+    "requirements": true,
+    "roadmap": true
   },
-  "preferences": {
-    "correctionStrategy": "minimal",
-    "skewThreshold": 0,
-    "persistence": "read_model_only"
+  "sdk": {
+    "language": "typescript",
+    "platform": "node-js"
   }
 }

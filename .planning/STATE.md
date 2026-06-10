@@ -2,39 +2,33 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-last_updated: "2026-06-09T07:00:00Z"
+status: unknown
+last_updated: "2026-06-10T08:04:22.225Z"
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_phases: 3
+  completed_phases: 1
+  total_plans: 5
+  completed_plans: 4
+  percent: 80
 ---
 
-# Project State: Causal Clock-Skew Auto-Correction
+# Project State - Node.js Tracing SDK
 
-## Milestone: v1.0 - COMPLETE
+## Current Status
+- [x] Initial requirements gathered.
+- [x] Backend ingestion service analyzed.
+- [x] Roadmap defined.
+- [x] Phase 1: Core SDK Foundation & Server Ingestion implemented and verified.
+- [x] Phase 2: Advanced SDK Features (Batching, Reliability, Distributed Tracing) implemented.
+- [x] Phase 3: Developer Experience & Hardening completed (Docs, Examples, Benchmarks).
 
-All phases for the Causal Clock-Skew Auto-Correction milestone have been completed and verified.
+## Key Decisions
+- **Custom SDK:** Decided against OpenTelemetry to keep it lightweight and perfectly aligned with the Topo-Tracer graph model.
+- **API Key Auth:** Simple header-based authentication chosen for the first version.
+- **Fluent API & AsyncLocalStorage:** SDK uses a fluent API for DX (`trace()`) and AsyncLocalStorage for automatic context tracking.
+- **Bun Tooling:** Standardized on Bun for SDK development, testing, and benchmarking.
+- **Hard Batch Cap:** 1000 events enforced for server safety.
+- **Retry Strategy:** Exponential backoff with jitter for ingestion reliability.
 
-## Phase 1: Engine Implementation - COMPLETE
-- [x] Schema and Type Updates.
-- [x] Core Correction Engine implemented.
-- [x] Basic functional verification.
-
-## Phase 2: Verification & Hardening - COMPLETE
-- [x] Performance Optimization ($O(\log N)$ flowOrder).
-- [x] Stress Testing (Deep nesting, Massive fan-out).
-- [x] Graceful Degradation and diagnostics.
-- [x] Persistence Hardening (SQL mapping verification).
-
-## Recent Activity
-- Finalized Phase 2 with comprehensive stress and performance suites.
-- Verified persistence of corrected timestamps and skew diagnostics.
-- Project reached 100% completion for the v1.0 milestone.
-
-## Decisions Made (Final)
-- D-13: Latency target < 5ms/1k nodes (Achieved ~0.34ms/1k).
-- D-19: Optimization via `tinyqueue` Min-Heap.
-- D-21: Graceful degradation via `diagLimitExceeded` flag.
+## Project Conclusion
+The Topo-Tracer Node.js SDK is now production-ready, featuring a high-quality fluent API, robust background batching, and distributed tracing support.

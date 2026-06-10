@@ -1,24 +1,38 @@
-# Requirements: Causal Clock-Skew Auto-Correction
+# Requirements - Node.js Tracing SDK
 
-## 1. Functional Requirements
-- **FR1: Detect Causal Violation**: Identify edges where `toNode.startedAt < fromNode.startedAt`.
-- **FR2: Auto-Correct Timestamps**: Adjust `toNode.startedAt` to be `fromNode.startedAt + 1ms` if a violation is detected.
-- **FR3: Cascading Correction**: Ensure that if a child is corrected, its own children are also checked and corrected against the new timestamp.
-- **FR4: Preserve Durations**: If `startedAt` is adjusted, `endedAt` must also be adjusted by the same delta to preserve the node's original duration.
-- **FR5: Diagnostic Increment**: Increment `diagClockSkew` in the trace summary for every node that required correction.
+## Functional Requirements
+- **FR-01: Manual Span Management**
+  - Ability to start and end nodes (spans).
+  - Ability to create edges (relationships) between nodes.
+  - Support for custom metadata (tags/data) on nodes and edges.
+- **FR-02: Trace Context Propagation**
+  - Automatic TraceID generation.
+  - Support for importance levels to guide projection filtering.
+- **FR-03: Batching & Async Ingestion**
+  - Collect events in memory and send in batches.
+  - Asynchronous sending to avoid blocking the main thread.
+  - Configurable batch size and flush interval.
+- **FR-04: Retry Logic**
+  - Configurable retry attempts for failed ingestion requests.
+  - Exponential backoff strategy.
+- **FR-05: API Key Authentication**
+  - SDK must include an API key in headers for all ingestion requests.
 
-## 2. Technical Requirements
-- **TR1: Topological Processing**: Correction must happen in `flowOrder` sequence to ensure parent corrections propagate to children correctly in a single pass.
-- **TR2: Materializer Integration**: Logic must reside within `TraceReadModelMaterializer` or a dedicated collaborator invoked by it.
-- **TR3: Read-Model Focus**: Only objects destined for `saveReadModel` should be modified.
-- **TR4: Memory Efficiency**: Use existing maps (`nodeMap`, `edgeMap`) to avoid unnecessary data cloning.
+## Non-Functional Requirements
+- **NFR-01: Low Overhead** - Minimal CPU and memory impact on the host application.
+- **NFR-02: Zero Dependencies** - Minimize external dependencies to avoid bloat and conflicts.
+- **NFR-03: Type Safety** - Full TypeScript support for better developer experience.
 
-## 3. Scope & Boundaries
-- **In-Scope**:
-    - `TraceReadModelMaterializer.ts` updates.
-    - Unit tests for clock-skew scenarios.
-    - Summary diagnostic updates.
-- **Out-of-Scope**:
-    - Real-time correction during ingestion (only at materialization time).
-    - Updating raw ClickHouse event tables.
-    - Changing SDK logic.
+## Ingestion API (Hono Server)
+- **Endpoint:** `POST /api/v1/ingest`
+- **Payload:**
+  ```json
+  {
+    "userId": "string",
+    "nodeStarts": [...],
+    "edgeStarts": [...],
+    "nodeEnds": [...],
+    "edgeEnds": [...]
+  }
+  ```
+- **Auth:** `X-API-Key` header.

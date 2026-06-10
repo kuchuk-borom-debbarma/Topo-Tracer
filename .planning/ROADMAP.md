@@ -1,39 +1,32 @@
-# Roadmap: Causal Clock-Skew Auto-Correction
+# Roadmap - Node.js Tracing SDK
 
-## Phase 1: Engine Implementation
+## Phase 1: Core SDK Foundation & Server Ingestion
+- [x] **1.1: Hono Server Ingestion Endpoint**
+  - Implement `POST /api/v1/ingest` in `hono-server`.
+  - Wire the endpoint to `logService.ingestNodesNEdges`.
+  - Add API key middleware.
+- [x] **1.2: SDK Base Structure**
+  - Initialize `sdks/node-js` project.
+  - Define core types (Span, Trace, Event).
+- [x] **1.3: Basic Ingestion Client**
+  - Implement a basic HTTP client for sending events.
+  - Support API key authentication.
 
-**Goal:** Implement the causal clock-skew auto-correction engine in the trace materializer.
-**Requirements:** [FR1, FR2, FR3, FR4, FR5, TR1, TR2, TR3, TR4]
-**Plans:** 3/3 plans complete
+## Phase 2: Advanced SDK Features
+- [x] **2.1: Batching & Buffer Management**
+  - Implement background batching logic.
+  - Add flush-on-interval and flush-on-size triggers.
+- [x] **2.2: Retry Logic**
+  - Add retry mechanism with backoff for ingestion failures.
+- [x] **2.3: Lifecycle Hooks**
+  - Support for `flush()` and `shutdown()` to ensure all events are sent before process exit.
+- [x] **2.4: Distributed Tracing**
+  - Support for context extraction and injection.
 
-Plans:
-**Wave 1**
-
-- [x] 01-01-PLAN.md — Schema and Type Updates (Explicit tracking fields)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 01-02-PLAN.md — Engine Implementation (correctClockSkew logic)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 01-03-PLAN.md — Verification (Integration and unit tests)
-
-## Phase 2: Verification & Hardening
-
-**Goal:** Verify and harden the clock-skew correction engine.
-**Requirements:** [D-12, D-13, D-14, D-15, D-16, D-17, FR2, FR3, FR4, FR5, TR1, TR4]
-**Plans:** 3/3 plans complete
-
-Plans:
-**Wave 1**
-
-- [x] 02-01-PLAN.md — Performance Optimization (tinyqueue/Min-Heap)
-
-**Wave 2** *(blocked on 02-01)*
-
-- [x] 02-02-PLAN.md — Stress and Edge Case Testing (D-14, D-16, D-17)
-
-**Wave 3** *(blocked on 02-02)*
-
-- [x] 02-03-PLAN.md — Persistence Hardening (D-15)
+## Phase 3: Developer Experience & Hardening
+- [x] **3.1: Documentation & Examples**
+  - Add README and usage examples.
+- [x] **3.2: Unit & Integration Tests**
+  - Exhaustive testing of batching, retries, and server compatibility.
+- [x] **3.3: Performance Benchmarking**
+  - Measure overhead and throughput.
