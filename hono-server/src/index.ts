@@ -149,4 +149,50 @@ app.post("/api/v1/auth/signup/finish", async (c) => {
   }
 });
 
+app.get("/api/v1/traces/:traceId/summary", async (c) => {
+  const userId = c.req.header("X-User-Id");
+  if (!userId) {
+    return c.json({ error: "Missing X-User-Id header" }, 400);
+  }
+  const traceId = c.req.param("traceId");
+
+  try {
+    const summary = await logService.getTraceSummary({ userId, traceId });
+    if (!summary) {
+      return c.json({ error: "Trace summary not found" }, 404);
+    }
+    return c.json(summary);
+  } catch (error: any) {
+    console.error("[SummaryRoute] Failed to load trace summary:", error);
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
+app.get("/api/v1/traces/:traceId/graph", async (c) => {
+  const userId = c.req.header("X-User-Id");
+  if (!userId) {
+    return c.json({ error: "Missing X-User-Id header" }, 400);
+  }
+  const traceId = c.req.param("traceId");
+  const threshold = Number(c.req.query("threshold") || "0");
+  const cursor = c.req.query("cursor");
+  const limit = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
+
+  try {
+    const graph = await logService.projectTraceGraph({
+      userId,
+      traceId,
+      threshold,
+      cursor,
+      limit,
+    });
+    return c.json(graph);
+  } catch (error: any) {
+    console.error("[GraphRoute] Failed to project trace graph:", error);
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
 export default app;

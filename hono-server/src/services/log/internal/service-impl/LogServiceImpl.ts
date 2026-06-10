@@ -231,6 +231,17 @@ export class LogServiceImpl extends ILogService {
   }
 
   /**
+   * Retrieves the latest summary statistics and diagnostics for a trace.
+   */
+  async getTraceSummary(data: {
+    userId: string;
+    traceId: string;
+  }): Promise<any | null> {
+    this.logger.trace("getTraceSummary", { userId: data.userId, traceId: data.traceId });
+    return this.readRepo.loadTraceSummary(data);
+  }
+
+  /**
    * Validates that edges have valid node references.
    */
   private validateEdgeStarts(edgeStarts: IngestEdgeStart[]): void {

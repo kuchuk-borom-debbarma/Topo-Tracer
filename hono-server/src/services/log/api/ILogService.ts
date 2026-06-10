@@ -45,5 +45,13 @@ export abstract class ILogService {
     traceId: string;
     threshold: number;
   }): Promise<ProjectedGraphResult>;
+
+  /**
+   * Retrieves the latest summary statistics and diagnostics for a trace.
+   */
+  abstract getTraceSummary(data: {
+    userId: string;
+    traceId: string;
+  }): Promise<any | null>;
 }
 
