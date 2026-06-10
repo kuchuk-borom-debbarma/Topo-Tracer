@@ -51,6 +51,8 @@ export abstract class IAuthRepo {
       username: string;
       email: string;
       password: string;
+      traceId?: string;
+      parentSpanId?: string;
     },
     tx?: any,
   ): Promise<PendingUser>;

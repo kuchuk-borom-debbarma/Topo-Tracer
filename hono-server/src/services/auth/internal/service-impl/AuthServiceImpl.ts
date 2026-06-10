@@ -8,6 +8,7 @@ import { generateToken, verifyToken } from "../util/jwt";
 import { User } from "../../api/types";
 import { ICache } from "../../../../infra/cache/api/ICache";
 import { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
+import { InternalTracer } from "../../../../infra/tracing/InternalTracer";
 
 /**
  * Authentication Service implementation.
@@ -56,36 +57,50 @@ export class AuthServiceImpl extends IAuthService {
     // Only log safe metadata (username and email).
     this.logger.trace(`startSignUp initiated for username="${data.username}", email="${data.email}"`);
     try {
-      const tokenId = await this.authRepo.transaction(async (tx) => {
-        // 1. Write the pending user record to register intent
-        const inserted = await this.authRepo.insertPendingSignUpUser(data, tx);
+      const store = InternalTracer.getStore();
+      const traceId = store?.traceId;
+      const parentSpanId = store?.spanId;
 
-        // 2. Generate a verification code OTP linked to the pending user token
-        const tokenOTP = await this.authRepo.upsertUserTokenOTP({
-          token: inserted.id,
-          otp: "12345", // TODO: Replace placeholder with random OTP generator for production
-        }, tx);
+      return await InternalTracer.trace(
+        "authService.startSignUp",
+        async () => {
+          const tokenId = await this.authRepo.transaction(async (tx) => {
+            // 1. Write the pending user record to register intent with trace context
+            const inserted = await this.authRepo.insertPendingSignUpUser({
+              ...data,
+              traceId,
+              parentSpanId,
+            }, tx);
 
-        // 3. Publish signup event to trigger async email notification
-        await this.eventBus.publish(
-          [
-            {
-              topic: "auth.signup.started",
-              idempotencyId: `auth.signup.started:${inserted.id}`,
-              key: inserted.id,
-              data: {
-                email: data.email,
-                otp: tokenOTP.otp,
-              },
-            },
-          ],
-          { tx },
-        );
+            // 2. Generate a verification code OTP linked to the pending user token
+            const tokenOTP = await this.authRepo.upsertUserTokenOTP({
+              token: inserted.id,
+              otp: "12345", // TODO: Replace placeholder with random OTP generator for production
+            }, tx);
 
-        return tokenOTP.id;
-      });
+            // 3. Publish signup event to trigger async email notification
+            await this.eventBus.publish(
+              [
+                {
+                  topic: "auth.signup.started",
+                  idempotencyId: `auth.signup.started:${inserted.id}`,
+                  key: inserted.id,
+                  data: {
+                    email: data.email,
+                    otp: tokenOTP.otp,
+                  },
+                },
+              ],
+              { tx },
+            );
 
-      return tokenId;
+            return tokenOTP.id;
+          });
+
+          return tokenId;
+        },
+        { type: "auth", importanceLevel: 0 }
+      );
     } catch (err) {
       this.logger.error("Failed to start signup process", err);
       throw err;
@@ -102,24 +117,59 @@ export class AuthServiceImpl extends IAuthService {
     // SECURITY WARNING: In compliance with code-base.md, redact OTP/credentials in trace logs.
     this.logger.trace(`finishSignUp verification initiated for token="${data.token}"`);
     try {
-      // 1. Retrieve the verification code state from the repository
-      const tokenOtp = await this.authRepo.getTokenOTPById(data.token);
+      await InternalTracer.trace(
+        "authService.finishSignUp",
+        async () => {
+          // 1. Retrieve the verification code state from the repository
+          const tokenOtp = await this.authRepo.getTokenOTPById(data.token);
 
-      // 2. Validate OTP. Throws TopoTraceException (403) on mismatches
-      if (tokenOtp.otp !== data.otp) {
-        throw new TopoTraceException("OTP Mismatch", 403);
-      }
+          // 2. Validate OTP. Throws TopoTraceException (403) on mismatches
+          if (tokenOtp.otp !== data.otp) {
+            throw new TopoTraceException("OTP Mismatch", 403);
+          }
 
-      // 3. Retrieve the pending user metadata
-      const user = await this.authRepo.getPendingUserById(tokenOtp.token);
+          // 3. Retrieve the pending user metadata
+          const user = await this.authRepo.getPendingUserById(tokenOtp.token);
 
-      // 4. Promote and persist the user as fully active
-      await this.authRepo.insertUser({
-        email: user.email,
-        password: user.hashedPassword,
-        username: user.username,
-        isPasswordHashed: true,
-      });
+          if (user.traceId) {
+            const store = InternalTracer.getStore();
+            if (store) {
+              const nestedContext = {
+                traceId: user.traceId,
+                spanId: user.parentSpanId || store.spanId,
+                parentSpanId: undefined,
+                spansBuffer: store.spansBuffer,
+              };
+
+              await InternalTracer.run(nestedContext, async () => {
+                await InternalTracer.trace(
+                  "authService.promoteUser",
+                  async () => {
+                    // 4. Promote and persist the user as fully active under original trace T1
+                    await this.authRepo.insertUser({
+                      email: user.email,
+                      password: user.hashedPassword,
+                      username: user.username,
+                      isPasswordHashed: true,
+                    });
+                  },
+                  { type: "auth", importanceLevel: 0 }
+                );
+              });
+              return;
+            }
+          }
+
+          // 4. Fallback: Promote and persist the user as fully active
+          await this.authRepo.insertUser({
+            email: user.email,
+            password: user.hashedPassword,
+            username: user.username,
+            isPasswordHashed: true,
+          });
+        },
+        { type: "auth", importanceLevel: 0 }
+      );
     } catch (err) {
       this.logger.error("Failed to finish signup verification", err);
       throw err;

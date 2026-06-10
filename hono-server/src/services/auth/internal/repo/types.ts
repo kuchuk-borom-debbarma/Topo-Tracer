@@ -7,6 +7,8 @@ export type PendingUser = {
   email: string;
   username: string;
   hashedPassword: string; // The hashed credential, kept strictly inside internal/
+  traceId?: string;
+  parentSpanId?: string;
 };
 
 /**

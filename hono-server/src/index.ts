@@ -111,4 +111,39 @@ app.post("/api/v1/ingest", async (c) => {
   }
 });
 
+app.post("/api/v1/auth/signup/start", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.username || !body.email || !body.password) {
+      return c.json({ error: "Missing required fields (username, email, password)" }, 400);
+    }
+    const token = await authService.startSignUp({
+      username: body.username,
+      email: body.email,
+      password: body.password,
+    });
+    return c.json({ token });
+  } catch (error: any) {
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
+app.post("/api/v1/auth/signup/finish", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.token || !body.otp) {
+      return c.json({ error: "Missing required fields (token, otp)" }, 400);
+    }
+    await authService.finishSignUp({
+      token: body.token,
+      otp: body.otp,
+    });
+    return c.json({ success: true });
+  } catch (error: any) {
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
 export default app;

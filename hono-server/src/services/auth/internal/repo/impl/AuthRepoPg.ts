@@ -102,6 +102,8 @@ export class AuthRepoPg extends IAuthRepo {
       username: string;
       email: string;
       password: string;
+      traceId?: string;
+      parentSpanId?: string;
     },
     tx?: any,
   ): Promise<PendingUser> {
@@ -110,9 +112,9 @@ export class AuthRepoPg extends IAuthRepo {
     const passwordHash = await hashPassword(data.password);
 
     const rows = await client<any[]>`
-      INSERT INTO pending_users (id, username, email, password, created_at)
-      VALUES (${id}, ${data.username}, ${data.email}, ${passwordHash}, NOW())
-      RETURNING id, username, email, password
+      INSERT INTO pending_users (id, username, email, password, trace_id, parent_span_id, created_at)
+      VALUES (${id}, ${data.username}, ${data.email}, ${passwordHash}, ${data.traceId ?? null}, ${data.parentSpanId ?? null}, NOW())
+      RETURNING id, username, email, password, trace_id as "trace_id", parent_span_id as "parent_span_id"
     `;
 
     const row = rows[0];
@@ -121,6 +123,8 @@ export class AuthRepoPg extends IAuthRepo {
       username: row.username,
       email: row.email,
       hashedPassword: row.password,
+      traceId: row.trace_id || undefined,
+      parentSpanId: row.parent_span_id || undefined,
     };
   }
 
@@ -129,7 +133,7 @@ export class AuthRepoPg extends IAuthRepo {
    */
   async getPendingUserById(token: string): Promise<PendingUser> {
     const rows = await this.sql<any[]>`
-      SELECT id, username, email, password
+      SELECT id, username, email, password, trace_id as "trace_id", parent_span_id as "parent_span_id"
       FROM pending_users
       WHERE id = ${token}
     `;
@@ -144,6 +148,8 @@ export class AuthRepoPg extends IAuthRepo {
       username: row.username,
       email: row.email,
       hashedPassword: row.password,
+      traceId: row.trace_id || undefined,
+      parentSpanId: row.parent_span_id || undefined,
     };
   }
 
