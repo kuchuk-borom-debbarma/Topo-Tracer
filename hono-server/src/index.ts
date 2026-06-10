@@ -7,6 +7,7 @@ import { cache, SpoofCache } from "./infra/cache";
 import { logService, logIngestConsumer, readOptimisedAggregator } from "./services/log";
 import { eventBus } from "./infra/event-bus";
 import { outboxStore, OutboxRelay } from "./infra/event-bus/outbox";
+import { requestTracingMiddleware } from "./infra/tracing/middleware";
 
 const outboxRelay = new OutboxRelay(outboxStore, eventBus);
 
@@ -60,6 +61,7 @@ if (typeof process !== "undefined") {
 
 const app = new Hono<clickhouse.ClickHouseEnv>();
 
+app.use("*", requestTracingMiddleware());
 app.use("*", clickhouse.initClickHouse);
 app.use("*", postgres.initPostgres);
 

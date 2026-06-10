@@ -1,6 +1,7 @@
 import { Logger } from "tslog";
 import { ConflictError } from "../../../../common/types";
 import type { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
+import { InternalTracer } from "../../../../infra/tracing/InternalTracer";
 import { ILogService } from "../../api/ILogService";
 import {
   IngestEdgeStart,
@@ -93,18 +94,22 @@ export class LogServiceImpl extends ILogService {
       });
 
       // Publish the raw events batch to the event bus
-      await this.eventBus.publish(
-        [
+      await InternalTracer.trace(
+        "eventBus.publish log.telemetry.received",
+        () => this.eventBus.publish(
+          [
+            {
+              topic: "log.telemetry.received",
+              key: data.userId,
+              idempotencyId,
+              data,
+            },
+          ],
           {
-            topic: "log.telemetry.received",
-            key: data.userId,
-            idempotencyId,
-            data,
+            batchId: `log.telemetry.received:${data.userId}:${idempotencyId}`,
           },
-        ],
-        {
-          batchId: `log.telemetry.received:${data.userId}:${idempotencyId}`,
-        },
+        ),
+        { type: "eventbus", importanceLevel: 1 }
       );
     } catch (err) {
       this.logger.error(err);
@@ -119,6 +124,7 @@ export class LogServiceImpl extends ILogService {
    * 2. Loads visible edges linking those loaded nodes within a cap.
    * 3. Invokes the LogGraphProjector utility to collapse hidden nodes into ghost nodes.
    */
+  // fallow-ignore-next-line complexity
   async projectTraceGraph(data: {
     userId: string;
     traceId: string;
@@ -130,7 +136,11 @@ export class LogServiceImpl extends ILogService {
 
     const limit = Math.min(providedLimit ?? DEFAULT_PROJECTION_NODE_CAP, MAX_PROJECTION_NODE_CAP);
 
-    const summary = await this.readRepo.loadTraceSummary({ userId, traceId });
+    const summary = await InternalTracer.trace(
+      "loadTraceSummary",
+      () => this.readRepo.loadTraceSummary({ userId, traceId }),
+      { type: "db", importanceLevel: 1 }
+    );
     if (!summary) {
       throw new Error("Trace not found");
     }
@@ -147,32 +157,44 @@ export class LogServiceImpl extends ILogService {
     }
 
     // Load nodes and edges under hard limits (safety caps) to prevent memory exhaust
-    const boundedNodes = await this.readRepo.loadBoundedProjectionNodes({
-      userId,
-      traceId,
-      paging: { offset, limit },
-    });
+    const boundedNodes = await InternalTracer.trace(
+      "loadBoundedProjectionNodes",
+      () => this.readRepo.loadBoundedProjectionNodes({
+        userId,
+        traceId,
+        paging: { offset, limit },
+      }),
+      { type: "db", importanceLevel: 1 }
+    );
 
-    const boundedEdges = await this.readRepo.loadBoundedVisibleEdges({
-      userId,
-      traceId,
-      nodeIds: boundedNodes.items.map((node) => node.id),
-    });
+    const boundedEdges = await InternalTracer.trace(
+      "loadBoundedVisibleEdges",
+      () => this.readRepo.loadBoundedVisibleEdges({
+        userId,
+        traceId,
+        nodeIds: boundedNodes.items.map((node) => node.id),
+      }),
+      { type: "db", importanceLevel: 1 }
+    );
 
     // Run local CPU projection rules to calculate visible normal and ghost nodes
-    const result = this.projector.project({
-      userId,
-      traceId,
-      threshold,
-      nodes: boundedNodes.items,
-      edges: boundedEdges.edges,
-      nodeCap: {
-        cap: limit,
-        returnedCount: boundedNodes.items.length,
-        capHit: boundedNodes.hasMore,
-      },
-      edgeCap: boundedEdges.cap,
-    });
+    const result = await InternalTracer.trace(
+      "projector.project",
+      () => this.projector.project({
+        userId,
+        traceId,
+        threshold,
+        nodes: boundedNodes.items,
+        edges: boundedEdges.edges,
+        nodeCap: {
+          cap: limit,
+          returnedCount: boundedNodes.items.length,
+          capHit: boundedNodes.hasMore,
+        },
+        edgeCap: boundedEdges.cap,
+      }),
+      { type: "cpu", importanceLevel: 2 }
+    );
 
     // Enrich metadata with paging information
     const hasAfter = boundedNodes.hasMore;
