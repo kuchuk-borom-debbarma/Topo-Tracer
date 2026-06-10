@@ -1,11 +1,11 @@
 # Roadmap: Node.js SDK (Fresh Start)
 
 ## Phase 1: Core Foundation
-**Goal:** Implement the basic SDK structure and types.
+**Goal:** Implement the basic SDK structure and types with behavioral verification.
 **Plans:** 3 plans
 - [ ] 01-01-PLAN.md — Initialize package and define core telemetry types.
-- [ ] 01-02-PLAN.md — Implement Tracer and Span with AsyncLocalStorage context.
-- [ ] 01-03-PLAN.md — Implement BatchExporter with native fetch.
+- [ ] 01-02-PLAN.md — Implement Tracer and Span with ALS, implicit/explicit edges, and core tests.
+- [ ] 01-03-PLAN.md — Implement BatchExporter with configurable intervals and batching tests.
 
 ## Phase 2: Hono Ingestion Support
 **Goal:** Ensure the backend can receive data from the new SDK.
