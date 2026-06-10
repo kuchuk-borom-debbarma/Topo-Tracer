@@ -9,6 +9,27 @@ type PostgresContext = Context<PostgresEnv>;
 let sqlClient: postgres.Sql | undefined;
 
 /**
+ * Direct initialization helper for PostgreSQL client.
+ * Used for background tasks/daemons that start before any HTTP requests or outside a Hono Context.
+ */
+// fallow-ignore-next-line complexity
+const initializePostgresClientDirectly = (connectionString?: string): postgres.Sql => {
+  if (!sqlClient) {
+    const connStr =
+      connectionString ??
+      (typeof process !== "undefined" ? process.env.POSTGRES_URL : undefined) ??
+      "postgres://postgres:password@localhost:5432/topo_tracer";
+
+    sqlClient = postgres(connStr, {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 30,
+    });
+  }
+  return sqlClient;
+};
+
+/**
  * Retrieves the PostgreSQL database client singleton instance.
  * Initializes it on first call using POSTGRES_URL env binding.
  */
@@ -18,13 +39,9 @@ const getPostgresClient = (c: PostgresContext): postgres.Sql => {
       getStringEnvValue(c, "POSTGRES_URL") ??
       "postgres://postgres:password@localhost:5432/topo_tracer";
 
-    sqlClient = postgres(connectionString, {
-      max: 10,
-      idle_timeout: 20,
-      connect_timeout: 30,
-    });
+    initializePostgresClientDirectly(connectionString);
   }
-  return sqlClient;
+  return sqlClient!;
 };
 
 /**
@@ -39,15 +56,22 @@ export const getInitializedPostgresClient = (): postgres.Sql => {
 };
 
 /**
- * Middleware handler to initialize PostgreSQL client and execute table schemas.
+ * Initializes the PostgreSQL client and ensures all database tables are created.
+ * Used during application boot/startup.
  */
-export const initPostgres: MiddlewareHandler<PostgresEnv> = async (c, next) => {
-  const sql = getPostgresClient(c);
-
-  // Sequentially create database tables if they do not exist
+export const bootstrapPostgres = async (connectionString?: string): Promise<postgres.Sql> => {
+  const sql = initializePostgresClientDirectly(connectionString);
   for (const statement of POSTGRES_SCHEMA_STATEMENTS) {
     await sql.unsafe(statement);
   }
+  return sql;
+};
 
+/**
+ * Middleware handler to initialize PostgreSQL client and execute table schemas.
+ */
+export const initPostgres: MiddlewareHandler<PostgresEnv> = async (c, next) => {
+  const connectionString = getStringEnvValue(c, "POSTGRES_URL");
+  await bootstrapPostgres(connectionString);
   await next();
 };

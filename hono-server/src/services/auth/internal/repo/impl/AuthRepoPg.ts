@@ -286,6 +286,6 @@ export class AuthRepoPg extends IAuthRepo {
   }
 
   async transaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
-    return this.sql.begin(fn);
+    return this.sql.begin(fn) as unknown as Promise<T>;
   }
 }

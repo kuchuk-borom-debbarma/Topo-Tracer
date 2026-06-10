@@ -215,6 +215,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         diagOrphanEdges: summaryRows[0].diagnostic_orphan_edge_count,
         diagInvalidImportance: summaryRows[0].diagnostic_invalid_importance_count,
         diagClockSkew: summaryRows[0].diagnostic_clock_skew_count,
+        diagLimitExceeded: summaryRows[0].diagnostic_limit_exceeded_count,
       } : null,
     };
   }
@@ -577,6 +578,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       diagOrphanEdges: row.diagnostic_orphan_edge_count,
       diagInvalidImportance: row.diagnostic_invalid_importance_count,
       diagClockSkew: row.diagnostic_clock_skew_count,
+      diagLimitExceeded: row.diagnostic_limit_exceeded_count,
     };
   }
 
@@ -705,6 +707,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       diagnostic_orphan_edge_count: summary.diagOrphanEdges,
       diagnostic_invalid_importance_count: summary.diagInvalidImportance,
       diagnostic_clock_skew_count: summary.diagClockSkew,
+      diagnostic_limit_exceeded_count: summary.diagLimitExceeded,
     };
   }
 

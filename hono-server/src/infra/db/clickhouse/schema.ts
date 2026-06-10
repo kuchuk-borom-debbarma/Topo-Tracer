@@ -119,7 +119,8 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
   diagnostic_cycle_count UInt32 COMMENT 'Count of detected cycles in the graph',
   diagnostic_orphan_edge_count UInt32 COMMENT 'Count of edges pointing to missing nodes',
   diagnostic_invalid_importance_count UInt32 COMMENT 'Count of nodes with importance outside expected range',
-  diagnostic_clock_skew_count UInt32 COMMENT 'Count of events appearing before their logical cause'
+  diagnostic_clock_skew_count UInt32 COMMENT 'Count of events appearing before their logical cause',
+  diagnostic_limit_exceeded_count UInt32 COMMENT 'Count of events dropped due to size or complexity limits'
 )
 ENGINE = ReplacingMergeTree(materialized_at_ms)
 ORDER BY (user_id, trace_id);

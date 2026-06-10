@@ -97,6 +97,7 @@ export type TraceSummaryRow = {
   diagnostic_orphan_edge_count: number;
   diagnostic_invalid_importance_count: number;
   diagnostic_clock_skew_count: number;
+  diagnostic_limit_exceeded_count: number;
 };
 
 /**

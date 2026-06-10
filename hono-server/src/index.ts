@@ -6,12 +6,57 @@ import { externalNotificationService } from "./services/external-notification";
 import { cache, SpoofCache } from "./infra/cache";
 import { logService, logIngestConsumer, readOptimisedAggregator } from "./services/log";
 import { eventBus } from "./infra/event-bus";
-import { PgOutboxStore } from "./infra/event-bus/outbox";
+import { outboxStore, OutboxRelay } from "./infra/event-bus/outbox";
+
+const outboxRelay = new OutboxRelay(outboxStore, eventBus);
+
+// Bootstrap Postgres database and start the outbox relay background daemon on startup
+postgres.bootstrapPostgres()
+  .then(() => {
+    console.log("[Postgres] Database bootstrapped and schemas verified.");
+    outboxRelay.start();
+    console.log("[OutboxRelay] Background outbox relay daemon started.");
+  })
+  .catch((err) => {
+    console.error("[Postgres] Bootstrapping failed:", err);
+  });
 
 // Initialize event consumers on startup
 authEventConsumer.init().catch((err) => console.error("[AuthEventConsumer] Failed to start:", err));
 logIngestConsumer.init().catch((err) => console.error("[LogIngestConsumer] Failed to start:", err));
 readOptimisedAggregator.init().catch((err) => console.error("[ReadOptimisedAggregator] Failed to start:", err));
+
+// Register process lifecycle hooks for graceful shutdown in long-lived VMs/containers
+const handleGracefulShutdown = async (signal: string) => {
+  console.log(`[Server] Received ${signal}. Initiating graceful shutdown...`);
+  
+  try {
+    console.log("[Server] Stopping outbox relay daemon...");
+    await outboxRelay.stop();
+    console.log("[Server] Outbox relay stopped cleanly.");
+    
+    if (typeof (eventBus as any).shutdown === "function") {
+      console.log("[Server] Shutting down event bus connection...");
+      await (eventBus as any).shutdown();
+    }
+    
+    console.log("[Server] Closing PostgreSQL connection pool...");
+    const pgClient = postgres.getInitializedPostgresClient();
+    await pgClient.end();
+    console.log("[Server] PostgreSQL connection pool closed.");
+    
+    console.log("[Server] Graceful shutdown complete. Exiting.");
+    process.exit(0);
+  } catch (error) {
+    console.error("[Server] Error during graceful shutdown:", error);
+    process.exit(1);
+  }
+};
+
+if (typeof process !== "undefined") {
+  process.on("SIGINT", () => handleGracefulShutdown("SIGINT"));
+  process.on("SIGTERM", () => handleGracefulShutdown("SIGTERM"));
+}
 
 const app = new Hono<clickhouse.ClickHouseEnv>();
 
@@ -28,7 +73,7 @@ app.get("/", (c) => {
   const _dummyIngest = logIngestConsumer;
   const _dummyAggregator = readOptimisedAggregator;
   const _dummyBus = eventBus;
-  const _dummyOutbox = PgOutboxStore;
+  const _dummyOutbox = outboxStore;
   return c.text("Hello Hono!");
 });
 

@@ -60,6 +60,7 @@ class FakeLogReadRepo extends ILogReadRepo {
     diagOrphanEdges: 0,
     diagInvalidImportance: 0,
     diagClockSkew: 0,
+    diagLimitExceeded: 0,
   };
   loadBoundedProjectionNodesResult: PagedResult<ReadNode> | null = null;
 

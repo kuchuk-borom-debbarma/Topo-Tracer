@@ -49,7 +49,7 @@ export class KafkaEventBus extends IEventBus {
     if (!this.producer) {
       this.producer = this.kafka.producer({
         idempotent: true,
-        maxInFlightRequestsPerConnection: 5,
+        maxInFlightRequests: 5,
       });
       await this.producer.connect();
     }

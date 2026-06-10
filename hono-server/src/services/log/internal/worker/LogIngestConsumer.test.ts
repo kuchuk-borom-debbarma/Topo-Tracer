@@ -125,7 +125,7 @@ describe("LogIngestConsumer", () => {
     };
 
     await expect(
-      eventBus.lastCallback([mockEvent])
+      eventBus.lastCallback([mockEvent]) as Promise<any>
     ).rejects.toThrow("ClickHouse write timeout");
 
     expect(eventBus.publish).not.toHaveBeenCalled();

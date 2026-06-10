@@ -9,6 +9,10 @@
       "ESNext",
       "DOM"
     ],
+    "types": [
+      "bun",
+      "node"
+    ],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },

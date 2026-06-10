@@ -29,6 +29,8 @@ declare module "bun:test" {
     toMatch(expected: string | RegExp): void;
     toBeNull(): void;
     toBeGreaterThan(expected: number): void;
+    toBeLessThan(expected: number): void;
+    toBeTypeOf(expected: string): void;
     toHaveProperty(path: string | string[], value?: any): void;
     toHaveBeenCalled(): void;
     toHaveBeenCalledTimes(count: number): void;
@@ -62,4 +64,5 @@ declare module "bun:test" {
 
 declare const process: {
   cwd(): string;
+  memoryUsage(): { heapUsed: number };
 };

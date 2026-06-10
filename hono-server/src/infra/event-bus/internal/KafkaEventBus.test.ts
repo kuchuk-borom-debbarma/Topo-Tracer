@@ -67,7 +67,7 @@ describe("KafkaEventBus Integration", () => {
     expect(mockKafka).toHaveBeenCalled();
     expect(mockKafkaProducer).toHaveBeenCalledWith({
       idempotent: true,
-      maxInFlightRequestsPerConnection: 5,
+      maxInFlightRequests: 5,
     });
     expect(mockProducerConnect).toHaveBeenCalled();
     expect(mockProducerSend).toHaveBeenCalledWith({
