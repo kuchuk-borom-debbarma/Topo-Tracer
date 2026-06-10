@@ -566,3 +566,117 @@ describe("LogReadRepoClickHouse persistence mapping hardening (D-15, FR5)", () =
     });
   });
 });
+
+describe("LogReadRepoClickHouse Hybrid Real-time Summary Aggressive Edge Cases", () => {
+  test("should handle missing start/end times and null values resiliently", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    // Real-time table has missing started_at_ms or ended_at_ms (e.g. unfinished traces)
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE] = [
+      {
+        user_id: "u1",
+        trace_id: "t1",
+        node_count: 5,
+        edge_count: 0,
+        min_importance_level: null,
+        max_importance_level: null,
+        started_at_ms: null,
+        ended_at_ms: null,
+        materialized_at_ms: 1000,
+      },
+    ];
+
+    const result = await repo.loadTraceSummary({ userId: "u1", traceId: "t1" });
+    expect(result).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      nodeCount: 5,
+      edgeCount: 0,
+      minImportanceLevel: 0,
+      maxImportanceLevel: 0,
+      startedAt: 0,
+      endedAt: null,
+      materializedAt: 1000,
+    });
+  });
+
+  test("should handle extreme importance levels and large integer bounds", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE] = [
+      {
+        user_id: "u1",
+        trace_id: "t1",
+        node_count: 999999,
+        edge_count: 888888,
+        min_importance_level: -5000,
+        max_importance_level: 99999,
+        started_at_ms: 1718000000000,
+        ended_at_ms: 1718000005000,
+        materialized_at_ms: 1718000010000,
+      },
+    ];
+
+    const result = await repo.loadTraceSummary({ userId: "u1", traceId: "t1" });
+    expect(result).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      nodeCount: 999999,
+      edgeCount: 888888,
+      minImportanceLevel: -5000,
+      maxImportanceLevel: 99999,
+      startedAt: 1718000000000,
+      endedAt: 1718000005000,
+      materializedAt: 1718000010000,
+    });
+  });
+
+  test("should fallback entirely to worker table if realtime table returns no rows", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE] = [];
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_TABLE] = [
+      {
+        user_id: "u1",
+        trace_id: "t1",
+        node_count: 4,
+        edge_count: 3,
+        min_importance_level: 0,
+        max_importance_level: 2,
+        started_at_ms: 2000,
+        ended_at_ms: 3000,
+        materialized_at_ms: 4000,
+        diagnostic_missing_starts_count: 1,
+        diagnostic_missing_ends_count: 1,
+        diagnostic_negative_duration_count: 1,
+        diagnostic_cycle_count: 0,
+        diagnostic_orphan_edge_count: 2,
+        diagnostic_invalid_importance_count: 0,
+        diagnostic_clock_skew_count: 1,
+        diagnostic_limit_exceeded_count: 0,
+      },
+    ];
+
+    const result = await repo.loadTraceSummary({ userId: "u1", traceId: "t1" });
+    expect(result).toMatchObject({
+      userId: "u1",
+      traceId: "t1",
+      nodeCount: 4,
+      edgeCount: 3,
+      minImportanceLevel: 0,
+      maxImportanceLevel: 2,
+      startedAt: 2000,
+      endedAt: 3000,
+      materializedAt: 4000,
+      diagMissingStarts: 1,
+      diagMissingEnds: 1,
+      diagNegativeDurations: 1,
+      diagCycles: 0,
+      diagOrphanEdges: 2,
+      diagClockSkew: 1,
+    });
+  });
+});
