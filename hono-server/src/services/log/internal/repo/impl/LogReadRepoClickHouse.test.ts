@@ -8,6 +8,7 @@ import {
   CLICKHOUSE_READ_EDGES_TABLE,
   CLICKHOUSE_TRACE_SUMMARIES_TABLE,
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
+  CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE,
 } from "../../../../../infra/db/clickhouse";
 import { LogReadRepoClickHouse } from "./LogReadRepoClickHouse";
 import { DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
@@ -160,21 +161,60 @@ describe("LogReadRepoClickHouse row loading", () => {
     expect(result.summary).toMatchObject({ nodeCount: 1, edgeCount: 1 });
   });
 
-  test("loadTraceSummary maps summary and handles empty", async () => {
+  test("loadTraceSummary maps summary, queries realtime table and merges with worker diagnostics", async () => {
     const fakeClient = new FakeClickHouseClient();
     const repo = createRepoWithFakeClient(fakeClient);
 
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE] = [
+      {
+        user_id: "u1",
+        trace_id: "t1",
+        node_count: 15,
+        edge_count: 12,
+        min_importance_level: 1,
+        max_importance_level: 3,
+        started_at_ms: 5000,
+        ended_at_ms: 8000,
+        materialized_at_ms: 10000,
+      },
+    ];
+
     fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_TABLE] = [
-      { user_id: "u1", trace_id: "t1", node_count: 5, edge_count: 4, materialized_at_ms: 12345 },
+      {
+        user_id: "u1",
+        trace_id: "t1",
+        node_count: 5,
+        edge_count: 4,
+        min_importance_level: 1,
+        max_importance_level: 3,
+        started_at_ms: 5000,
+        ended_at_ms: 8000,
+        materialized_at_ms: 9000,
+        diagnostic_missing_starts_count: 2,
+        diagnostic_missing_ends_count: 3,
+        diagnostic_negative_duration_count: 0,
+        diagnostic_cycle_count: 1,
+        diagnostic_orphan_edge_count: 0,
+        diagnostic_invalid_importance_count: 0,
+        diagnostic_clock_skew_count: 0,
+        diagnostic_limit_exceeded_count: 0,
+      },
     ];
 
     const result = await repo.loadTraceSummary({ userId: "u1", traceId: "t1" });
     expect(result).toMatchObject({
       userId: "u1",
       traceId: "t1",
-      nodeCount: 5,
-      edgeCount: 4,
-      materializedAt: 12345,
+      nodeCount: 15,
+      edgeCount: 12,
+      minImportanceLevel: 1,
+      maxImportanceLevel: 3,
+      startedAt: 5000,
+      endedAt: 8000,
+      materializedAt: 10000,
+      diagMissingStarts: 2,
+      diagMissingEnds: 3,
+      diagCycles: 1,
     });
 
     const empty = await repo.loadTraceSummary({ userId: "u2", traceId: "t2" });

@@ -148,6 +148,61 @@ ENGINE = ReplacingMergeTree(updated_at_ms)
 ORDER BY (user_id, trace_id);
 `;
 
+export const CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE = "trace_summaries_realtime";
+export const CLICKHOUSE_NODE_EVENTS_SUMMARY_MV = "node_events_summary_mv";
+export const CLICKHOUSE_EDGE_EVENTS_SUMMARY_MV = "edge_events_summary_mv";
+
+export const CLICKHOUSE_CREATE_TRACE_SUMMARIES_REALTIME_TABLE = `
+CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
+(
+  user_id String COMMENT 'User id that owns the trace',
+  trace_id String COMMENT 'Unique trace id',
+  node_count SimpleAggregateFunction(sum, UInt32) COMMENT 'Real-time count of distinct nodes',
+  edge_count SimpleAggregateFunction(sum, UInt32) COMMENT 'Real-time count of distinct edges',
+  min_importance_level SimpleAggregateFunction(min, Nullable(Int32)) COMMENT 'Minimum importance level found',
+  max_importance_level SimpleAggregateFunction(max, Nullable(Int32)) COMMENT 'Maximum importance level found',
+  started_at_ms SimpleAggregateFunction(min, Nullable(UInt64)) COMMENT 'Earliest start timestamp',
+  ended_at_ms SimpleAggregateFunction(max, Nullable(UInt64)) COMMENT 'Latest end timestamp',
+  updated_at_ms SimpleAggregateFunction(max, Nullable(UInt64)) COMMENT 'Latest event update timestamp'
+)
+ENGINE = AggregatingMergeTree()
+ORDER BY (user_id, trace_id);
+`;
+
+export const CLICKHOUSE_CREATE_NODE_EVENTS_SUMMARY_MV = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS ${CLICKHOUSE_NODE_EVENTS_SUMMARY_MV}
+TO ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
+AS SELECT
+  user_id,
+  trace_id,
+  countIf(id, event_type = 0) as node_count,
+  0 as edge_count,
+  minIf(importance_level, event_type = 0) as min_importance_level,
+  maxIf(importance_level, event_type = 0) as max_importance_level,
+  minIf(started_at_ms, event_type = 0) as started_at_ms,
+  maxIf(ended_at_ms, event_type = 1) as ended_at_ms,
+  max(if(event_type = 0, started_at_ms, ended_at_ms)) as updated_at_ms
+FROM ${CLICKHOUSE_NODE_EVENTS_TABLE}
+GROUP BY user_id, trace_id;
+`;
+
+export const CLICKHOUSE_CREATE_EDGE_EVENTS_SUMMARY_MV = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS ${CLICKHOUSE_EDGE_EVENTS_SUMMARY_MV}
+TO ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
+AS SELECT
+  user_id,
+  trace_id,
+  0 as node_count,
+  countIf(id, event_type = 0) as edge_count,
+  Null as min_importance_level,
+  Null as max_importance_level,
+  minIf(started_at_ms, event_type = 0) as started_at_ms,
+  maxIf(ended_at_ms, event_type = 1) as ended_at_ms,
+  max(if(event_type = 0, started_at_ms, ended_at_ms)) as updated_at_ms
+FROM ${CLICKHOUSE_EDGE_EVENTS_TABLE}
+GROUP BY user_id, trace_id;
+`;
+
 export const CLICKHOUSE_SCHEMA_STATEMENTS = [
   CLICKHOUSE_CREATE_NODE_EVENTS_TABLE,
   CLICKHOUSE_CREATE_EDGE_EVENTS_TABLE,
@@ -155,4 +210,7 @@ export const CLICKHOUSE_SCHEMA_STATEMENTS = [
   CLICKHOUSE_CREATE_READ_EDGES_TABLE,
   CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE,
   CLICKHOUSE_CREATE_MATERIALIZATION_CHECKPOINTS_TABLE,
+  CLICKHOUSE_CREATE_TRACE_SUMMARIES_REALTIME_TABLE,
+  CLICKHOUSE_CREATE_NODE_EVENTS_SUMMARY_MV,
+  CLICKHOUSE_CREATE_EDGE_EVENTS_SUMMARY_MV,
 ] as const;

@@ -5,6 +5,7 @@ import {
   CLICKHOUSE_READ_EDGES_TABLE,
   CLICKHOUSE_TRACE_SUMMARIES_TABLE,
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
+  CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE,
   getInitializedClickHouseClient,
 } from "../../../../../infra/db/clickhouse";
 import {
@@ -98,7 +99,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     const client = this.getClient();
     const commonParams = { userId: params.userId, traceId: params.traceId };
 
-    const [nodesResult, edgesResult, summaryResult] = await Promise.all([
+    const [nodesResult, edgesResult, summary] = await Promise.all([
       client.query({
         query: `
           SELECT 
@@ -147,22 +148,12 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         format: "JSONEachRow",
         query_params: commonParams,
       }),
-      client.query({
-        query: `
-          SELECT * FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
-          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
-          ORDER BY materialized_at_ms DESC
-          LIMIT 1
-        `,
-        format: "JSONEachRow",
-        query_params: commonParams,
-      }),
+      this.loadTraceSummary(params),
     ]);
 
-    const [nodeRows, edgeRows, summaryRows] = await Promise.all([
+    const [nodeRows, edgeRows] = await Promise.all([
       nodesResult.json<ReadNodeRow>(),
       edgesResult.json<ReadEdgeRow>(),
-      summaryResult.json<TraceSummaryRow>(),
     ]);
 
     return {
@@ -198,25 +189,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         clockSkewMs: row.clock_skew_ms,
         materializedAt: row.materialized_at_ms,
       })),
-      summary: summaryRows.length > 0 ? {
-        userId: summaryRows[0].user_id,
-        traceId: summaryRows[0].trace_id,
-        nodeCount: summaryRows[0].node_count,
-        edgeCount: summaryRows[0].edge_count,
-        minImportanceLevel: summaryRows[0].min_importance_level,
-        maxImportanceLevel: summaryRows[0].max_importance_level,
-        startedAt: summaryRows[0].started_at_ms,
-        endedAt: summaryRows[0].ended_at_ms,
-        materializedAt: summaryRows[0].materialized_at_ms,
-        diagMissingStarts: summaryRows[0].diagnostic_missing_starts_count,
-        diagMissingEnds: summaryRows[0].diagnostic_missing_ends_count,
-        diagNegativeDurations: summaryRows[0].diagnostic_negative_duration_count,
-        diagCycles: summaryRows[0].diagnostic_cycle_count,
-        diagOrphanEdges: summaryRows[0].diagnostic_orphan_edge_count,
-        diagInvalidImportance: summaryRows[0].diagnostic_invalid_importance_count,
-        diagClockSkew: summaryRows[0].diagnostic_clock_skew_count,
-        diagLimitExceeded: summaryRows[0].diagnostic_limit_exceeded_count,
-      } : null,
+      summary,
     };
   }
 
@@ -536,49 +509,83 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
   /**
    * Loads the latest summary for a trace from ClickHouse.
    */
+  // fallow-ignore-next-line complexity
   async loadTraceSummary(params: {
     userId: string;
     traceId: string;
   }): Promise<ReadTraceSummary | null> {
     const client = this.getClient();
-    const result = await client.query({
-      query: `
-        SELECT * FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
-        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
-        ORDER BY materialized_at_ms DESC
-        LIMIT 1
-      `,
-      format: "JSONEachRow",
-      query_params: {
-        userId: params.userId,
-        traceId: params.traceId,
-      },
-    });
+    const commonParams = {
+      userId: params.userId,
+      traceId: params.traceId,
+    };
 
-    const rows = await result.json<TraceSummaryRow>();
-    if (rows.length === 0) {
+    // Query both the real-time aggregated table and the worker-computed diagnostics table concurrently
+    const [rtResult, workerResult] = await Promise.all([
+      client.query({
+        query: `
+          SELECT
+            user_id,
+            trace_id,
+            sum(node_count) as node_count,
+            sum(edge_count) as edge_count,
+            min(min_importance_level) as min_importance_level,
+            max(max_importance_level) as max_importance_level,
+            min(started_at_ms) as started_at_ms,
+            max(ended_at_ms) as ended_at_ms,
+            max(updated_at_ms) as materialized_at_ms
+          FROM ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          GROUP BY user_id, trace_id
+        `,
+        format: "JSONEachRow",
+        query_params: commonParams,
+      }),
+      client.query({
+        query: `
+          SELECT * FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
+          WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          ORDER BY materialized_at_ms DESC
+          LIMIT 1
+        `,
+        format: "JSONEachRow",
+        query_params: commonParams,
+      }),
+    ]);
+
+    const [rtRows, workerRows] = await Promise.all([
+      rtResult.json<any>(),
+      workerResult.json<TraceSummaryRow>(),
+    ]);
+
+    if (rtRows.length === 0 && workerRows.length === 0) {
       return null;
     }
 
-    const row = rows[0];
+    const rtRow = rtRows[0];
+    const workerRow = workerRows[0];
+
+    // Build the hybrid result, prioritizing real-time ingestion counts/bounds
     return {
-      userId: row.user_id,
-      traceId: row.trace_id,
-      nodeCount: row.node_count,
-      edgeCount: row.edge_count,
-      minImportanceLevel: row.min_importance_level,
-      maxImportanceLevel: row.max_importance_level,
-      startedAt: row.started_at_ms,
-      endedAt: row.ended_at_ms,
-      materializedAt: row.materialized_at_ms,
-      diagMissingStarts: row.diagnostic_missing_starts_count,
-      diagMissingEnds: row.diagnostic_missing_ends_count,
-      diagNegativeDurations: row.diagnostic_negative_duration_count,
-      diagCycles: row.diagnostic_cycle_count,
-      diagOrphanEdges: row.diagnostic_orphan_edge_count,
-      diagInvalidImportance: row.diagnostic_invalid_importance_count,
-      diagClockSkew: row.diagnostic_clock_skew_count,
-      diagLimitExceeded: row.diagnostic_limit_exceeded_count,
+      userId: params.userId,
+      traceId: params.traceId,
+      nodeCount: rtRow ? Number(rtRow.node_count) : (workerRow ? workerRow.node_count : 0),
+      edgeCount: rtRow ? Number(rtRow.edge_count) : (workerRow ? workerRow.edge_count : 0),
+      minImportanceLevel: rtRow && rtRow.min_importance_level !== null ? Number(rtRow.min_importance_level) : (workerRow ? workerRow.min_importance_level : 0),
+      maxImportanceLevel: rtRow && rtRow.max_importance_level !== null ? Number(rtRow.max_importance_level) : (workerRow ? workerRow.max_importance_level : 0),
+      startedAt: rtRow && rtRow.started_at_ms !== null ? Number(rtRow.started_at_ms) : (workerRow ? Number(workerRow.started_at_ms) : 0),
+      endedAt: rtRow && rtRow.ended_at_ms !== null ? Number(rtRow.ended_at_ms) : (workerRow && workerRow.ended_at_ms !== null ? Number(workerRow.ended_at_ms) : null),
+      materializedAt: rtRow && rtRow.materialized_at_ms !== null ? Number(rtRow.materialized_at_ms) : (workerRow ? Number(workerRow.materialized_at_ms) : Date.now()),
+      
+      // Diagnostics are supplied by the asynchronous worker
+      diagMissingStarts: workerRow ? workerRow.diagnostic_missing_starts_count : 0,
+      diagMissingEnds: workerRow ? workerRow.diagnostic_missing_ends_count : 0,
+      diagNegativeDurations: workerRow ? workerRow.diagnostic_negative_duration_count : 0,
+      diagCycles: workerRow ? workerRow.diagnostic_cycle_count : 0,
+      diagOrphanEdges: workerRow ? workerRow.diagnostic_orphan_edge_count : 0,
+      diagInvalidImportance: workerRow ? workerRow.diagnostic_invalid_importance_count : 0,
+      diagClockSkew: workerRow ? workerRow.diagnostic_clock_skew_count : 0,
+      diagLimitExceeded: workerRow ? workerRow.diagnostic_limit_exceeded_count : 0,
     };
   }
 

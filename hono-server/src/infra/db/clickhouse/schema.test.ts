@@ -7,6 +7,7 @@ describe("ClickHouse Read Model Schema", () => {
     "CLICKHOUSE_CREATE_READ_EDGES_TABLE",
     "CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE",
     "CLICKHOUSE_CREATE_MATERIALIZATION_CHECKPOINTS_TABLE",
+    "CLICKHOUSE_CREATE_TRACE_SUMMARIES_REALTIME_TABLE",
   ] as const;
 
   test("Read model DDL constants are exported", () => {
@@ -14,6 +15,8 @@ describe("ClickHouse Read Model Schema", () => {
       expect((schema as any)[constant]).toBeDefined();
       expect(typeof (schema as any)[constant]).toBe("string");
     });
+    expect(schema.CLICKHOUSE_CREATE_NODE_EVENTS_SUMMARY_MV).toBeDefined();
+    expect(schema.CLICKHOUSE_CREATE_EDGE_EVENTS_SUMMARY_MV).toBeDefined();
   });
 
   test("All read model tables are registered in CLICKHOUSE_SCHEMA_STATEMENTS", () => {
