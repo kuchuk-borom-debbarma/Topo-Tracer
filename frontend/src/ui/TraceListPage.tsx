@@ -7,6 +7,7 @@ import {
   formatCompactNumber,
   formatDate,
   formatDuration,
+  formatImportance,
   relativeTime,
   shortId,
 } from "../utils";
@@ -29,7 +30,8 @@ export function TraceListPage() {
     const value = filter.trim().toLowerCase();
     if (!value) return result?.traces ?? [];
     return (result?.traces ?? []).filter((trace) =>
-      trace.traceId.toLowerCase().includes(value)
+      trace.traceId.toLowerCase().includes(value) ||
+      trace.name.toLowerCase().includes(value)
     );
   }, [filter, result?.traces]);
 
@@ -102,7 +104,7 @@ export function TraceListPage() {
               <input
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
-                placeholder="Trace ID"
+                placeholder="Trace ID or name"
               />
             </label>
           </div>
@@ -158,8 +160,8 @@ export function TraceListPage() {
                         >
                           <span className="trace-glyph"><Icon name="graph" /></span>
                           <span>
-                            <strong title={trace.traceId}>{shortId(trace.traceId, 18)}</strong>
-                            <small>Started {formatDate(trace.startedAt)}</small>
+                            <strong title={trace.traceId}>{trace.name}</strong>
+                            <small>{trace.traceId} • Started {formatDate(trace.startedAt)}</small>
                           </span>
                         </Link>
                       </td>
@@ -175,9 +177,9 @@ export function TraceListPage() {
                       </td>
                       <td>
                         <div className="importance-stack">
-                          <span>I{trace.minImportanceLevel}</span>
+                          <span>{formatImportance(trace.minImportanceLevel, trace.importanceLabels)}</span>
                           <i />
-                          <span>I{trace.maxImportanceLevel}</span>
+                          <span>{formatImportance(trace.maxImportanceLevel, trace.importanceLabels)}</span>
                         </div>
                       </td>
                       <td>{formatDuration(trace.startedAt, trace.endedAt)}</td>
