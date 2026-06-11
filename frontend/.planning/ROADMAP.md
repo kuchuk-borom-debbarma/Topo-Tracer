@@ -18,8 +18,11 @@ Plans:
 - [ ] 02-02-PLAN.md — Implement read retrieval for importance labels.
 
 ## Phase 3: Materialization Logic Refactor
-- [ ] Update `TraceReadModelMaterializer` to consume from `trace_events`.
-- [ ] Propagate labels to the read-optimized summary.
+**Goal:** Update the materializer to consume from the new trace_events table.
+**Plans:** 2 plans
+**Requirements:** [REPO-01, MAT-01]
+- [ ] 03-01-PLAN.md — Update Repository Contract & ClickHouse Implementation (REPO-01, MAT-01)
+- [ ] 03-02-PLAN.md — Refactor Materialization Logic (MAT-01)
 
 ## Phase 4: SDK Refactor
 - [ ] Update `Tracer` to emit `TraceStart` events.
