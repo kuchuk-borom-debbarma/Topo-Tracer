@@ -9,6 +9,8 @@ export type User = {
 export type TraceSummary = {
   userId: string;
   traceId: string;
+  name: string;
+  importanceLabels: Record<number, string>;
   nodeCount: number;
   edgeCount: number;
   minImportanceLevel: number;

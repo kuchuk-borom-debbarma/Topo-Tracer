@@ -61,3 +61,8 @@ export function shortId(value: string, length = 12): string {
 export function nodeLabel(nodeType: string, data: Record<string, string>): string {
   return data.name || data.label || data.operation || data.title || nodeType;
 }
+
+export function formatImportance(level: number, labels?: Record<number, string>): string {
+  const label = labels?.[level];
+  return label ? `I${level}: ${label}` : `I${level}`;
+}
