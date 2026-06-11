@@ -29,6 +29,27 @@ export async function login(input: {
   }, false);
 }
 
+export async function startSignUp(input: {
+  username: string;
+  email: string;
+  password: string;
+}): Promise<{ token: string }> {
+  return request("/api/v1/auth/signup/start", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, false);
+}
+
+export async function finishSignUp(input: {
+  token: string;
+  otp: string;
+}): Promise<{ success: boolean }> {
+  return request("/api/v1/auth/signup/finish", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, false);
+}
+
 export async function fetchCurrentUser(): Promise<{ user: User }> {
   return request("/api/v1/auth/me");
 }

@@ -423,57 +423,18 @@ function Inspector(props: {
   summary?: TraceSummary;
   onClose: () => void;
 }) {
-  const diagnostics = props.summary ? buildDiagnostics(props.summary) : [];
+  if (!props.selected) return null;
+
   return (
-    <aside className="inspector-panel">
-      <div className="inspector-heading">
-        <div>
-          <span className="overline">Inspector</span>
-          <h2>{props.selected ? selectedTitle(props.selected) : "Trace overview"}</h2>
-        </div>
-        {props.selected && (
-          <button className="icon-button" onClick={props.onClose} aria-label="Close inspector">
-            <Icon name="x" />
-          </button>
-        )}
+    <aside className="inspector">
+      <div className="inspector-header">
+        <button className="icon-button" onClick={props.onClose} aria-label="Close inspector">
+          <Icon name="x" />
+        </button>
       </div>
 
-      {props.selected?.type === "node" && <NodeInspector node={props.selected.value} />}
-      {props.selected?.type === "edge" && <EdgeInspector edge={props.selected.value} />}
-      {!props.selected && (
-        <>
-          <div className="inspector-hero">
-            <div className="inspector-orb"><Icon name="graph" /></div>
-            <span>{props.summary?.endedAt === null ? "Active trace" : "Completed trace"}</span>
-            <strong>{formatCompactNumber(props.summary?.nodeCount ?? 0)} nodes</strong>
-            <small>{props.summary ? formatDate(props.summary.startedAt) : "Loading summary..."}</small>
-          </div>
-          <div className="inspector-section">
-            <h3>Timing</h3>
-            <DetailRow label="Started" value={props.summary ? formatDate(props.summary.startedAt) : "-"} />
-            <DetailRow label="Ended" value={props.summary?.endedAt ? formatDate(props.summary.endedAt) : "Still open"} />
-            <DetailRow
-              label="Duration"
-              value={props.summary ? formatDuration(props.summary.startedAt, props.summary.endedAt) : "-"}
-            />
-            <DetailRow
-              label="Materialized"
-              value={props.summary ? formatDate(props.summary.materializedAt) : "-"}
-            />
-          </div>
-          <div className="inspector-section">
-            <h3>Diagnostics <span>{diagnostics.length}</span></h3>
-            {diagnostics.length === 0
-              ? <div className="diagnostic-clean"><Icon name="shield" /> No structural issues detected</div>
-              : diagnostics.map((item) => (
-                <div className="diagnostic-row" key={item.label}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                </div>
-              ))}
-          </div>
-        </>
-      )}
+      {props.selected.type === "node" && <NodeInspector node={props.selected.value} />}
+      {props.selected.type === "edge" && <EdgeInspector edge={props.selected.value} />}
     </aside>
   );
 }

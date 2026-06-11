@@ -619,26 +619,26 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         SELECT *, count(*) OVER() as total_trace_count
         FROM (
           SELECT
-            trace_id,
-            argMax(user_id, materialized_at_ms) as user_id,
-            argMax(node_count, materialized_at_ms) as node_count,
-            argMax(edge_count, materialized_at_ms) as edge_count,
-            argMax(min_importance_level, materialized_at_ms) as min_importance_level,
-            argMax(max_importance_level, materialized_at_ms) as max_importance_level,
-            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
-            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
-            max(materialized_at_ms) as materialized_at_ms,
-            argMax(diagnostic_missing_starts_count, materialized_at_ms) as diagnostic_missing_starts_count,
-            argMax(diagnostic_missing_ends_count, materialized_at_ms) as diagnostic_missing_ends_count,
-            argMax(diagnostic_negative_duration_count, materialized_at_ms) as diagnostic_negative_duration_count,
-            argMax(diagnostic_cycle_count, materialized_at_ms) as diagnostic_cycle_count,
-            argMax(diagnostic_orphan_edge_count, materialized_at_ms) as diagnostic_orphan_edge_count,
-            argMax(diagnostic_invalid_importance_count, materialized_at_ms) as diagnostic_invalid_importance_count,
-            argMax(diagnostic_clock_skew_count, materialized_at_ms) as diagnostic_clock_skew_count,
-            argMax(diagnostic_limit_exceeded_count, materialized_at_ms) as diagnostic_limit_exceeded_count
-          FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
-          WHERE user_id = {userId:String}
-          GROUP BY trace_id
+            s.trace_id as trace_id,
+            argMax(s.user_id, s.materialized_at_ms) as user_id,
+            argMax(s.node_count, s.materialized_at_ms) as node_count,
+            argMax(s.edge_count, s.materialized_at_ms) as edge_count,
+            argMax(s.min_importance_level, s.materialized_at_ms) as min_importance_level,
+            argMax(s.max_importance_level, s.materialized_at_ms) as max_importance_level,
+            argMax(s.started_at_ms, s.materialized_at_ms) as started_at_ms,
+            argMax(s.ended_at_ms, s.materialized_at_ms) as ended_at_ms,
+            max(s.materialized_at_ms) as materialized_at_ms,
+            argMax(s.diagnostic_missing_starts_count, s.materialized_at_ms) as diagnostic_missing_starts_count,
+            argMax(s.diagnostic_missing_ends_count, s.materialized_at_ms) as diagnostic_missing_ends_count,
+            argMax(s.diagnostic_negative_duration_count, s.materialized_at_ms) as diagnostic_negative_duration_count,
+            argMax(s.diagnostic_cycle_count, s.materialized_at_ms) as diagnostic_cycle_count,
+            argMax(s.diagnostic_orphan_edge_count, s.materialized_at_ms) as diagnostic_orphan_edge_count,
+            argMax(s.diagnostic_invalid_importance_count, s.materialized_at_ms) as diagnostic_invalid_importance_count,
+            argMax(s.diagnostic_clock_skew_count, s.materialized_at_ms) as diagnostic_clock_skew_count,
+            argMax(s.diagnostic_limit_exceeded_count, s.materialized_at_ms) as diagnostic_limit_exceeded_count
+          FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE} s
+          WHERE s.user_id = {userId:String}
+          GROUP BY s.trace_id
         )
         ORDER BY materialized_at_ms DESC, trace_id ASC
         LIMIT {limit:UInt32}

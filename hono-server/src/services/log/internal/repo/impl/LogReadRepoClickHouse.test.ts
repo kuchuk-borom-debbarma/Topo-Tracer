@@ -151,7 +151,7 @@ describe("LogReadRepoClickHouse row loading", () => {
     const query = fakeClient.queries.find((item) =>
       item.query.includes("total_trace_count")
     );
-    expect(query?.query).toContain("WHERE user_id = {userId:String}");
+    expect(query?.query).toContain("WHERE s.user_id = {userId:String}");
     expect(query?.query).toContain("ORDER BY materialized_at_ms DESC, trace_id ASC");
     expect(query?.query_params).toMatchObject({
       userId: "u1",

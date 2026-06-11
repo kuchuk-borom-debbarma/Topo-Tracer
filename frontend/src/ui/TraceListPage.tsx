@@ -45,12 +45,10 @@ export function TraceListPage() {
     <main className="page trace-list-page">
       <header className="page-header">
         <div>
-          <span className="overline">Observability workspace</span>
           <h1>Trace explorer</h1>
-          <p>Inspect materialized execution graphs without replaying the raw event stream.</p>
         </div>
         <div className="page-header-actions">
-          <div className="live-badge"><span /> Read model live</div>
+          <div className="live-badge"><span /> Live</div>
           <button
             className="button secondary"
             onClick={() => tracesQuery.refetch()}
@@ -65,30 +63,30 @@ export function TraceListPage() {
       <section className="metric-grid">
         <MetricCard
           icon="activity"
-          label="Materialized traces"
+          label="Traces"
           value={formatCompactNumber(result?.totalCount ?? 0)}
-          note={`Page ${result?.page ?? page} of ${Math.max(result?.totalPages ?? 1, 1)}`}
+          note=""
           tone="blue"
         />
         <MetricCard
           icon="layers"
-          label="Nodes in this page"
+          label="Nodes"
           value={formatCompactNumber(totalNodes)}
-          note="Bounded summary window"
+          note=""
           tone="violet"
         />
         <MetricCard
           icon="clock"
-          label="Currently open"
+          label="Open"
           value={formatCompactNumber(activeTraces)}
-          note={activeTraces ? "Receiving lifecycle events" : "All traces completed"}
+          note=""
           tone="cyan"
         />
         <MetricCard
           icon="shield"
           label="Diagnostics"
           value={formatCompactNumber(issueCount)}
-          note={issueCount ? "Review recommended" : "No issues on this page"}
+          note=""
           tone={issueCount ? "amber" : "green"}
         />
       </section>
@@ -96,8 +94,7 @@ export function TraceListPage() {
       <section className="panel trace-table-panel">
         <div className="panel-toolbar">
           <div>
-            <h2>Recent traces</h2>
-            <p>Ordered by latest materialization time</p>
+            <h2>Traces</h2>
           </div>
           <div className="toolbar-controls">
             <label className="search-box">
@@ -105,12 +102,9 @@ export function TraceListPage() {
               <input
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
-                placeholder="Filter this page by trace ID"
+                placeholder="Trace ID"
               />
             </label>
-            <button className="icon-button outlined" aria-label="Filter traces">
-              <Icon name="filter" />
-            </button>
           </div>
         </div>
 

@@ -37,4 +37,13 @@ The Topo-Tracer Node.js SDK is now production-ready, featuring a high-quality fl
 
 | Date | Task | Status |
 |------|------|--------|
+| 2026-06-12 | Clean inspector heading and badge readability | Complete |
+| 2026-06-12 | Improve node card readability | Complete |
+| 2026-06-12 | Polish trace detail glass UI | Complete |
+| 2026-06-12 | Soften glass UI and fix pagination footer | Complete |
+| 2026-06-12 | Remove sidebar and apply dark Headroom-style UI | Complete |
+| 2026-06-12 | Debloat trace UI | Complete |
+| 2026-06-12 | Apply minimal blur frontend theme | Complete |
+| 2026-06-12 | Fix ClickHouse trace list query | Complete |
+| 2026-06-12 | Add frontend signup flow | Complete |
 | 2026-06-11 | Build routed Hono trace explorer frontend | Complete |
