@@ -1,74 +1,110 @@
-export type JsonObject = Record<string, unknown>;
-
-export type ReadNode = {
+export type User = {
   id: string;
-  traceId: string;
-  name: string;
-  importanceLevel: number;
-  status: string;
-  startedAtUnixMs: number | null;
-  endedAtUnixMs: number | null;
-  durationMs: number | null;
-  flowOrder: number;
-  diagnostics: string[];
-  data: JsonObject;
-  isGhost?: boolean;
-  hiddenNodeCount?: number;
-  hiddenErrorCount?: number;
-  hiddenDurationMs?: number | null;
-};
-
-export type GraphEdge = {
-  id: string;
-  traceId: string;
-  fromNodeId: string;
-  toNodeId: string;
-  label: string;
-  status: string;
-  startedAtUnixMs: number | null;
-  endedAtUnixMs: number | null;
-  durationMs: number | null;
-  diagnostics: string[];
-  data: JsonObject;
-  isGhost?: boolean;
-  hiddenEdgeCount?: number;
+  username: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TraceSummary = {
+  userId: string;
   traceId: string;
-  createdAtUnixMs: number;
-  updatedAtUnixMs: number;
   nodeCount: number;
   edgeCount: number;
-  errorCount: number;
-  diagnosticCount: number;
+  minImportanceLevel: number;
   maxImportanceLevel: number;
-  materializedAtUnixMs: number;
+  startedAt: number;
+  endedAt: number | null;
+  materializedAt: number;
+  diagMissingStarts: number;
+  diagMissingEnds: number;
+  diagNegativeDurations: number;
+  diagCycles: number;
+  diagOrphanEdges: number;
+  diagInvalidImportance: number;
+  diagClockSkew: number;
+  diagLimitExceeded: number;
 };
 
-export type TraceListResponse = {
+export type TraceListResult = {
   traces: TraceSummary[];
-  total: number;
+  totalCount: number;
   page: number;
   limit: number;
   totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
 };
 
-export type GraphWindowResponse = {
+export type ProjectedNormalNode = {
+  kind: "normal";
+  id: string;
+  nodeType: string;
+  data: Record<string, string>;
+  startedAt: number;
+  endedAt: number | null;
+  originalStartedAt: number;
+  clockSkewMs: number;
+  importanceLevel: number;
+  flowOrder: number;
+  materializedAt: number;
+};
+
+export type ProjectedGhostNode = {
+  kind: "ghost";
+  id: string;
+  hiddenNodeCount: number;
+  hiddenEdgeCount: number;
+  nodeTypeCounts: Record<string, number>;
+  minImportanceLevel: number;
+  maxImportanceLevel: number;
+  startedAt: number;
+  endedAt: number | null;
+  flowOrderStart: number;
+  flowOrderEnd: number;
+};
+
+export type ProjectedFlowNode = ProjectedNormalNode | ProjectedGhostNode;
+
+export type ProjectedFlowEdge = {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  edgeType: string;
+  edgeCount: number;
+  startedAt: number;
+  endedAt: number | null;
+  originalStartedAt: number;
+  clockSkewMs: number;
+};
+
+export type ProjectionReadCap = {
+  cap: number;
+  returnedCount: number;
+  capHit: boolean;
+};
+
+export type ProjectedFlowResult = {
+  nodes: ProjectedFlowNode[];
+  edges: ProjectedFlowEdge[];
   metadata: {
-    traceId: string;
-    maxImportance: number;
-    limit: number;
+    threshold: number;
     returnedNodeCount: number;
-    totalNodeCount: number;
-    hiddenNodeCount: number;
+    returnedEdgeCount: number;
+    visibleNodeCount: number;
     ghostNodeCount: number;
-    hasBefore: boolean;
-    hasAfter: boolean;
-    previousCursor: string | null;
-    nextCursor: string | null;
+    materializedAt: number;
+    nodeCap: ProjectionReadCap;
+    edgeCap: ProjectionReadCap;
+    omittedEdgeCount: number;
+    paging: {
+      nextCursor: string | null;
+      previousCursor: string | null;
+      hasAfter: boolean;
+      hasBefore: boolean;
+      totalNodeCount: number;
+      fromFlowOrder: number;
+      toFlowOrder: number;
+    };
   };
-  summary: TraceSummary;
-  nodes: ReadNode[];
-  edges: GraphEdge[];
 };

@@ -9,6 +9,8 @@ import {
   IngestNodeEnd,
   IngestEdgeEnd,
   ProjectedFlowResult,
+  ReadTraceSummary,
+  TraceListResult,
 } from "../../api/types";
 import { createLogWriteRepo, createLogReadRepo } from "../repo";
 import { ILogWriteRepo } from "../repo/ILogWriteRepo";
@@ -21,6 +23,8 @@ import { decodeCursor, encodeCursor } from "../util/CursorCodec";
  */
 const DEFAULT_PROJECTION_NODE_CAP = 500;
 const MAX_PROJECTION_NODE_CAP = 1000;
+const DEFAULT_TRACE_LIST_LIMIT = 20;
+const MAX_TRACE_LIST_LIMIT = 100;
 
 /**
  * Concrete implementation of the Log Service.
@@ -231,12 +235,50 @@ export class LogServiceImpl extends ILogService {
   }
 
   /**
+   * Returns a bounded page of latest materialized trace summaries.
+   */
+  async listTraces(data: {
+    userId: string;
+    page?: number;
+    limit?: number;
+  }): Promise<TraceListResult> {
+    const page = Math.max(1, Math.floor(data.page ?? 1));
+    const limit = Math.min(
+      MAX_TRACE_LIST_LIMIT,
+      Math.max(1, Math.floor(data.limit ?? DEFAULT_TRACE_LIST_LIMIT)),
+    );
+    const offset = (page - 1) * limit;
+
+    const result = await InternalTracer.trace(
+      "loadTraceSummaries",
+      () => this.readRepo.loadTraceSummaries({
+        userId: data.userId,
+        paging: { offset, limit },
+      }),
+      { type: "db", importanceLevel: 1 },
+    );
+    const totalPages = result.totalCount === 0
+      ? 0
+      : Math.ceil(result.totalCount / limit);
+
+    return {
+      traces: result.items,
+      totalCount: result.totalCount,
+      page,
+      limit,
+      totalPages,
+      hasPreviousPage: page > 1,
+      hasNextPage: result.hasMore,
+    };
+  }
+
+  /**
    * Retrieves the latest summary statistics and diagnostics for a trace.
    */
   async getTraceSummary(data: {
     userId: string;
     traceId: string;
-  }): Promise<any | null> {
+  }): Promise<ReadTraceSummary | null> {
     this.logger.trace("getTraceSummary", { userId: data.userId, traceId: data.traceId });
     return this.readRepo.loadTraceSummary(data);
   }
@@ -282,4 +324,3 @@ export class LogServiceImpl extends ILogService {
     return `log.telemetry.received:${data.userId}:${parts.join("|")}`;
   }
 }
-

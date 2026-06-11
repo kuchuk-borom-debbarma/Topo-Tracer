@@ -100,6 +100,10 @@ class StatefulFakeReadRepo extends ILogReadRepo {
   async loadTraceSummary(_params: any): Promise<ReadTraceSummary | null> {
     return this.summary ? { ...this.summary } : null;
   }
+
+  async loadTraceSummaries(_params: any): Promise<any> {
+    return { items: [], totalCount: 0, hasMore: false };
+  }
 }
 
 describe("ReadOptimisedAggregator", () => {

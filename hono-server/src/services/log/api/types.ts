@@ -113,6 +113,19 @@ export type ReadTraceSummary = {
 };
 
 /**
+ * Bounded trace index response for the authenticated user.
+ */
+export type TraceListResult = {
+  traces: ReadTraceSummary[];
+  totalCount: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
+/**
  * Tracks the raw event offset processed for a given trace.
  * Enables incremental, resumeable materialization runs.
  */
@@ -273,4 +286,3 @@ export type BoundedProjectionNodesResult = {
   nodes: ReadNode[];
   cap: ProjectionReadCap;
 };
-

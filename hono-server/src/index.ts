@@ -218,6 +218,27 @@ app.get("/api/v1/traces/:traceId/summary", jwtAuthMiddleware(), async (c) => {
   }
 });
 
+app.get("/api/v1/traces", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
+  const page = Number(c.req.query("page") || "1");
+  const limit = Number(c.req.query("limit") || "20");
+
+  if (!Number.isInteger(page) || page < 1) {
+    return c.json({ error: "Invalid page: must be a positive integer" }, 400);
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return c.json({ error: "Invalid limit: must be an integer between 1 and 100" }, 400);
+  }
+
+  try {
+    return c.json(await logService.listTraces({ userId, page, limit }));
+  } catch (error: any) {
+    console.error("[TraceListRoute] Failed to list traces:", error);
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
 app.get("/api/v1/traces/:traceId/flow", jwtAuthMiddleware(), async (c) => {
   const userId = c.get("userId")!;
   const traceId = c.req.param("traceId");

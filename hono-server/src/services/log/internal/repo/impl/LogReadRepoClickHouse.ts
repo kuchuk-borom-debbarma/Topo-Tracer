@@ -605,6 +605,69 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
   }
 
   /**
+   * Lists the latest worker-materialized trace summaries for a user.
+   */
+  async loadTraceSummaries(params: {
+    userId: string;
+    paging: PagingParams;
+  }): Promise<PagedResult<ReadTraceSummary>> {
+    const limit = Math.min(Math.max(params.paging.limit, 1), 100);
+    const offset = Math.max(params.paging.offset, 0);
+    const client = this.getClient();
+    const result = await client.query({
+      query: `
+        SELECT *, count(*) OVER() as total_trace_count
+        FROM (
+          SELECT
+            trace_id,
+            argMax(user_id, materialized_at_ms) as user_id,
+            argMax(node_count, materialized_at_ms) as node_count,
+            argMax(edge_count, materialized_at_ms) as edge_count,
+            argMax(min_importance_level, materialized_at_ms) as min_importance_level,
+            argMax(max_importance_level, materialized_at_ms) as max_importance_level,
+            argMax(started_at_ms, materialized_at_ms) as started_at_ms,
+            argMax(ended_at_ms, materialized_at_ms) as ended_at_ms,
+            max(materialized_at_ms) as materialized_at_ms,
+            argMax(diagnostic_missing_starts_count, materialized_at_ms) as diagnostic_missing_starts_count,
+            argMax(diagnostic_missing_ends_count, materialized_at_ms) as diagnostic_missing_ends_count,
+            argMax(diagnostic_negative_duration_count, materialized_at_ms) as diagnostic_negative_duration_count,
+            argMax(diagnostic_cycle_count, materialized_at_ms) as diagnostic_cycle_count,
+            argMax(diagnostic_orphan_edge_count, materialized_at_ms) as diagnostic_orphan_edge_count,
+            argMax(diagnostic_invalid_importance_count, materialized_at_ms) as diagnostic_invalid_importance_count,
+            argMax(diagnostic_clock_skew_count, materialized_at_ms) as diagnostic_clock_skew_count,
+            argMax(diagnostic_limit_exceeded_count, materialized_at_ms) as diagnostic_limit_exceeded_count
+          FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
+          WHERE user_id = {userId:String}
+          GROUP BY trace_id
+        )
+        ORDER BY materialized_at_ms DESC, trace_id ASC
+        LIMIT {limit:UInt32}
+        OFFSET {offset:UInt32}
+      `,
+      format: "JSON",
+      query_params: {
+        userId: params.userId,
+        limit: limit + 1,
+        offset,
+      },
+    });
+
+    const jsonRes = await result.json<any>();
+    const rows = (Array.isArray(jsonRes) ? jsonRes : (jsonRes.data || [])) as (
+      TraceSummaryRow & { total_trace_count: number }
+    )[];
+    const hasMore = rows.length > limit;
+    const finalRows = hasMore ? rows.slice(0, limit) : rows;
+    const totalCount = rows.length > 0 ? Number(rows[0]!.total_trace_count) : 0;
+
+    return {
+      items: finalRows.map((row) => this.mapTraceSummaryRow(row)),
+      totalCount,
+      hasMore,
+    };
+  }
+
+  /**
    * Saves the fully materialized trace components (nodes, edges, summary) into the read-optimized tables.
    */
   async saveReadModel(params: {
@@ -738,6 +801,28 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       diagnostic_invalid_importance_count: summary.diagInvalidImportance,
       diagnostic_clock_skew_count: summary.diagClockSkew,
       diagnostic_limit_exceeded_count: summary.diagLimitExceeded,
+    };
+  }
+
+  private mapTraceSummaryRow(row: TraceSummaryRow): ReadTraceSummary {
+    return {
+      userId: row.user_id,
+      traceId: row.trace_id,
+      nodeCount: Number(row.node_count),
+      edgeCount: Number(row.edge_count),
+      minImportanceLevel: Number(row.min_importance_level),
+      maxImportanceLevel: Number(row.max_importance_level),
+      startedAt: Number(row.started_at_ms),
+      endedAt: row.ended_at_ms === null ? null : Number(row.ended_at_ms),
+      materializedAt: Number(row.materialized_at_ms),
+      diagMissingStarts: Number(row.diagnostic_missing_starts_count),
+      diagMissingEnds: Number(row.diagnostic_missing_ends_count),
+      diagNegativeDurations: Number(row.diagnostic_negative_duration_count),
+      diagCycles: Number(row.diagnostic_cycle_count),
+      diagOrphanEdges: Number(row.diagnostic_orphan_edge_count),
+      diagInvalidImportance: Number(row.diagnostic_invalid_importance_count),
+      diagClockSkew: Number(row.diagnostic_clock_skew_count),
+      diagLimitExceeded: Number(row.diagnostic_limit_exceeded_count),
     };
   }
 

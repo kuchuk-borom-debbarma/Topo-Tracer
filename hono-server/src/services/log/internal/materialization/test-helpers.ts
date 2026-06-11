@@ -13,6 +13,7 @@ export class FakeReadRepo extends ILogReadRepo {
   loadBoundedVisibleEdges = mock(async () => ({ edges: [], cap: { cap: 0, returnedCount: 0, capHit: false } })) as any;
   loadBoundedProjectionNodes = mock(async () => ({ items: [], totalCount: 0, hasMore: false })) as any;
   loadTraceSummary = mock(async () => null) as any;
+  loadTraceSummaries = mock(async () => ({ items: [], totalCount: 0, hasMore: false })) as any;
 }
 
 export const mockLogger = {

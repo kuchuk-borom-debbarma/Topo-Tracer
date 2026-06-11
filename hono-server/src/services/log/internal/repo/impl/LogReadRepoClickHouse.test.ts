@@ -106,6 +106,60 @@ describe("LogReadRepoClickHouse row mapping", () => {
 });
 
 describe("LogReadRepoClickHouse row loading", () => {
+  test("loadTraceSummaries returns a bounded tenant-scoped page", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    fakeClient.queryResults[CLICKHOUSE_TRACE_SUMMARIES_TABLE] = [
+      {
+        user_id: "u1",
+        trace_id: "trace-a",
+        node_count: 12,
+        edge_count: 11,
+        min_importance_level: 0,
+        max_importance_level: 4,
+        started_at_ms: 1000,
+        ended_at_ms: 2500,
+        materialized_at_ms: 3000,
+        diagnostic_missing_starts_count: 0,
+        diagnostic_missing_ends_count: 1,
+        diagnostic_negative_duration_count: 0,
+        diagnostic_cycle_count: 0,
+        diagnostic_orphan_edge_count: 0,
+        diagnostic_invalid_importance_count: 0,
+        diagnostic_clock_skew_count: 2,
+        diagnostic_limit_exceeded_count: 0,
+        total_trace_count: 7,
+      },
+    ];
+
+    const result = await repo.loadTraceSummaries({
+      userId: "u1",
+      paging: { offset: 5, limit: 5 },
+    });
+
+    expect(result.totalCount).toBe(7);
+    expect(result.hasMore).toBe(false);
+    expect(result.items[0]).toMatchObject({
+      traceId: "trace-a",
+      nodeCount: 12,
+      edgeCount: 11,
+      diagMissingEnds: 1,
+      diagClockSkew: 2,
+    });
+
+    const query = fakeClient.queries.find((item) =>
+      item.query.includes("total_trace_count")
+    );
+    expect(query?.query).toContain("WHERE user_id = {userId:String}");
+    expect(query?.query).toContain("ORDER BY materialized_at_ms DESC, trace_id ASC");
+    expect(query?.query_params).toMatchObject({
+      userId: "u1",
+      limit: 6,
+      offset: 5,
+    });
+  });
+
   test("loadCheckpoint maps snake_case back to camelCase and handles empty results", async () => {
     const fakeClient = new FakeClickHouseClient();
     const repo = createRepoWithFakeClient(fakeClient);

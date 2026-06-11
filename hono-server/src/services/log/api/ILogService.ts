@@ -4,6 +4,8 @@ import {
   IngestNodeEnd,
   IngestNodeStart,
   ProjectedFlowResult,
+  ReadTraceSummary,
+  TraceListResult,
 } from "./types";
 
 /**
@@ -51,11 +53,19 @@ export abstract class ILogService {
   }): Promise<ProjectedFlowResult>;
 
   /**
+   * Lists materialized trace summaries for a user using bounded pagination.
+   */
+  abstract listTraces(data: {
+    userId: string;
+    page?: number;
+    limit?: number;
+  }): Promise<TraceListResult>;
+
+  /**
    * Retrieves the latest summary statistics and diagnostics for a trace.
    */
   abstract getTraceSummary(data: {
     userId: string;
     traceId: string;
-  }): Promise<any | null>;
+  }): Promise<ReadTraceSummary | null>;
 }
-

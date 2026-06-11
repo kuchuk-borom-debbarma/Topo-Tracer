@@ -90,3 +90,66 @@ describe("GET /api/v1/traces/:traceId/flow", () => {
     expect(capturedParams.cursor).toBe("c123");
   });
 });
+
+describe("GET /api/v1/traces", () => {
+  const mockUser = { id: "user-123", email: "user@test.com", username: "testuser" };
+  let originalGetUserByToken: any;
+  let originalListTraces: any;
+
+  beforeEach(() => {
+    originalGetUserByToken = authService.getUserByToken;
+    originalListTraces = logService.listTraces;
+  });
+
+  afterEach(() => {
+    authService.getUserByToken = originalGetUserByToken;
+    logService.listTraces = originalListTraces;
+  });
+
+  it("requires authentication", async () => {
+    const res = await app.request("/api/v1/traces");
+    expect(res.status).toBe(401);
+  });
+
+  it("validates bounded paging parameters", async () => {
+    authService.getUserByToken = async () => mockUser as any;
+
+    const invalidPage = await app.request("/api/v1/traces?page=0", {
+      headers: { Authorization: "Bearer token" },
+    });
+    const invalidLimit = await app.request("/api/v1/traces?limit=101", {
+      headers: { Authorization: "Bearer token" },
+    });
+
+    expect(invalidPage.status).toBe(400);
+    expect(invalidLimit.status).toBe(400);
+  });
+
+  it("lists traces for the authenticated tenant", async () => {
+    authService.getUserByToken = async () => mockUser as any;
+    let capturedParams: any;
+    logService.listTraces = async (params: any) => {
+      capturedParams = params;
+      return {
+        traces: [],
+        totalCount: 0,
+        page: 2,
+        limit: 15,
+        totalPages: 0,
+        hasPreviousPage: true,
+        hasNextPage: false,
+      };
+    };
+
+    const res = await app.request("/api/v1/traces?page=2&limit=15", {
+      headers: { Authorization: "Bearer token" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(capturedParams).toEqual({
+      userId: "user-123",
+      page: 2,
+      limit: 15,
+    });
+  });
+});

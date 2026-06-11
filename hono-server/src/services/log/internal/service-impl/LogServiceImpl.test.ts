@@ -43,6 +43,7 @@ class FakeLogWriteRepo implements ILogWriteRepo {
 class FakeLogReadRepo extends ILogReadRepo {
   loadBoundedProjectionNodesCalls: any[] = [];
   loadBoundedVisibleEdgesCalls: any[] = [];
+  loadTraceSummariesCalls: any[] = [];
   loadTraceSummaryResult: ReadTraceSummary | null = {
     userId: "u1",
     traceId: "trace-1",
@@ -101,6 +102,15 @@ class FakeLogReadRepo extends ILogReadRepo {
 
   async loadTraceSummary(params: { userId: string; traceId: string; }): Promise<ReadTraceSummary | null> {
     return this.loadTraceSummaryResult;
+  }
+
+  async loadTraceSummaries(params: any): Promise<PagedResult<ReadTraceSummary>> {
+    this.loadTraceSummariesCalls.push(params);
+    return {
+      items: this.loadTraceSummaryResult ? [this.loadTraceSummaryResult] : [],
+      totalCount: this.loadTraceSummaryResult ? 1 : 0,
+      hasMore: false,
+    };
   }
 }
 
@@ -352,6 +362,48 @@ describe("LogServiceImpl projection orchestration", () => {
       threshold: 5,
       cursor: "not-base64-at-all"
     })).rejects.toThrow();
+  });
+});
+
+describe("LogServiceImpl trace listing", () => {
+  test("uses bounded pagination and returns page metadata", async () => {
+    const { service, readRepo } = createSubject();
+
+    const result = await service.listTraces({
+      userId: "u1",
+      page: 3,
+      limit: 25,
+    });
+
+    expect(readRepo.loadTraceSummariesCalls).toEqual([
+      {
+        userId: "u1",
+        paging: { offset: 50, limit: 25 },
+      },
+    ]);
+    expect(result).toMatchObject({
+      totalCount: 1,
+      page: 3,
+      limit: 25,
+      totalPages: 1,
+      hasPreviousPage: true,
+      hasNextPage: false,
+    });
+  });
+
+  test("clamps trace list page size to the hard cap", async () => {
+    const { service, readRepo } = createSubject();
+
+    await service.listTraces({
+      userId: "u1",
+      page: 1,
+      limit: 5000,
+    });
+
+    expect(readRepo.loadTraceSummariesCalls[0].paging).toEqual({
+      offset: 0,
+      limit: 100,
+    });
   });
 });
 

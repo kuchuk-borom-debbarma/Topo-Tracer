@@ -1,36 +1,110 @@
-import type { GraphWindowResponse, TraceListResponse, TraceSummary } from "./types";
+import { clearToken, getToken } from "./auth";
+import type {
+  ProjectedFlowResult,
+  TraceListResult,
+  TraceSummary,
+  User,
+} from "./types";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3999";
-const REQUEST_TIMEOUT_MS = 5000;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const REQUEST_TIMEOUT_MS = 12_000;
 
-export async function fetchTraces(page = 1, limit = 20): Promise<TraceListResponse> {
-  return getJson(`/telemetry/traces?page=${page}&limit=${limit}`);
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
-export async function fetchTraceSummary(traceId: string): Promise<TraceSummary | null> {
-  return getJson(`/telemetry/traces/${encodeURIComponent(traceId)}/summary`);
+export async function login(input: {
+  email: string;
+  password: string;
+}): Promise<{ token: string }> {
+  return request("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, false);
 }
 
-export async function fetchGraph(input: {
+export async function fetchCurrentUser(): Promise<{ user: User }> {
+  return request("/api/v1/auth/me");
+}
+
+export async function fetchTraces(input: {
+  page: number;
+  limit: number;
+}): Promise<TraceListResult> {
+  const params = new URLSearchParams({
+    page: String(input.page),
+    limit: String(input.limit),
+  });
+  return request(`/api/v1/traces?${params.toString()}`);
+}
+
+export async function fetchTraceSummary(traceId: string): Promise<TraceSummary> {
+  return request(`/api/v1/traces/${encodeURIComponent(traceId)}/summary`);
+}
+
+export async function fetchTraceFlow(input: {
   traceId: string;
-  maxImportance: number;
-  cursor?: string | null;
+  threshold: number;
+  cursor?: string;
   limit?: number;
-}): Promise<GraphWindowResponse | null> {
-  const params = new URLSearchParams();
-  params.set("maxImportance", String(input.maxImportance));
-  params.set("limit", String(input.limit ?? 250));
+}): Promise<ProjectedFlowResult> {
+  const params = new URLSearchParams({
+    threshold: String(input.threshold),
+    limit: String(input.limit ?? 160),
+  });
   if (input.cursor) params.set("cursor", input.cursor);
-  return getJson(`/telemetry/traces/${encodeURIComponent(input.traceId)}/graph?${params.toString()}`);
+  return request(
+    `/api/v1/traces/${encodeURIComponent(input.traceId)}/flow?${params.toString()}`,
+  );
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  authenticated = true,
+): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body) headers.set("Content-Type", "application/json");
+  if (authenticated) {
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, { signal: controller.signal });
-    if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-    return response.json();
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      error?: string;
+    };
+
+    if (!response.ok) {
+      if (response.status === 401 && authenticated) {
+        clearToken();
+        if (window.location.pathname !== "/login") {
+          window.location.assign("/login");
+        }
+      }
+      throw new ApiError(payload.error ?? `Request failed with ${response.status}`, response.status);
+    }
+
+    return payload as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError("The server took too long to respond.", 408);
+    }
+    throw error;
   } finally {
     window.clearTimeout(timeout);
   }
