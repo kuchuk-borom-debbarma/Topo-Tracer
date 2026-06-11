@@ -5,12 +5,16 @@
 **Plans:** 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Shared Type Definitions (API, Repo, Frontend)
-- [ ] 01-02-PLAN.md — ClickHouse Schema Migration (Tables & MV)
-- [ ] 01-03-PLAN.md — Repository Implementation (Read/Write & Fallback)
+- [x] 01-01-PLAN.md — Shared Type Definitions (API, Repo, Frontend)
+- [x] 01-02-PLAN.md — ClickHouse Schema Migration (Tables & MV)
+- [x] 01-03-PLAN.md — Repository Implementation (Read/Write & Fallback)
 
 ## Phase 2: Materialization Logic (Backend)
-- [ ] Update `TraceReadModelMaterializer.ts` to extract and store trace names.
+**Goal:** Update the materializer to extract the trace name from the root node and include it in the summary.
+**Plans:** 1 plan
+
+Plans:
+- [ ] 02-01-PLAN.md — Trace Name Extraction Logic & Tests
 
 ## Phase 3: SDK Integration
 - [ ] Update `sdks/node-js/src/types.ts`
