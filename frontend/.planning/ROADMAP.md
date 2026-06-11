@@ -14,11 +14,14 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 02-01-PLAN.md — Trace Name Extraction Logic & Tests
+- [x] 02-01-PLAN.md — Trace Name Extraction Logic & Tests
 
 ## Phase 3: SDK Integration
-- [ ] Update `sdks/node-js/src/types.ts`
-- [ ] Update `sdks/node-js/src/Tracer.ts` to allow passing trace names.
+**Goal:** Update the Node.js SDK to support trace names via the fluent API and enforce root-only attachment.
+**Plans:** 1 plan
+
+Plans:
+- [ ] 03-01-PLAN.md — SDK Trace Name Support & Root Enforcement
 
 ## Phase 4: Frontend Visualization
 - [ ] Update `frontend/src/types.ts`
