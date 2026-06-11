@@ -1,32 +1,29 @@
-# Roadmap - Trace Names Support
+# Roadmap - Trace Start Events
 
-## Phase 1: Shared API & Database Schema (Backend)
-**Goal:** Update the system's shared API and database schema to support optional trace names.
-**Plans:** 3 plans
-
-Plans:
-- [x] 01-01-PLAN.md — Shared Type Definitions (API, Repo, Frontend)
-- [x] 01-02-PLAN.md — ClickHouse Schema Migration (Tables & MV)
-- [x] 01-03-PLAN.md — Repository Implementation (Read/Write & Fallback)
-
-## Phase 2: Materialization Logic (Backend)
-**Goal:** Update the materializer to extract the trace name from the root node and include it in the summary.
+## Phase 1: Shared API & Database Schema (Trace Events)
+**Goal:** Update the ClickHouse schema and Hono API types.
 **Plans:** 1 plan
+**Requirements:** [SCHEMA-01, API-01, REPO-01]
 
 Plans:
-- [x] 02-01-PLAN.md — Trace Name Extraction Logic & Tests
+- [ ] 01-01-PLAN.md — Update ClickHouse schema and Hono API types (D-22 to D-27).
 
-## Phase 3: SDK Integration
-**Goal:** Update the Node.js SDK to support trace names via the fluent API and enforce root-only attachment.
-**Plans:** 1 plan
+## Phase 2: Repository & Ingestion Implementation
+**Goal:** Update the repositories to handle the new trace start events and importance labels.
+**Plans:** 2 plans
+**Requirements:** [REPO-01]
 
 Plans:
-- [ ] 03-01-PLAN.md — SDK Trace Name Support & Root Enforcement
+- [ ] 02-01-PLAN.md — Implement write persistence and ingestion consumer fix.
+- [ ] 02-02-PLAN.md — Implement read retrieval for importance labels.
 
-## Phase 4: Frontend Visualization
-- [ ] Update `frontend/src/types.ts`
-- [ ] Update `frontend/src/ui/TraceListPage.tsx`
-- [ ] Update `frontend/src/ui/TraceDetailPage.tsx`
+## Phase 3: Materialization Logic Refactor
+- [ ] Update `TraceReadModelMaterializer` to consume from `trace_events`.
+- [ ] Propagate labels to the read-optimized summary.
 
-## Phase 5: Verification
-- [ ] End-to-end test: SDK sends trace with name -> Backend materializes -> Frontend displays.
+## Phase 4: SDK Refactor
+- [ ] Update `Tracer` to emit `TraceStart` events.
+- [ ] Support importance level label configuration in the fluent API.
+
+## Phase 5: UI Integration
+- [ ] Update `TraceListPage` and `TraceDetailPage` to display importance labels.
