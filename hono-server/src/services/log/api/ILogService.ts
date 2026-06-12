@@ -3,6 +3,7 @@ import {
   IngestEdgeStart,
   IngestNodeEnd,
   IngestNodeStart,
+  IngestTraceStart,
   ProjectedFlowResult,
   ReadTraceSummary,
   TraceListResult,
@@ -28,6 +29,7 @@ export abstract class ILogService {
    */
   abstract ingestNodesNEdges(data: {
     userId: string;
+    traceStarts: IngestTraceStart[];
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
     nodeEnds: IngestNodeEnd[];

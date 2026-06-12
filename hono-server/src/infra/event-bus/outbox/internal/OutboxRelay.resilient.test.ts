@@ -86,7 +86,7 @@ describe("OutboxRelay Resiliency", () => {
     // Expect 2nd schedule to have exponential backoff.
     // delay = base * 2^(failures-1) -> 2000 * 2^0 = 2000 (plus jitter)
     expect(timeoutCalls).toHaveLength(2);
-    expect(timeoutCalls[1].delay).toBeGreaterThanOrEqual(2000);
+    expect(timeoutCalls[1].delay).toBeGreaterThan(1999);
     expect(timeoutCalls[1].delay).toBeLessThan(4000); // 2000 + 30% jitter max
 
     // 2nd iteration: Fire and fail again
@@ -96,7 +96,7 @@ describe("OutboxRelay Resiliency", () => {
     // Expect 3rd schedule to have larger backoff.
     // delay = 2000 * 2^1 = 4000 (plus jitter)
     expect(timeoutCalls).toHaveLength(3);
-    expect(timeoutCalls[2].delay).toBeGreaterThanOrEqual(4000);
+    expect(timeoutCalls[2].delay).toBeGreaterThan(3999);
     expect(timeoutCalls[2].delay).toBeLessThan(6000); // 4000 + 30% jitter max
 
     // Now simulate success

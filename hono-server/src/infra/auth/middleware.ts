@@ -56,7 +56,7 @@ export const jwtAuthMiddleware = (): MiddlewareHandler => {
       await next();
     } catch (err: any) {
       logger.trace(`Authentication failed: ${err.message}`);
-      const status = err instanceof TopoTraceException ? err.statusCode : 401;
+      const status = (err instanceof TopoTraceException ? err.statusCode : 401) as 401 | 403 | 500;
       return c.json({ error: err.message || "Unauthorized" }, status);
     }
   };

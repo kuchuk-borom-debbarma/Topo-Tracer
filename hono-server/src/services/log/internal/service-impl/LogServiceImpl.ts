@@ -8,6 +8,7 @@ import {
   IngestNodeStart,
   IngestNodeEnd,
   IngestEdgeEnd,
+  IngestTraceStart,
   ProjectedFlowResult,
   ReadTraceSummary,
   TraceListResult,
@@ -65,6 +66,7 @@ export class LogServiceImpl extends ILogService {
    */
   async ingestNodesNEdges(data: {
     userId: string;
+    traceStarts: IngestTraceStart[];
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
     nodeEnds: IngestNodeEnd[];
@@ -72,6 +74,7 @@ export class LogServiceImpl extends ILogService {
   }): Promise<void> {
     this.logger.trace("ingestNodesNEdges", {
       userId: data.userId,
+      traceStarts: data.traceStarts.length,
       nodeStarts: data.nodeStarts.length,
       edgeStarts: data.edgeStarts.length,
       nodeEnds: data.nodeEnds.length,
@@ -81,10 +84,11 @@ export class LogServiceImpl extends ILogService {
     try {
       this.validateEdgeStarts(data.edgeStarts);
       
-      const totalEvents =
-        data.nodeStarts.length +
-        data.edgeStarts.length +
-        data.nodeEnds.length +
+    const totalEvents =
+      data.traceStarts.length +
+      data.nodeStarts.length +
+      data.edgeStarts.length +
+      data.nodeEnds.length +
         data.edgeEnds.length;
       if (totalEvents === 0) {
         return;
@@ -309,12 +313,14 @@ export class LogServiceImpl extends ILogService {
    */
   private buildTelemetryReceivedIdempotencyId(data: {
     userId: string;
+    traceStarts: IngestTraceStart[];
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
     nodeEnds: IngestNodeEnd[];
     edgeEnds: IngestEdgeEnd[];
   }): string {
     const parts = [
+      ...data.traceStarts.map((trace) => `trace-start:${trace.traceId}:${trace.timestamp}`),
       ...data.nodeStarts.map((node) => `n-start:${node.id}`),
       ...data.nodeEnds.map((node) => `n-end:${node.id}`),
       ...data.edgeStarts.map((edge) => `e-start:${edge.id}`),

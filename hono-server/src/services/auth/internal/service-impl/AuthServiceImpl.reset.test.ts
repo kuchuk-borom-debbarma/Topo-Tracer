@@ -14,11 +14,10 @@ describe("AuthServiceImpl - Password Reset Flow", () => {
     // 1. Start password reset
     const token = await service.startResetPassword({ email: "userA@test.com" });
     expect(token).toBe("reset-token-otp");
-    expect(repo.insertUserTokenOTP).toHaveBeenCalledWith({
-      token: "user-789",
-      otp: expect.stringMatching(/^\d{6}$/),
-      tokenType: "PASSWORD_RESET",
-    });
+    const insertedTokenOtp = (repo.insertUserTokenOTP as any).mock.calls[0][0];
+    expect(insertedTokenOtp.token).toBe("user-789");
+    expect(/^\d{6}$/.test(insertedTokenOtp.otp)).toBe(true);
+    expect(insertedTokenOtp.tokenType).toBe("PASSWORD_RESET");
     expect(notification.sendNotification).toHaveBeenCalledWith({
       recipient: "userA@test.com",
       subject: "Reset your TopoTracer password",

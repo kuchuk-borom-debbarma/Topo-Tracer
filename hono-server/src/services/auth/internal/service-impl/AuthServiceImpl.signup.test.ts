@@ -1,7 +1,7 @@
 // fallow-ignore-file
 import { describe, expect, it } from "bun:test";
 import { createService, mockPending, mockTokenOtp, mockUser } from "./test-helpers";
-import { InternalTracer } from "../../../../infra/tracing/InternalTracer";
+import { InternalTracer, type SpansBuffer } from "../../../../infra/tracing/InternalTracer";
 import { hexToUuid, spanIdToUuid } from "../../../../infra/tracing/context";
 
 describe("AuthServiceImpl - SignUp Flow", () => {
@@ -26,13 +26,10 @@ describe("AuthServiceImpl - SignUp Flow", () => {
       },
       repo,
     );
-    expect(repo.upsertUserTokenOTP).toHaveBeenCalledWith(
-      {
-        token: "pending-123",
-        otp: expect.stringMatching(/^\d{6}$/),
-      },
-      repo,
-    );
+    const upsertTokenOtpCall = (repo.upsertUserTokenOTP as any).mock.calls[0];
+    expect(upsertTokenOtpCall[0].token).toBe("pending-123");
+    expect(/^\d{6}$/.test(upsertTokenOtpCall[0].otp)).toBe(true);
+    expect(upsertTokenOtpCall[1]).toBe(repo);
     expect(eventBus.publish).toHaveBeenCalledWith(
       [
         {
@@ -101,7 +98,7 @@ describe("AuthServiceImpl - SignUp Flow", () => {
 
     const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
     const spanId = "06fe605c426d45dd";
-    const spansBuffer = { nodeStarts: [], nodeEnds: [], edgeStarts: [], edgeEnds: [] };
+    const spansBuffer: SpansBuffer = { nodeStarts: [], nodeEnds: [], edgeStarts: [], edgeEnds: [] };
     
     (repo.insertPendingSignUpUser as any).mockResolvedValue(mockPending("pending-123"));
     (repo.upsertUserTokenOTP as any).mockResolvedValue(mockTokenOtp("token-otp-456", "pending-123", "USER_SIGNUP"));
@@ -150,7 +147,7 @@ describe("AuthServiceImpl - SignUp Flow", () => {
 
     const currentTraceId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
     const currentSpanId = "1122334455667788";
-    const spansBuffer = { nodeStarts: [], nodeEnds: [], edgeStarts: [], edgeEnds: [] };
+    const spansBuffer: SpansBuffer = { nodeStarts: [], nodeEnds: [], edgeStarts: [], edgeEnds: [] };
 
     await InternalTracer.run({
       traceId: currentTraceId,

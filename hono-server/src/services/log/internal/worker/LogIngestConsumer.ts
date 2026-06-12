@@ -37,17 +37,26 @@ export class LogIngestConsumer {
             continue;
           }
 
+          const normalizedPayload: IngestBatch = {
+            userId: payload.userId,
+            traceStarts: payload.traceStarts ?? [],
+            nodeStarts: payload.nodeStarts ?? [],
+            edgeStarts: payload.edgeStarts ?? [],
+            nodeEnds: payload.nodeEnds ?? [],
+            edgeEnds: payload.edgeEnds ?? [],
+          };
+
           try {
             // Write raw events using ClickHouse repository
-            await this.writeRepo.ingestNodesNEdges(payload);
+            await this.writeRepo.ingestNodesNEdges(normalizedPayload);
 
-            const traceIds = this.getTraceIds(payload);
+            const traceIds = this.getTraceIds(normalizedPayload);
             if (traceIds.length === 0) {
               continue;
             }
 
             this.logger.trace("publishing trace ingest events reactively", {
-              userId: payload.userId,
+              userId: normalizedPayload.userId,
               traceCount: traceIds.length,
             });
 
@@ -56,14 +65,14 @@ export class LogIngestConsumer {
               traceIds.map((traceId) => ({
                 topic: "log.trace.ingested",
                 key: traceId,
-                idempotencyId: this.buildTraceIngestIdempotencyId(payload, traceId),
+                idempotencyId: this.buildTraceIngestIdempotencyId(normalizedPayload, traceId),
                 data: {
-                  userId: payload.userId,
+                  userId: normalizedPayload.userId,
                   traceId,
                 },
               })),
               {
-                batchId: `log.trace.ingested:${payload.userId}:${traceIds.join(",")}`,
+                batchId: `log.trace.ingested:${normalizedPayload.userId}:${traceIds.join(",")}`,
               },
             );
           } catch (err) {

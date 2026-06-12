@@ -81,7 +81,10 @@ describe("LogIngestConsumer", () => {
     await eventBus.lastCallback([mockEvent]);
 
     expect(writeRepo.calls).toHaveLength(1);
-    expect(writeRepo.calls[0]).toEqual(payload);
+    expect(writeRepo.calls[0]).toEqual({
+      ...payload,
+      traceStarts: [],
+    });
 
     expect(eventBus.publish).toHaveBeenCalledTimes(1);
     // Should have published 2 trace materialization events (one for each traceId)
@@ -97,6 +100,54 @@ describe("LogIngestConsumer", () => {
       key: "trace-102",
       data: { userId: "user-1", traceId: "trace-102" },
     });
+  });
+
+  it("should write trace start events and publish trace ingested events", async () => {
+    const eventBus = new MockEventBus();
+    const writeRepo = new MockLogWriteRepo();
+    const consumer = new LogIngestConsumer(mockLogger, eventBus, writeRepo);
+
+    await consumer.init();
+
+    const payload = {
+      userId: "user-1",
+      traceStarts: [
+        {
+          traceId: "trace-201",
+          name: "Checkout flow",
+          importanceLabels: { 1: "API" },
+          timestamp: 2000,
+        },
+      ],
+      nodeStarts: [],
+      edgeStarts: [],
+      nodeEnds: [],
+      edgeEnds: [],
+    };
+
+    const mockEvent = {
+      id: "evt-456",
+      topic: "log.telemetry.received",
+      idempotencyId: "idem-456",
+      key: "user-1",
+      data: payload,
+      publishedAt: Date.now(),
+    };
+
+    await eventBus.lastCallback([mockEvent]);
+
+    expect(writeRepo.calls).toHaveLength(1);
+    expect(writeRepo.calls[0]).toEqual(payload);
+
+    expect(eventBus.publish).toHaveBeenCalledTimes(1);
+    const publishedBatch = (eventBus.publish as any).mock.calls[0][0];
+    expect(publishedBatch).toHaveLength(1);
+    expect(publishedBatch[0]).toMatchObject({
+      topic: "log.trace.ingested",
+      key: "trace-201",
+      data: { userId: "user-1", traceId: "trace-201" },
+    });
+    expect(publishedBatch[0].idempotencyId).toContain("trace-start:trace-201:2000");
   });
 
   it("should propagate errors if writeRepo fails", async () => {

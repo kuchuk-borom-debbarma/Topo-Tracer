@@ -97,6 +97,7 @@ app.post("/api/v1/ingest", jwtAuthMiddleware(), async (c) => {
   try {
     await logService.ingestNodesNEdges({
       userId,
+      traceStarts: body.traceStarts ?? [],
       nodeStarts: body.nodeStarts,
       edgeStarts: body.edgeStarts,
       nodeEnds: body.nodeEnds,

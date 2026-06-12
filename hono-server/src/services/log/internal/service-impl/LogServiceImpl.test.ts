@@ -442,11 +442,12 @@ const createSubject = (): {
 
 const createIngestInput = (edgeStarts: IngestEdgeStart[]): IngestInput => ({
   userId: "user-1",
+  traceStarts: [],
   nodeStarts: [],
   edgeStarts,
   nodeEnds: [],
   edgeEnds: [],
-});
+});;
 
 const createEdgeStart = (
   overrides: Partial<Record<keyof IngestEdgeStart, unknown>> = {},

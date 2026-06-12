@@ -1,13 +1,14 @@
 // fallow-ignore-file
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
+import type { AppEnv } from "../../common/env";
 import { jwtAuthMiddleware } from "./middleware";
 import { authService } from "../../services/auth";
 import { TopoTraceException } from "../../common/types";
 
 describe("jwtAuthMiddleware", () => {
   it("should return 401 when no token is provided", async () => {
-    const app = new Hono();
+    const app = new Hono<AppEnv>();
     app.use("*", jwtAuthMiddleware());
     app.get("/test", (c) => c.text("ok"));
 
@@ -24,7 +25,7 @@ describe("jwtAuthMiddleware", () => {
     authService.getUserByToken = async () => mockUser as any;
 
     try {
-      const app = new Hono();
+      const app = new Hono<AppEnv>();
       app.use("*", jwtAuthMiddleware());
       app.get("/test", (c) => {
         const userId = c.get("userId");
@@ -53,7 +54,7 @@ describe("jwtAuthMiddleware", () => {
     authService.getUserByToken = async () => mockUser as any;
 
     try {
-      const app = new Hono();
+      const app = new Hono<AppEnv>();
       app.use("*", jwtAuthMiddleware());
       app.get("/test", (c) => c.json({ userId: c.get("userId") }));
 
@@ -77,7 +78,7 @@ describe("jwtAuthMiddleware", () => {
     authService.getUserByToken = async () => mockUser as any;
 
     try {
-      const app = new Hono();
+      const app = new Hono<AppEnv>();
       app.use("*", jwtAuthMiddleware());
       app.get("/test", (c) => c.text("ok"));
 
