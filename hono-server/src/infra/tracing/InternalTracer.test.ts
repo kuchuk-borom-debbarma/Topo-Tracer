@@ -52,6 +52,7 @@ describe("Tracing Context Helper", () => {
 describe("InternalTracer execution", () => {
   it("should run operations inside a tracing context and buffer spans", async () => {
     const spansBuffer: SpansBuffer = {
+      traceStarts: [],
       nodeStarts: [],
       nodeEnds: [],
       edgeStarts: [],
@@ -81,7 +82,16 @@ describe("InternalTracer execution", () => {
 
         expect(nestedResult).toBe("hello-nested");
         return "hello-parent";
-      }, { type: "db", importanceLevel: 1 });
+      }, {
+        type: "db",
+        importanceLevel: 1,
+        traceName: "Synthetic parent trace",
+        importanceLabels: {
+          0: "request",
+          1: "work",
+          2: "detail",
+        },
+      });
 
       expect(result).toBe("hello-parent");
     });
@@ -89,6 +99,13 @@ describe("InternalTracer execution", () => {
     // Verify spans buffered
     // We expect 2 nodes started (parent-op, child-op)
     expect(spansBuffer.nodeStarts).toHaveLength(2);
+    expect(spansBuffer.traceStarts).toHaveLength(1);
+    expect(spansBuffer.traceStarts[0].name).toBe("Synthetic parent trace");
+    expect(spansBuffer.traceStarts[0].importanceLabels).toEqual({
+      0: "request",
+      1: "work",
+      2: "detail",
+    });
     expect(spansBuffer.nodeStarts[0].startMessage).toBe("parent-op");
     expect(spansBuffer.nodeStarts[0].nodeType).toBe("db");
     expect(spansBuffer.nodeStarts[0].importanceLevel).toBe(1);
@@ -115,6 +132,7 @@ describe("InternalTracer execution", () => {
 
   it("should capture errors and mark span status as error", async () => {
     const spansBuffer: SpansBuffer = {
+      traceStarts: [],
       nodeStarts: [],
       nodeEnds: [],
       edgeStarts: [],

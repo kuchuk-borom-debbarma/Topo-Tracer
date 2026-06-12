@@ -191,4 +191,30 @@ describe("SDK Integration", () => {
     expect(payload.nodeStarts[0].startMessage).toBe("Old Style");
     expect(payload.nodeStarts[0].traceName).toBeUndefined();
   });
+
+  test("Should allow API-key-only ingestion without X-User-Id header", async () => {
+    const receivedHeaders: Record<string, string> = {};
+
+    global.fetch = async (_url: string, init: any) => {
+      const headers = new Headers(init.headers);
+      receivedHeaders["x-api-key"] = headers.get("X-API-Key") ?? "";
+      receivedHeaders["x-user-id"] = headers.get("X-User-Id") ?? "";
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:4444",
+      apiKey: "api-key-only",
+      batchSize: 10,
+      flushInterval: 0,
+    });
+
+    await tracer.trace("API key only trace", async () => {
+      return;
+    });
+    await tracer.flush();
+
+    expect(receivedHeaders["x-api-key"]).toBe("api-key-only");
+    expect(receivedHeaders["x-user-id"]).toBe("");
+  });
 });

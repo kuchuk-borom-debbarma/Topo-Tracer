@@ -1,41 +1,47 @@
-import { Tracer } from '../../src';
+import { createTracer, sleep } from "../_helpers";
 
-const tracer = new Tracer({
-  endpoint: 'http://localhost:3000',
-  apiKey: 'dev-key',
-  serviceName: 'order-service',
-});
+const tracer = createTracer("orders-service");
 
-// Mock request handler
-async function handleRequest(headers: Record<string, string>) {
-  // 1. Extract context from headers
-  const parentContext = tracer.extractContext(headers);
-
-  // 2. Wrap processing in a span linked to the parent
-  return await tracer.trace('process-request', async (span) => {
-    span.setAttribute('http.method', 'POST');
-    span.setAttribute('http.path', '/orders');
-
-    console.log(`Processing order with TraceID: ${span.context.traceId}`);
-
-    await sleep(100);
-    
-    return { status: 'success', orderId: 'ord_123' };
-  }, { parentContext: parentContext || undefined });
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Simulate receiving a request
-const incomingHeaders = {
-  'x-topo-trace-id': 'mock-trace-123',
-  'x-topo-parent-id': 'mock-span-456'
+export type FakeRpcRequest = {
+  context: {
+    traceId: string;
+    spanId: string;
+  };
+  body: {
+    orderId: string;
+    amount: number;
+  };
 };
 
-console.log('Server: Received request with headers', incomingHeaders);
-handleRequest(incomingHeaders).then(response => {
-  console.log('Server: Response sent', response);
-  tracer.flush();
-});
+export async function handleOrderRequest(request: FakeRpcRequest): Promise<{ status: string; orderId: string }> {
+  const parentSpan = tracer.injectContext(request.context);
+
+  return tracer.run(parentSpan, () =>
+    tracer.trace(
+      "orders-service.handle-order",
+      async (span) => {
+        span.setAttribute("order.id", request.body.orderId);
+        span.setAttribute("order.amount", request.body.amount);
+
+        await tracer.trace("orders-service.reserve-inventory", async (childSpan) => {
+          childSpan.setAttribute("remote.kind", "simulated");
+          await sleep(20);
+        });
+
+        await tracer.trace("orders-service.persist-order", async (childSpan) => {
+          childSpan.setAttribute("db.system", "fake-postgres");
+          await sleep(15);
+        });
+
+        return {
+          status: "accepted",
+          orderId: request.body.orderId,
+        };
+      },
+    ),
+  );
+}
+
+export async function flushDistributedServerTracer(): Promise<void> {
+  await tracer.flush();
+}

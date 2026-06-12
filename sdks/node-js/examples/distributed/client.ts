@@ -1,35 +1,48 @@
-import { Tracer } from '../../src';
+import { createTracer, flushTracer, requireContext, sleep } from "../_helpers";
+import { flushDistributedServerTracer, handleOrderRequest } from "./server";
 
-const tracer = new Tracer({
-  endpoint: 'http://localhost:3000',
-  apiKey: 'dev-key',
-  serviceName: 'web-frontend',
-});
+const tracer = createTracer("web-frontend");
 
-async function placeOrder() {
-  await tracer.trace('place-order-ui', async (span) => {
-    console.log('Client: Starting placeOrder');
+export async function runDistributedClientExample(): Promise<void> {
+  await tracer.trace(
+    "web.place-order",
+    async (span) => {
+      span.setAttribute("ui.screen", "checkout");
+      span.setAttribute("order.id", "ord_demo_001");
 
-    // Prepare headers for outgoing request
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    
-    // Injects current context into headers
-    tracer.injectContext(headers);
-    
-    console.log('Client: Injected headers', headers);
+      await tracer.trace("web.prepare-request", async (childSpan) => {
+        childSpan.setAttribute("serialization", "json");
+        await sleep(10);
+      });
 
-    // Simulate fetch call to order-service
-    await sleep(50);
-    console.log('Client: Request sent to order-service');
+      const response = await handleOrderRequest({
+        context: requireContext(tracer.extractContext()),
+        body: {
+          orderId: "ord_demo_001",
+          amount: 1499,
+        },
+      });
+
+      span.setAttribute("remote.status", response.status);
+    },
+    {
+      traceName: "Distributed Order Demo",
+      importanceLabels: {
+        0: "request",
+        1: "service-hop",
+        2: "detail",
+      },
+    },
+  );
+
+  await flushTracer(tracer);
+  await flushDistributedServerTracer();
+}
+
+if (import.meta.main) {
+  runDistributedClientExample().catch(async (error) => {
+    console.error("[distributed client example] failed", error);
+    await flushTracer(tracer);
+    await flushDistributedServerTracer();
   });
-
-  await tracer.flush();
 }
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-placeOrder().catch(console.error);

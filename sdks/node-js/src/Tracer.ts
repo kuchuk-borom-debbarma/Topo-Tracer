@@ -16,6 +16,13 @@ const DEFAULT_FLUSH_INTERVAL = 5000;
 const DEFAULT_MAX_RETRIES = 5;
 const DEFAULT_RETRY_DELAY = 1000;
 
+function buildIngestUrl(endpoint: string): string {
+  const trimmed = endpoint.replace(/\/+$/, "");
+  return trimmed.endsWith("/api/v1/ingest")
+    ? trimmed
+    : `${trimmed}/api/v1/ingest`;
+}
+
 export class Tracer {
   private readonly storage = new AsyncLocalStorage<Span>();
   private readonly config: TracerConfig;
@@ -167,7 +174,7 @@ export class Tracer {
   }
 
   private addToBuffer(data: {
-    traceStarts?: IngestTraceStart[],
+    traceStarts: IngestTraceStart[],
     nodeStarts: IngestNodeStart[],
     edgeStarts: IngestEdgeStart[],
     nodeEnds: IngestNodeEnd[],
@@ -178,10 +185,10 @@ export class Tracer {
                        this.buffer.nodeEnds.length + 
                        this.buffer.edgeEnds.length;
     
-    const incoming = (data.traceStarts?.length || 0) + data.nodeStarts.length + 
-                    data.edgeStarts.length + 
-                    data.nodeEnds.length + 
-                    data.edgeEnds.length;
+    const incoming = data.traceStarts.length + data.nodeStarts.length +
+                   data.edgeStarts.length +
+                   data.nodeEnds.length +
+                   data.edgeEnds.length;
 
     if (totalCurrent + incoming > HARD_BATCH_CAP) {
       if (this.config.onDrop) {
@@ -192,7 +199,7 @@ export class Tracer {
       return;
     }
 
-    if (data.traceStarts) this.buffer.traceStarts.push(...data.traceStarts);
+    this.buffer.traceStarts.push(...data.traceStarts);
     this.buffer.nodeStarts.push(...data.nodeStarts);
     this.buffer.edgeStarts.push(...data.edgeStarts);
     this.buffer.nodeEnds.push(...data.nodeEnds);
@@ -259,18 +266,25 @@ export class Tracer {
   }
 
   private async ingest(data: IngestBatch): Promise<void> {
-    const payload = {
-      userId: this.config.userId,
-      ...data,
+    const payload = this.config.userId
+      ? {
+          userId: this.config.userId,
+          ...data,
+        }
+      : data;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-API-Key": this.config.apiKey,
     };
 
-    const response = await globalThis.fetch(`${this.config.endpoint}/api/v1/ingest`, {
+    if (this.config.userId) {
+      headers["X-User-Id"] = this.config.userId;
+    }
+    
+    const response = await globalThis.fetch(buildIngestUrl(this.config.endpoint), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": this.config.apiKey,
-        "X-User-Id": this.config.userId,
-      },
+      headers,
       body: JSON.stringify(payload),
     });
 

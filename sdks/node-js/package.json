@@ -2,16 +2,23 @@
   "name": "@topo-tracer/node-sdk",
   "version": "0.1.0",
   "description": "Node.js SDK for Topo-Tracer graph-based telemetry",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.ts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
     "dist"
   ],
   "scripts": {
     "test": "bun test",
     "bench": "bun run ./tests/performance.bench.ts",
-    "build": "bun build ./src/index.ts --outdir ./dist",
+    "build": "rm -rf ./dist && tsc -p ./tsconfig.json",
+    "demo:e2e": "bun run ./examples/end-to-end-demo.ts",
     "prepublishOnly": "bun run build"
   },
   "keywords": [

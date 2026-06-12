@@ -1,56 +1,48 @@
-import { Tracer } from '../src';
+import { createTracer, flushTracer, sleep } from "./_helpers";
 
-/**
- * Basic Usage Example
- * 
- * Shows how to:
- * 1. Initialize the tracer
- * 2. Use the fluent tracer.trace() API
- * 3. Manually create spans
- * 4. Set attributes
- */
+const tracer = createTracer("basic-example-service");
 
-const tracer = new Tracer({
-  endpoint: 'http://localhost:3000',
-  apiKey: 'dev-key',
-  serviceName: 'basic-example-service',
-  batchSize: 10,
-  flushInterval: 1000,
-});
+export async function runBasicExample(): Promise<void> {
+  await tracer.trace(
+    "checkout-request",
+    async (rootSpan) => {
+      rootSpan.setAttribute("trace.kind", "basic");
+      rootSpan.setAttribute("customer.id", "cust_demo_001");
 
-async function runExample() {
-  console.log('Starting basic example...');
+      await tracer.trace(
+        "load-cart",
+        async (childSpan) => {
+          childSpan.setAttribute("importance.label", "work");
+          childSpan.setAttribute("storage.kind", "cache");
+          await sleep(25);
+        },
+        {},
+      );
 
-  // 1. Fluent API with automatic context
-  await tracer.trace('parent-operation', async (parentSpan) => {
-    parentSpan.setAttribute('app.version', '1.0.0');
-    console.log('Inside parent span');
+      const manualSpan = tracer.createSpan("manual-discount-check", {
+        type: "rule-engine",
+        importanceLevel: 2,
+      });
+      manualSpan.setAttribute("discount.code", "SUMMER-FAKE");
+      await sleep(15);
+      manualSpan.end("manual span completed");
+    },
+    {
+      traceName: "Checkout Flow Demo",
+      importanceLabels: {
+        0: "request",
+        1: "work",
+        2: "detail",
+      },
+    },
+  );
 
-    await sleep(100);
+  await flushTracer(tracer);
+}
 
-    await tracer.trace('child-operation', async (childSpan) => {
-      childSpan.setAttribute('operation.type', 'compute');
-      console.log('Inside child span');
-      await sleep(200);
-    });
+if (import.meta.main) {
+  runBasicExample().catch(async (error) => {
+    console.error("[basic example] failed", error);
+    await flushTracer(tracer);
   });
-
-  // 2. Manual span creation
-  const manualSpan = tracer.createSpan('manual-span');
-  manualSpan.setAttribute('isManual', true);
-  console.log('Manual span started');
-  await sleep(150);
-  manualSpan.end();
-  console.log('Manual span ended');
-
-  // Ensure everything is sent
-  console.log('Flushing spans...');
-  await tracer.flush();
-  console.log('Done!');
 }
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-runExample().catch(console.error);

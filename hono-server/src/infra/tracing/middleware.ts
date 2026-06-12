@@ -15,53 +15,43 @@ import { getStringEnvValue } from "../../common/env";
 // fallow-ignore-next-line complexity
 export const requestTracingMiddleware = (): MiddlewareHandler => {
   // fallow-ignore-next-line complexity
+  return const requestTracingMiddleware = (): MiddlewareHandler => {
   return async (c, next) => {
-    // Skip self-tracing for health checks or favicon requests to reduce database noise
     const path = c.req.path;
-    if (path === "/" || path === "/favicon.ico") {
+
+    // Skip favicon noise.
+    if (path === "/favicon.ico") {
       await next();
       return;
     }
 
     const disableSelfTracing = getStringEnvValue(c, "DISABLE_SELF_TRACING") === "true";
-    if (disableSelfTracing) {
-      await next();
-      return;
-    }
-
     const traceParentHeader = c.req.header("traceparent");
+
     let traceId: string;
     let parentSpanId: string | undefined;
     let sampled = true;
 
     if (traceParentHeader) {
       const parsed = parseTraceParent(traceParentHeader);
-      if (parsed) {
-        traceId = parsed.traceId;
-        parentSpanId = parsed.spanId;
-        sampled = parsed.sampled;
-      } else {
-        // Fallback on malformed W3C header: generate a new traceId
-        traceId = randomUUID().replace(/-/g, "");
-      }
+      traceId = parsed.traceId;
+      parentSpanId = parsed.spanId;
+      sampled = parsed.sampled;
     } else {
-      // Fallback on legacy headers or generate a new traceId
       const customTraceId = c.req.header("X-Trace-Id");
       const customSpanId = c.req.header("X-Span-Id");
-
       traceId = customTraceId ? uuidToHex(customTraceId) : randomUUID().replace(/-/g, "");
       parentSpanId = customSpanId ? uuidToHex(customSpanId).slice(0, 16) : undefined;
     }
 
-    // Set traceparent response header to allow clients/browsers to track this request's self-trace ID
     const requestSpanId = randomUUID().replace(/-/g, "").slice(0, 16);
     c.res.headers.set(
       "traceparent",
-      formatTraceParent({ traceId, spanId: requestSpanId, sampled })
+      formatTraceParent({ traceId, spanId: requestSpanId, sampled }),
     );
 
-    // Initialize request-scoped spans buffer
     const spansBuffer: SpansBuffer = {
+      traceStarts: [],
       nodeStarts: [],
       nodeEnds: [],
       edgeStarts: [],
@@ -75,33 +65,42 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
       spansBuffer,
     };
 
-    // Execute Hono route handler within the active tracing storage boundary
     await InternalTracer.run(context, async () => {
       const method = c.req.method;
-      
-      // Trace the root API endpoint call at importance 0 (always visible)
+      const traceName = `${method} ${path}`;
+
       await InternalTracer.trace(
-        `${method} ${path}`,
+        traceName,
         async () => {
           await next();
         },
         {
           type: "api",
           importanceLevel: 0,
+          traceName,
+          importanceLabels: {
+            0: "request",
+            1: "work",
+            2: "detail",
+          },
           data: {
             userAgent: c.req.header("user-agent") || "unknown",
             status: c.res.status,
           },
-        }
+        },
       );
     });
 
-    // Determine the tenant/user owning this telemetry run
-      const userId = "system-self-tracing";
+    if (disableSelfTracing) {
+      return;
+    }
+
+    const userId = "system-self-tracing";
 
     if (spansBuffer.nodeStarts.length > 0) {
       const payload = {
         userId,
+        traceStarts: spansBuffer.traceStarts,
         nodeStarts: spansBuffer.nodeStarts,
         nodeEnds: spansBuffer.nodeEnds,
         edgeStarts: spansBuffer.edgeStarts,
@@ -119,14 +118,14 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
         console.error("[Self-Tracing] Failed to publish self-tracing spans:", err);
       });
 
-      // Maintain platform compatibility (e.g. serverless execution ctx waitUntil)
       try {
         if (c.executionCtx && typeof c.executionCtx.waitUntil === "function") {
           c.executionCtx.waitUntil(publishPromise);
         }
       } catch {
-        // Fallback for non-serverless environments (like Bun/Node) where c.executionCtx getter throws
+        // Fallback for non-serverless environments (like Bun/Node) where c.executionCtx getter throws.
       }
     }
   };
+};;
 };

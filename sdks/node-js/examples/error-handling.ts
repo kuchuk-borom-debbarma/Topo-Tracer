@@ -1,49 +1,39 @@
-import { Tracer } from '../src';
+import { createTracer, flushTracer, sleep } from "./_helpers";
 
-/**
- * Error Handling and Resilience Example
- * 
- * Demonstrates:
- * 1. Using the onDrop hook for observability of the SDK itself.
- * 2. How the SDK handles ingestion failures (retries).
- */
+const tracer = createTracer("error-example-service");
 
-const tracer = new Tracer({
-  endpoint: 'http://localhost:9999', // Point to a non-existent server to trigger retries/drops
-  apiKey: 'dev-key',
-  serviceName: 'error-prone-service',
-  maxRetries: 2,
-  retryDelay: 100,
-  batchSize: 5,
-  onDrop: (spans, reason) => {
-    console.error(`!!! SDK dropped ${spans.length} spans. Reason: ${reason}`);
-    console.error(`Example of first dropped span: ${spans[0].name}`);
-  }
-});
-
-async function runErrorExample() {
-  console.log('Starting error handling example...');
-  console.log('Ingestion is pointed to a non-existent server to demonstrate failure handling.');
-
-  // Create some spans to fill a batch
-  for (let i = 0; i < 10; i++) {
-    await tracer.trace(`operation-${i}`, async (span) => {
-      span.setAttribute('index', i);
-      await new Promise(r => setTimeout(r, 10));
-    });
-  }
-
-  console.log('Waiting for background flush and retries...');
-  // The SDK will try to flush, fail, retry, and eventually drop if maxRetries is reached.
-  // In our case, tracer.flush() will throw or the background interval will handle it.
-  
+export async function runErrorHandlingExample(): Promise<void> {
   try {
-    await tracer.flush();
-  } catch (err) {
-    console.log('Expected: tracer.flush() failed after retries.');
-  }
+    await tracer.trace(
+      "payment-root",
+      async (span) => {
+        span.setAttribute("payment.id", "pay_demo_001");
 
-  console.log('Done with error example.');
+        await tracer.trace("payment-authorize", async (childSpan) => {
+          childSpan.setAttribute("provider", "fake-gateway");
+          await sleep(15);
+          throw new Error("simulated authorization decline");
+        });
+      },
+      {
+        traceName: "Payment Failure Demo",
+        importanceLabels: {
+          0: "request",
+          1: "critical-step",
+          2: "detail",
+        },
+      },
+    );
+  } catch (error) {
+    console.error("[error-handling example] expected failure", error);
+  } finally {
+    await flushTracer(tracer);
+  }
 }
 
-runErrorExample().catch(console.error);
+if (import.meta.main) {
+  runErrorHandlingExample().catch(async (error) => {
+    console.error("[error-handling example] unexpected failure", error);
+    await flushTracer(tracer);
+  });
+}

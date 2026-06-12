@@ -3,6 +3,12 @@ import { randomUUID } from "crypto";
 import { hexToUuid, spanIdToUuid } from "./context";
 
 export type SpansBuffer = {
+  traceStarts: {
+    traceId: string;
+    name?: string;
+    importanceLabels?: Record<number, string>;
+    timestamp: number;
+  }[];
   nodeStarts: any[];
   nodeEnds: any[];
   edgeStarts: any[];
@@ -51,27 +57,35 @@ export class InternalTracer {
     options?: {
       type?: string;
       importanceLevel?: number;
+      traceName?: string;
+      importanceLabels?: Record<number, string>;
       data?: Record<string, any>;
     }
   ): Promise<T> {
-    const store = this.storage.getStore();
+    const store = this.getStore();
     if (!store) {
-      // Bypasses tracing if no tracing context is active
-      return fn("");
+      throw new Error("InternalTracer.trace() called outside run() context");
     }
 
     const traceId = store.traceId;
     const parentSpanId = store.spanId;
-    // Generate a random 8-byte hex span ID (16 characters)
+
     const spanId = randomUUID().replace(/-/g, "").slice(0, 16);
 
     const traceUUID = hexToUuid(traceId);
     const nodeUUID = spanIdToUuid(spanId);
     const parentUUID = parentSpanId ? spanIdToUuid(parentSpanId) : undefined;
-
     const startedAt = Date.now();
 
-    // 1. Record the span node start event
+    if (store.spansBuffer.traceStarts.length === 0) {
+      store.spansBuffer.traceStarts.push({
+        traceId: traceUUID,
+        name: options?.traceName ?? name,
+        importanceLabels: options?.importanceLabels,
+        timestamp: startedAt,
+      });
+    }
+
     store.spansBuffer.nodeStarts.push({
       id: nodeUUID,
       traceId: traceUUID,
@@ -82,7 +96,6 @@ export class InternalTracer {
       importanceLevel: options?.importanceLevel ?? 1,
     });
 
-    // 2. Record the causal link edge if a parent span exists
     if (parentUUID) {
       store.spansBuffer.edgeStarts.push({
         id: randomUUID(),
@@ -95,7 +108,6 @@ export class InternalTracer {
       });
     }
 
-    // Run the operation inside a nested AsyncLocalStorage context
     const childContext: ActiveSpanContext = {
       traceId,
       spanId,
@@ -106,7 +118,6 @@ export class InternalTracer {
     try {
       const result = await this.storage.run(childContext, () => fn(spanId));
 
-      // 3. Record span success end event
       store.spansBuffer.nodeEnds.push({
         id: nodeUUID,
         traceId: traceUUID,
@@ -117,7 +128,6 @@ export class InternalTracer {
 
       return result;
     } catch (error) {
-      // 3. Record span error end event
       const errorMessage = error instanceof Error ? error.message : String(error);
       store.spansBuffer.nodeEnds.push({
         id: nodeUUID,
@@ -128,7 +138,6 @@ export class InternalTracer {
           error: errorMessage,
         },
       });
-
       throw error;
     }
   }

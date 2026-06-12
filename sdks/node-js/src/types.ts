@@ -1,7 +1,7 @@
 export interface TracerConfig {
   endpoint: string;
   apiKey: string;
-  userId: string;
+  userId?: string;
   serviceName?: string;
   batchSize?: number;
   flushInterval?: number;
