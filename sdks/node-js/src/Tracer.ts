@@ -23,18 +23,32 @@ function buildIngestUrl(endpoint: string): string {
     : `${trimmed}/api/v1/ingest`;
 }
 
-export class Tracer {
-  private readonly storage = new AsyncLocalStorage<Span>();
-  private readonly config: TracerConfig;
-  private buffer: IngestBatch = {
+function createEmptyBatch(): IngestBatch {
+  return {
     traceStarts: [],
     nodeStarts: [],
     edgeStarts: [],
     nodeEnds: [],
     edgeEnds: [],
   };
+}
+
+function countBatchEvents(batch: IngestBatch): number {
+  return batch.traceStarts.length +
+         batch.nodeStarts.length +
+         batch.edgeStarts.length +
+         batch.nodeEnds.length +
+         batch.edgeEnds.length;
+}
+
+export class Tracer {
+  private readonly storage = new AsyncLocalStorage<Span>();
+  private readonly config: TracerConfig;
+  private buffer: IngestBatch = createEmptyBatch();
   private flushTimer: any = null;
   private isFlushing = false;
+  private flushAgain = false;
+  private flushPromise: Promise<void> | null = null;
 
   constructor(config: TracerConfig) {
     this.config = {
@@ -180,23 +194,11 @@ export class Tracer {
     nodeEnds: IngestNodeEnd[],
     edgeEnds: IngestEdgeEnd[],
   }) {
-    const totalCurrent = this.buffer.nodeStarts.length + 
-                       this.buffer.edgeStarts.length + 
-                       this.buffer.nodeEnds.length + 
-                       this.buffer.edgeEnds.length;
-    
-    const incoming = data.traceStarts.length + data.nodeStarts.length +
-                   data.edgeStarts.length +
-                   data.nodeEnds.length +
-                   data.edgeEnds.length;
+    const totalCurrent = countBatchEvents(this.buffer);
+    const incoming = countBatchEvents(data);
 
     if (totalCurrent + incoming > HARD_BATCH_CAP) {
-      if (this.config.onDrop) {
-        this.config.onDrop(data, "Buffer overflow - dropping events");
-      } else {
-        console.warn(`[Topo-Tracer SDK] Buffer overflow - dropping events`);
-      }
-      return;
+      void this.flush();
     }
 
     this.buffer.traceStarts.push(...data.traceStarts);
@@ -207,44 +209,46 @@ export class Tracer {
 
     const newTotal = totalCurrent + incoming;
     if (newTotal >= (this.config.batchSize || DEFAULT_BATCH_SIZE)) {
-      this.flush();
+      void this.flush();
     }
   }
 
   async flush(): Promise<void> {
-    if (this.isFlushing) return;
-    
-    const batch: IngestBatch = {
-      traceStarts: [...this.buffer.traceStarts],
-      nodeStarts: [...this.buffer.nodeStarts],
-      edgeStarts: [...this.buffer.edgeStarts],
-      nodeEnds: [...this.buffer.nodeEnds],
-      edgeEnds: [...this.buffer.edgeEnds],
-    };
-
-    if (batch.traceStarts.length === 0 && batch.nodeStarts.length === 0 && batch.edgeStarts.length === 0 && 
-        batch.nodeEnds.length === 0 && batch.edgeEnds.length === 0) {
-      return;
+    if (this.isFlushing) {
+      this.flushAgain = true;
+      return this.flushPromise ?? Promise.resolve();
     }
 
-    this.buffer.traceStarts = [];
-    this.buffer.nodeStarts = [];
-    this.buffer.edgeStarts = [];
-    this.buffer.nodeEnds = [];
-    this.buffer.edgeEnds = [];
+    this.flushPromise = this.drainBuffer();
+    return this.flushPromise;
+  }
 
+  private async drainBuffer(): Promise<void> {
     this.isFlushing = true;
     try {
-      await this.ingestWithRetry(batch, this.config.maxRetries || DEFAULT_MAX_RETRIES);
-    } catch (error) {
-       if (this.config.onDrop) {
-         this.config.onDrop(batch, `Failed to send batch after ${this.config.maxRetries} retries: ${(error as Error).message}`);
-       } else {
-         console.error(`[Topo-Tracer SDK] Ingestion failed after retries:`, error);
-       }
-       throw error;
+      do {
+        this.flushAgain = false;
+        const batch = this.buffer;
+        this.buffer = createEmptyBatch();
+
+        if (countBatchEvents(batch) === 0) {
+          continue;
+        }
+
+        try {
+          await this.ingestWithRetry(batch, this.config.maxRetries || DEFAULT_MAX_RETRIES);
+        } catch (error) {
+          if (this.config.onDrop) {
+            this.config.onDrop(batch, `Failed to send batch after ${this.config.maxRetries} retries: ${(error as Error).message}`);
+          } else {
+            console.error(`[Topo-Tracer SDK] Ingestion failed after retries:`, error);
+          }
+          throw error;
+        }
+      } while (this.flushAgain || countBatchEvents(this.buffer) >= (this.config.batchSize || DEFAULT_BATCH_SIZE));
     } finally {
       this.isFlushing = false;
+      this.flushPromise = null;
     }
   }
 

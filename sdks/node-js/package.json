@@ -19,6 +19,7 @@
     "bench": "bun run ./tests/performance.bench.ts",
     "build": "rm -rf ./dist && tsc -p ./tsconfig.json",
     "demo:e2e": "bun run ./examples/end-to-end-demo.ts",
+    "demo:stress": "bun run ./examples/stress-microservices.ts",
     "prepublishOnly": "bun run build"
   },
   "keywords": [

@@ -223,10 +223,12 @@ export function TraceListPage() {
                         <td>
                           <div className="trace-primary-cell">
                             <span className="trace-row-badge">{trace.name[0]?.toUpperCase() ?? "T"}</span>
-                            <div>
-                              <strong>{trace.name || shortId(trace.traceId, 14)}</strong>
-                              <small>
-                                {shortId(trace.traceId, 18)} · Started {formatDate(trace.startedAt)}
+                            <div className="trace-name-stack">
+                              <strong title={trace.name || trace.traceId}>
+                                {trace.name || shortId(trace.traceId, 22)}
+                              </strong>
+                              <small title={trace.traceId}>
+                                {shortId(trace.traceId, 22)} · Started {formatDate(trace.startedAt)}
                               </small>
                             </div>
                           </div>

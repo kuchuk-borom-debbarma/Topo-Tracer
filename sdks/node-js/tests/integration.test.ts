@@ -104,25 +104,42 @@ describe("SDK Integration", () => {
     });
   });
 
-  test("Should handle buffer overflow and onDrop callback", async () => {
+  test("Should auto-flush under buffer pressure instead of dropping events", async () => {
+    const receivedPayloads: any[] = [];
     let droppedData: any = null;
+
+    // @ts-ignore
+    global.fetch = async (url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      receivedPayloads.push(body);
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
+
     const tracer = new Tracer({
       endpoint: "http://localhost:3336",
       apiKey: "test-api-key",
       userId: "test-user-id",
       batchSize: 2000,
+      flushInterval: 0,
       onDrop: (data, reason) => {
-          droppedData = data;
+        droppedData = data;
       }
     });
 
-    // HARD_BATCH_CAP is 1000. 1001 nodes * (1 nodeStart) = 1001 events.
+    // HARD_BATCH_CAP is 1000. Crossing it should force a drain, not drop.
     for (let i = 0; i < 1001; i++) {
         tracer.startNode({ name: `Node ${i}` });
     }
 
-    expect(droppedData).not.toBeNull();
-    expect(droppedData.nodeStarts.length).toBe(1);
+    await tracer.flush();
+
+    const totalNodeStarts = receivedPayloads.reduce(
+      (total, payload) => total + payload.nodeStarts.length,
+      0,
+    );
+
+    expect(droppedData).toBeNull();
+    expect(totalNodeStarts).toBe(1001);
   });
 
   test("Should support trace name and importance labels on TraceStart but ignore on child spans", async () => {

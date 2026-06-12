@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { clearToken } from "../auth";
 import { fetchCurrentUser } from "../api";
 import { Icon } from "./Icon";
 
 export function AppShell() {
   const navigate = useNavigate();
-  const pathname = window.location.pathname;
+  const location = useLocation();
+  const pathname = location.pathname;
   const userQuery = useQuery({
     queryKey: ["current-user"],
     queryFn: fetchCurrentUser,

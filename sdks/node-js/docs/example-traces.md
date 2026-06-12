@@ -87,3 +87,25 @@ Runs these demos in order:
 Use it when you want one seeded session containing all supported demo patterns.
 
 When you run it, it prompts for a Topo-Tracer API key first. That key is sent on each ingest request, and the backend assigns the traces to the user who owns that key.
+
+## `stress-microservices.ts`
+
+- Trace name: `Marketplace Checkout Megaflow`
+- Trace shape: about 500 nodes in one trace
+- Importance labels:
+  - `0 -> critical-path`
+  - `1 -> request`
+  - `2 -> service-hop`
+  - `3 -> fanout`
+  - `4 -> io`
+  - `5 -> cache`
+  - `6 -> analytics`
+  - `7 -> audit`
+  - `8 -> noise-floor`
+- Root span: `checkout.megaflow.day-batch`
+- Workload shape:
+  - 7 bootstrap tasks under the root
+  - 12 realistic order flows
+  - each order fan-outs through pricing, inventory, fraud, payment, shipping, recommendations, persistence, and audit steps
+
+Use it when you want a stress trace large enough to pressure graph layout, threshold filtering, pagination, and inspector behavior.

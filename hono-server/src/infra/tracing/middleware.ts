@@ -1,21 +1,14 @@
-import { MiddlewareHandler } from "hono";
+import type { MiddlewareHandler } from "hono";
 import { randomUUID } from "crypto";
 import { parseTraceParent, formatTraceParent, uuidToHex } from "./context";
-import { InternalTracer, SpansBuffer } from "./InternalTracer";
+import { InternalTracer, type SpansBuffer } from "./InternalTracer";
 import { eventBus } from "../event-bus";
 import { getStringEnvValue } from "../../common/env";
 
 /**
- * Hono global request tracing middleware.
- * Following code-base.md guidelines:
- * - Decouples route handlers from telemetry aggregation logic.
- * - Extracts and propagates W3C traceparent headers across HTTP boundaries.
- * - Flushes all collected request spans to the event bus asynchronously on request finish.
+ * Extracts and propagates W3C traceparent headers across HTTP boundaries.
  */
-// fallow-ignore-next-line complexity
 export const requestTracingMiddleware = (): MiddlewareHandler => {
-  // fallow-ignore-next-line complexity
-  return const requestTracingMiddleware = (): MiddlewareHandler => {
   return async (c, next) => {
     const path = c.req.path;
 
@@ -123,9 +116,10 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
           c.executionCtx.waitUntil(publishPromise);
         }
       } catch {
-        // Fallback for non-serverless environments (like Bun/Node) where c.executionCtx getter throws.
+        // Fallback for non-serverless environments where executionCtx access can throw.
       }
     }
   };
-};;
 };
+
+export default requestTracingMiddleware;

@@ -16,7 +16,7 @@ import {
 import { memo, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import "@xyflow/react/dist/style.css";
-import { fetchTraceFlow, fetchTraceSummary, fetchTraces } from "../api";
+import { fetchTraceFlow, fetchTraceSummary } from "../api";
 import type {
   ProjectedFlowEdge,
   ProjectedFlowNode,
@@ -37,10 +37,10 @@ import {
 } from "../utils";
 import { Icon } from "./Icon";
 
-const NODE_WIDTH = 250;
-const NODE_HEIGHT = 104;
-const COLUMN_GAP = 310;
-const ROW_GAP = 132;
+const NODE_WIDTH = 228;
+const NODE_HEIGHT = 88;
+const COLUMN_GAP = 285;
+const ROW_GAP = 116;
 
 type SelectedItem =
   | { type: "node"; value: ProjectedFlowNode }
@@ -67,6 +67,7 @@ export function TraceDetailPage() {
     queryFn: () => fetchTraceSummary(traceId),
     retry: false,
   });
+
   const summary = summaryQuery.data;
   const threshold = normalizeThreshold(
     search.threshold,
@@ -79,11 +80,6 @@ export function TraceDetailPage() {
     queryFn: () => fetchTraceFlow({ traceId, threshold, cursor: search.cursor, limit: 180 }),
     enabled: Boolean(traceId) && !summaryQuery.isError,
     retry: false,
-  });
-
-  const nearbyQuery = useQuery({
-    queryKey: ["traces", 1, 8],
-    queryFn: () => fetchTraces({ page: 1, limit: 8 }),
   });
 
   useEffect(() => {
@@ -105,7 +101,6 @@ export function TraceDetailPage() {
   const refresh = () => {
     summaryQuery.refetch();
     flowQuery.refetch();
-    nearbyQuery.refetch();
   };
 
   return (
@@ -121,7 +116,6 @@ export function TraceDetailPage() {
             <p>{shortId(traceId, 24)}</p>
           </div>
         </div>
-
         <div className="trace-workbench-actions">
           <span className={`status-pill ${summary?.endedAt === null ? "live" : "neutral"}`}>
             {summary?.endedAt === null ? "Active" : "Materialized"}
@@ -152,34 +146,15 @@ export function TraceDetailPage() {
         />
       </section>
 
-      <section className="trace-workbench-grid">
-        <aside className="trace-rail">
-          <div className="rail-heading">
-            <span>Recent traces</span>
-            <Link to="/traces" search={{ page: 1 }}>All</Link>
-          </div>
-          <div className="rail-list">
-            {nearbyQuery.data?.traces.map((trace) => (
-              <Link
-                key={trace.traceId}
-                to="/traces/$traceId"
-                params={{ traceId: trace.traceId }}
-                search={{ threshold: trace.minImportanceLevel, cursor: undefined }}
-                className={`rail-trace ${trace.traceId === traceId ? "active" : ""}`}
-              >
-                <strong>{trace.name || shortId(trace.traceId, 12)}</strong>
-                <span>{formatCompactNumber(trace.nodeCount)} nodes</span>
-              </Link>
-            ))}
-          </div>
-        </aside>
-
-        <section className="trace-graph-workspace">
+      <section className="trace-workbench-grid trace-workbench-grid-graph">
+        <section className="trace-graph-workspace trace-graph-workspace-expanded">
           <GraphToolbar
             summary={summary}
             flow={flowQuery.data}
             threshold={threshold}
+            hasSelection={Boolean(selected)}
             onThresholdChange={(value) => updateSearch({ threshold: value })}
+            onCloseDetails={() => setSelected(null)}
           />
 
           <div className="graph-frame trace-graph-frame">
@@ -188,7 +163,11 @@ export function TraceDetailPage() {
                 icon="shield"
                 title="Trace not available"
                 copy="This trace is not visible for the current account."
-                action={<Link to="/traces" search={{ page: 1 }} className="button primary">Back to traces</Link>}
+                action={
+                  <Link to="/traces" search={{ page: 1 }} className="button primary">
+                    Back to traces
+                  </Link>
+                }
               />
             )}
 
@@ -211,42 +190,48 @@ export function TraceDetailPage() {
                 onSelect={setSelected}
               />
             )}
-
-            {flowQuery.data && (
-              <div className="window-pagination floating-panel">
-                <button
-                  type="button"
-                  onClick={() => updateSearch({
-                    threshold,
-                    cursor: flowQuery.data.metadata.paging.previousCursor ?? undefined,
-                  })}
-                  disabled={!flowQuery.data.metadata.paging.hasBefore}
-                  aria-label="Previous graph window"
-                >
-                  <Icon name="arrow-left" />
-                </button>
-                <span>
-                  {flowQuery.data.metadata.paging.fromFlowOrder}-{flowQuery.data.metadata.paging.toFlowOrder}
-                  <small>of {formatCompactNumber(flowQuery.data.metadata.paging.totalNodeCount)}</small>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => updateSearch({
-                    threshold,
-                    cursor: flowQuery.data.metadata.paging.nextCursor ?? undefined,
-                  })}
-                  disabled={!flowQuery.data.metadata.paging.hasAfter}
-                  aria-label="Next graph window"
-                >
-                  <Icon name="arrow-right" />
-                </button>
-              </div>
-            )}
           </div>
-        </section>
 
-        <Inspector selected={selected} summary={summary} />
+          {flowQuery.data && (
+            <div className="window-pagination floating-panel graph-window-pagination">
+              <button
+                type="button"
+                onClick={() => updateSearch({
+                  threshold,
+                  cursor: flowQuery.data.metadata.paging.previousCursor ?? undefined,
+                })}
+                disabled={!flowQuery.data.metadata.paging.hasBefore}
+                aria-label="Previous graph window"
+              >
+                <Icon name="arrow-left" />
+              </button>
+              <span>
+                {flowQuery.data.metadata.paging.fromFlowOrder}-{flowQuery.data.metadata.paging.toFlowOrder}
+                <small>of {formatCompactNumber(flowQuery.data.metadata.paging.totalNodeCount)}</small>
+              </span>
+              <button
+                type="button"
+                onClick={() => updateSearch({
+                  threshold,
+                  cursor: flowQuery.data.metadata.paging.nextCursor ?? undefined,
+                })}
+                disabled={!flowQuery.data.metadata.paging.hasAfter}
+                aria-label="Next graph window"
+              >
+                <Icon name="arrow-right" />
+              </button>
+            </div>
+          )}
+        </section>
       </section>
+
+      {selected && (
+        <div className="graph-inspector-overlay" onClick={() => setSelected(null)}>
+          <div className="graph-inspector-shell" onClick={(event) => event.stopPropagation()}>
+            <Inspector selected={selected} summary={summary} onClose={() => setSelected(null)} />
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -264,13 +249,15 @@ function GraphToolbar(props: {
   summary?: TraceSummary;
   flow?: ProjectedFlowResult;
   threshold: number;
+  hasSelection: boolean;
   onThresholdChange: (value: number) => void;
+  onCloseDetails: () => void;
 }) {
   const min = props.summary?.minImportanceLevel ?? 0;
   const max = Math.max(min, props.summary?.maxImportanceLevel ?? 9);
 
   return (
-    <div className="graph-toolbar trace-toolbar">
+    <div className="graph-toolbar trace-toolbar graph-toolbar-elevated">
       <div className="toolbar-stat">
         <span>Visible</span>
         <strong>{props.flow?.metadata.visibleNodeCount ?? 0}</strong>
@@ -279,7 +266,7 @@ function GraphToolbar(props: {
         <span>Collapsed</span>
         <strong>{props.flow?.metadata.ghostNodeCount ?? 0}</strong>
       </div>
-      <label className="importance-control compact">
+      <label className="importance-control compact graph-importance-control">
         <span>
           <Icon name="filter" />
           Importance {formatImportance(props.threshold, props.summary?.importanceLabels)}
@@ -293,6 +280,11 @@ function GraphToolbar(props: {
           onChange={(event) => props.onThresholdChange(Number(event.target.value))}
         />
       </label>
+      {props.hasSelection && (
+        <button type="button" className="button subtle graph-toolbar-close" onClick={props.onCloseDetails}>
+          Hide details
+        </button>
+      )}
     </div>
   );
 }
@@ -324,9 +316,9 @@ function TraceCanvas(props: {
       edges={graph.edges}
       nodeTypes={nodeTypes}
       fitView
-      fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
-      minZoom={0.16}
-      maxZoom={1.8}
+      fitViewOptions={{ padding: 0.12, maxZoom: 1.18 }}
+      minZoom={0.18}
+      maxZoom={1.6}
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
       onPaneClick={() => props.onSelect(null)}
@@ -339,13 +331,13 @@ function TraceCanvas(props: {
         if (value) props.onSelect({ type: "edge", value });
       }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1.1} color="#384151" />
+      <Background variant={BackgroundVariant.Dots} gap={28} size={1} color="#d9e1ea" />
       <Controls showInteractive={false} />
       <MiniMap
         pannable
         zoomable
         nodeColor={(node) => String(node.style?.backgroundColor ?? "#8ee4af")}
-        maskColor="rgba(6, 12, 20, 0.72)"
+        maskColor="rgba(248, 250, 252, 0.82)"
       />
     </ReactFlow>
   );
@@ -388,31 +380,35 @@ const nodeTypes = {
   "trace-node": TraceNodeCard,
 };
 
-function Inspector(props: { selected: SelectedItem | null; summary?: TraceSummary }) {
-  if (!props.selected) {
-    return (
-      <aside className="inspector trace-inspector">
-        <h3>Trace summary</h3>
-        <DetailRow label="Started" value={props.summary ? formatDate(props.summary.startedAt) : "-"} />
-        <DetailRow label="Materialized" value={props.summary ? formatDate(props.summary.materializedAt) : "-"} />
-        <DetailRow
-          label="Importance"
-          value={props.summary
-            ? `${formatImportance(props.summary.minImportanceLevel)}-${formatImportance(props.summary.maxImportanceLevel)}`
-            : "-"}
-        />
-        <Diagnostics summary={props.summary} />
-      </aside>
-    );
-  }
+function Inspector(props: {
+  selected: SelectedItem | null;
+  summary?: TraceSummary;
+  onClose: () => void;
+}) {
+  if (!props.selected) return null;
+
+  const importanceLabels = props.summary?.importanceLabels;
+  const title = props.selected.type === "node" ? "Node details" : "Edge details";
+  const subtitle = props.selected.type === "node"
+    ? props.selected.value.kind === "ghost"
+      ? `${props.selected.value.hiddenNodeCount} hidden nodes`
+      : nodeLabel(props.selected.value.nodeType, props.selected.value.data)
+    : props.selected.value.edgeType;
 
   return (
-    <aside className="inspector trace-inspector">
+    <aside className="inspector-panel inspector-overlay-panel">
+      <div className="inspector-header">
+        <div>
+          <span className="overline">Inspector</span>
+          <h3>{title}</h3>
+          <p>{subtitle}</p>
+        </div>
+        <button type="button" className="button subtle graph-toolbar-close" onClick={props.onClose} aria-label="Hide details">
+          Hide
+        </button>
+      </div>
       {props.selected.type === "node" ? (
-        <NodeInspector
-          node={props.selected.value}
-          importanceLabels={props.summary?.importanceLabels}
-        />
+        <NodeInspector node={props.selected.value} importanceLabels={importanceLabels} />
       ) : (
         <EdgeInspector edge={props.selected.value} />
       )}
@@ -563,8 +559,8 @@ function buildFlow(
     style: {
       width: NODE_WIDTH,
       minHeight: NODE_HEIGHT,
-      backgroundColor: node.kind === "ghost" ? "#1d2736" : "#0f1b2a",
-      borderColor: selected?.type === "node" && selected.value.id === node.id ? "#8ee4af" : "#243044",
+      backgroundColor: node.kind === "ghost" ? "#f8fafc" : "#ffffff",
+      borderColor: selected?.type === "node" && selected.value.id === node.id ? "#12845f" : "#d8e0ea",
     },
   }));
 
@@ -575,13 +571,14 @@ function buildFlow(
       id: edge.id,
       source: edge.fromNodeId,
       target: edge.toNodeId,
-      label: edge.edgeType,
+      type: "smoothstep",
+      label: selected?.type === "edge" && selected.value.id === edge.id ? edge.edgeType : undefined,
       animated: selected?.type === "edge" && selected.value.id === edge.id,
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#7f8da3" },
+      markerEnd: { type: MarkerType.ArrowClosed, color: selected?.type === "edge" && selected.value.id === edge.id ? "#12845f" : "#8fa1b6" },
       data: { value: edge },
       style: {
-        stroke: selected?.type === "edge" && selected.value.id === edge.id ? "#8ee4af" : "#64748b",
-        strokeWidth: selected?.type === "edge" && selected.value.id === edge.id ? 3 : 1.8,
+        stroke: selected?.type === "edge" && selected.value.id === edge.id ? "#12845f" : "#91a3b8",
+        strokeWidth: selected?.type === "edge" && selected.value.id === edge.id ? 3 : 1.6,
       },
     }));
 
@@ -633,12 +630,14 @@ function layoutGraph(nodes: ProjectedFlowNode[], edges: ProjectedFlowEdge[]): Ma
   }
 
   const positions = new Map<string, { x: number; y: number }>();
+  const tallestColumn = Math.max(...Array.from(columns.values()).map((columnNodes) => columnNodes.length), 1);
   for (const [column, columnNodes] of columns) {
-    columnNodes
-      .sort((a, b) => nodeFlowStart(a) - nodeFlowStart(b))
+    const sortedNodes = columnNodes.sort((a, b) => nodeFlowStart(a) - nodeFlowStart(b));
+    const yOffset = ((tallestColumn - sortedNodes.length) * ROW_GAP) / 2;
+    sortedNodes
       .forEach((node, row) => positions.set(node.id, {
         x: column * COLUMN_GAP,
-        y: row * ROW_GAP,
+        y: yOffset + row * ROW_GAP,
       }));
   }
 

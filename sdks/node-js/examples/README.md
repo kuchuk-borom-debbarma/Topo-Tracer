@@ -6,6 +6,7 @@
 - `distributed/server.ts` - simulated downstream service continuing parent context.
 - `message-queue.ts` - simulated async queue producer/consumer handoff.
 - `error-handling.ts` - failing child span and propagated error flow.
+- `stress-microservices.ts` - realistic marketplace checkout megaflow with about 500 nodes across many importance levels.
 - `end-to-end-demo.ts` - prompts for an API key, then runs every demo sequentially against one backend.
 
 Each example uses fake in-process remote work. Set `TOPO_TRACER_URL` to the backend base URL, for example `http://localhost:3000`. The SDK appends `/api/v1/ingest` automatically.
