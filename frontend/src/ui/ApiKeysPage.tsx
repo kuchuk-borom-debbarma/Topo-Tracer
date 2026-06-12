@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { createApiKey, fetchApiKeys, revokeApiKey } from "../api";
 import { formatDate, relativeTime } from "../utils";
-import { Icon } from "./Icon";
 
 export function ApiKeysPage() {
   const queryClient = useQueryClient();
@@ -31,75 +30,62 @@ export function ApiKeysPage() {
   });
 
   const apiKeys = apiKeysQuery.data?.apiKeys ?? [];
-  const activeKeys = apiKeys.filter((apiKey) => !apiKey.revokedAt);
 
   return (
-    <main className="api-keys-page">
-      <header className="api-keys-header">
-        <div>
-          <span className="overline">SDK access</span>
-          <h1>API keys</h1>
+    <main className="api-keys-page settings-page">
+      <section className="settings-section">
+        <div className="settings-section-heading">
+          <h2>API keys</h2>
+          <span>{apiKeys.filter((apiKey) => !apiKey.revokedAt).length} active</span>
         </div>
-        <div className="metric-pill">
-          <Icon name="shield" />
-          {activeKeys.length} active
-        </div>
-      </header>
 
-      <section className="api-key-create-panel">
         <form
+          className="settings-create-row"
           onSubmit={(event) => {
             event.preventDefault();
             createMutation.mutate({ name });
           }}
         >
           <label htmlFor="api-key-name">Name</label>
-          <div className="api-key-create-row">
-            <input
-              id="api-key-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Production SDK"
-              maxLength={80}
-            />
-            <button className="button primary" type="submit" disabled={!name.trim() || createMutation.isPending}>
-              Create key
+          <input
+            id="api-key-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Production SDK"
+            maxLength={80}
+          />
+          <button className="button primary" type="submit" disabled={!name.trim() || createMutation.isPending}>
+            Create
+          </button>
+        </form>
+
+        {createMutation.isError && <p className="form-error">{createMutation.error.message}</p>}
+
+        {createdKey && (
+          <div className="created-key-row">
+            <span>New key</span>
+            <code>{createdKey}</code>
+            <button className="button subtle" type="button" onClick={() => navigator.clipboard.writeText(createdKey)}>
+              Copy
             </button>
           </div>
-          {createMutation.isError && (
-            <p className="form-error">{createMutation.error.message}</p>
-          )}
-        </form>
+        )}
       </section>
 
-      {createdKey && (
-        <section className="api-key-created">
-          <div>
-            <span className="overline">New key</span>
-            <code>{createdKey}</code>
-          </div>
-          <button
-            className="icon-button"
-            type="button"
-            title="Copy key"
-            onClick={() => navigator.clipboard.writeText(createdKey)}
-          >
-            <Icon name="external" />
-          </button>
-        </section>
-      )}
+      <section className="settings-section">
+        <div className="settings-section-heading">
+          <h3>Keys</h3>
+        </div>
 
-      <section className="api-key-list">
-        {apiKeysQuery.isLoading && <p className="muted-text">Loading keys...</p>}
+        {apiKeysQuery.isLoading && <p className="muted-copy">Loading keys...</p>}
         {apiKeysQuery.isError && <p className="form-error">{apiKeysQuery.error.message}</p>}
+
         {!apiKeysQuery.isLoading && !apiKeysQuery.isError && apiKeys.length === 0 && (
-          <div className="empty-state compact">
-            <div className="empty-icon"><Icon name="shield" /></div>
-            <h3>No API keys</h3>
-          </div>
+          <div className="settings-empty-row">No API keys</div>
         )}
+
         {apiKeys.map((apiKey) => (
-          <article className="api-key-row" key={apiKey.id}>
+          <article className="settings-list-row" key={apiKey.id}>
             <div>
               <strong>{apiKey.name}</strong>
               <small>

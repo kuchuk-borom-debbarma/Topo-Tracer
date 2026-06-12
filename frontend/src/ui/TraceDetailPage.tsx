@@ -117,7 +117,6 @@ export function TraceDetailPage() {
             Traces
           </Link>
           <div>
-            <span className="panel-kicker">Trace flow</span>
             <h2 title={traceId}>{summary?.name || shortId(traceId, 28)}</h2>
             <p>{shortId(traceId, 24)}</p>
           </div>
@@ -393,7 +392,6 @@ function Inspector(props: { selected: SelectedItem | null; summary?: TraceSummar
   if (!props.selected) {
     return (
       <aside className="inspector trace-inspector">
-        <span className="panel-kicker">Inspector</span>
         <h3>Trace summary</h3>
         <DetailRow label="Started" value={props.summary ? formatDate(props.summary.startedAt) : "-"} />
         <DetailRow label="Materialized" value={props.summary ? formatDate(props.summary.materializedAt) : "-"} />
@@ -410,7 +408,6 @@ function Inspector(props: { selected: SelectedItem | null; summary?: TraceSummar
 
   return (
     <aside className="inspector trace-inspector">
-      <span className="panel-kicker">Inspector</span>
       {props.selected.type === "node" ? (
         <NodeInspector
           node={props.selected.value}

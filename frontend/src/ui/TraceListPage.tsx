@@ -14,12 +14,33 @@ import {
 import { Icon } from "./Icon";
 
 const PAGE_SIZE = 15;
+const FEATURE_CARDS = [
+  {
+    label: "Topo Tracer",
+    title: "Trace graph explorer for large systems.",
+    copy: "Materialized graph windows let you inspect complex traces without loading the entire run.",
+    icon: "graph" as const,
+  },
+  {
+    label: "Importance",
+    title: "Move from overview to detail.",
+    copy: "Thresholds keep noisy spans collapsed until you choose to reveal deeper execution paths.",
+    icon: "filter" as const,
+  },
+  {
+    label: "Access",
+    title: "Each user sees their own traces.",
+    copy: "API keys, trace lists, summaries, and flow reads stay scoped to the logged-in account.",
+    icon: "shield" as const,
+  },
+];
 
 export function TraceListPage() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { page?: number };
   const page = search.page ?? 1;
   const [filter, setFilter] = useState("");
+  const [featureIndex, setFeatureIndex] = useState(0);
   const tracesQuery = useQuery({
     queryKey: ["traces", page, PAGE_SIZE],
     queryFn: () => fetchTraces({ page, limit: PAGE_SIZE }),
@@ -39,81 +60,83 @@ export function TraceListPage() {
     });
   }, [filter, result?.traces]);
 
-  const totalNodes = result?.traces.reduce((sum, trace) => sum + trace.nodeCount, 0) ?? 0;
-  const activeTraces = result?.traces.filter((trace) => trace.endedAt === null).length ?? 0;
-  const issueCount =
-    result?.traces.reduce((sum, trace) => sum + diagnosticCount(trace), 0) ?? 0;
-
   const goToPage = (nextPage: number) => {
     navigate({
       to: "/traces",
       search: { page: nextPage },
     });
   };
+  const feature = FEATURE_CARDS[featureIndex] ?? FEATURE_CARDS[0];
+  const goToFeature = (direction: -1 | 1) => {
+    setFeatureIndex((current) => (current + direction + FEATURE_CARDS.length) % FEATURE_CARDS.length);
+  };
 
   return (
     <main className="page trace-list-page trace-dashboard-page">
-      <section className="trace-dashboard-hero compact">
-        <div className="trace-dashboard-copy">
-          <span className="hero-kicker">Trace operations</span>
-          <h2>Trace directory</h2>
-          <p>Only traces owned by this account appear here.</p>
+      <section className="single-feature-card">
+        <button
+          type="button"
+          className="feature-arrow"
+          onClick={() => goToFeature(-1)}
+          aria-label="Previous feature"
+        >
+          <Icon name="arrow-left" />
+        </button>
+        <div
+          className="single-feature-content"
+          onTouchStart={(event) => {
+            event.currentTarget.dataset.touchStartX = String(event.changedTouches[0]?.clientX ?? 0);
+          }}
+          onTouchEnd={(event) => {
+            const start = Number(event.currentTarget.dataset.touchStartX ?? 0);
+            const end = event.changedTouches[0]?.clientX ?? start;
+            const delta = end - start;
+            if (Math.abs(delta) < 40) return;
+            goToFeature(delta > 0 ? -1 : 1);
+          }}
+        >
+          <div className="feature-icon"><Icon name={feature.icon} /></div>
+          <div>
+            <span>{feature.label}</span>
+            <h2>{feature.title}</h2>
+            <p>{feature.copy}</p>
+          </div>
         </div>
-
-        <div className="trace-dashboard-actions">
-          <button
-            type="button"
-            className="button subtle"
-            onClick={() => tracesQuery.refetch()}
-            disabled={tracesQuery.isFetching}
-          >
-            <Icon name="refresh" />
-            Refresh
-          </button>
-          <Link to="/settings/api-keys" className="button primary">
-            <Icon name="shield" />
-            Manage API keys
-          </Link>
+        <button
+          type="button"
+          className="feature-arrow"
+          onClick={() => goToFeature(1)}
+          aria-label="Next feature"
+        >
+          <Icon name="arrow-right" />
+        </button>
+        <div className="feature-dots" aria-hidden="true">
+          {FEATURE_CARDS.map((card, index) => (
+            <span key={card.label} className={index === featureIndex ? "active" : ""} />
+          ))}
         </div>
-      </section>
-
-      <section className="trace-dashboard-metrics" aria-label="Trace metrics">
-        <MetricCard
-          icon="activity"
-          label="Live traces"
-          value={formatCompactNumber(activeTraces)}
-          note="Currently streaming or waiting to finish"
-          tone="emerald"
-        />
-        <MetricCard
-          icon="layers"
-          label="Nodes in view"
-          value={formatCompactNumber(totalNodes)}
-          note="Across the traces on this page"
-          tone="cyan"
-        />
-        <MetricCard
-          icon="shield"
-          label="Diagnostics"
-          value={formatCompactNumber(issueCount)}
-          note="Materialization warnings worth checking"
-          tone="amber"
-        />
-        <MetricCard
-          icon="clock"
-          label="Page size"
-          value={String(PAGE_SIZE)}
-          note="Balanced for quick scanning"
-          tone="violet"
-        />
       </section>
 
       <section className="trace-panel trace-dashboard-panel">
         <header className="trace-panel-header trace-dashboard-panel-header">
           <div>
-            <span className="panel-kicker">Trace directory</span>
             <h3>Recent traces</h3>
-            <p>Search by trace ID or name, then jump directly into the graph explorer.</p>
+          </div>
+
+          <div className="trace-table-actions">
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => tracesQuery.refetch()}
+              disabled={tracesQuery.isFetching}
+            >
+              <Icon name="refresh" />
+              Refresh
+            </button>
+            <Link to="/settings/api-keys" className="button subtle">
+              <Icon name="shield" />
+              API keys
+            </Link>
           </div>
 
           <label className="search-box trace-search-box">
@@ -286,27 +309,6 @@ export function TraceListPage() {
         )}
       </section>
     </main>
-  );
-}
-
-function MetricCard(props: {
-  icon: "activity" | "layers" | "clock" | "shield";
-  label: string;
-  value: string;
-  note: string;
-  tone: string;
-}) {
-  return (
-    <article className="metric-card trace-dashboard-metric">
-      <div className={`metric-icon ${props.tone}`}>
-        <Icon name={props.icon} />
-      </div>
-      <div className="metric-copy">
-        <span>{props.label}</span>
-        <strong>{props.value}</strong>
-        <small>{props.note}</small>
-      </div>
-    </article>
   );
 }
 

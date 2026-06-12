@@ -32,7 +32,7 @@ export function AppShell() {
             </span>
             <span className="brand-copy">
               <strong>Topo Tracer</strong>
-              <span>Trace intelligence workspace</span>
+              <span>Trace graph</span>
             </span>
           </Link>
 
@@ -95,9 +95,7 @@ export function AppShell() {
       <div className="workspace-main">
         <header className="workspace-topbar">
           <div>
-            <p className="workspace-eyebrow">{routeMeta.eyebrow}</p>
             <h1>{routeMeta.title}</h1>
-            <p className="workspace-subtitle">{routeMeta.subtitle}</p>
           </div>
 
           <div className="workspace-topbar-actions">
@@ -120,19 +118,15 @@ export function AppShell() {
   );
 }
 
-function getRouteMeta(pathname: string): { eyebrow: string; title: string; subtitle: string } {
+function getRouteMeta(pathname: string): { title: string } {
   if (pathname.startsWith("/settings/api-keys")) {
     return {
-      eyebrow: "Security",
-      title: "API key management",
-      subtitle: "Create, review, and revoke access without leaving your operational workspace.",
+      title: "API keys",
     };
   }
 
   return {
-    eyebrow: "Observability",
-    title: "Trace workspace",
-    subtitle: "Inspect active traces, monitor graph health, and jump into detail views with less friction.",
+    title: "Traces",
   };
 }
 
