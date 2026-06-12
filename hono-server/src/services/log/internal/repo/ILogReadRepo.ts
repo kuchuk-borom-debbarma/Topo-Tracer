@@ -7,7 +7,7 @@ import {
   PagingParams,
   PagedResult,
 } from "../../api/types";
-import { NodeEventRow, EdgeEventRow } from "./types";
+import { NodeEventRow, EdgeEventRow, TraceEventRow } from "./types";
 
 /**
  * Default upper limits for row queries when projecting flows.
@@ -36,6 +36,9 @@ export abstract class ILogReadRepo {
   /**
    * Loads the materialized read-model elements (nodes, edges, and summary) for a trace.
    */
+  abstract loadTraceEventsAfterCheckpoint(params: { userId: string, traceId: string, checkpoint: ReadCheckpoint | null }): Promise<TraceEventRow[]>;
+
+  /**\n   * Loads the materialized read-model elements (nodes, edges, and summary) for a trace.\n   */
   abstract loadLatestReadModel(params: {
     userId: string;
     traceId: string;

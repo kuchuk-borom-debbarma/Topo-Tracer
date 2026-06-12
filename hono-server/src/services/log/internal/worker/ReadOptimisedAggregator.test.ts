@@ -21,6 +21,7 @@ const mockLogger = {
 } as unknown as Logger<unknown>;
 
 class StatefulFakeReadRepo extends ILogReadRepo {
+  loadTraceEventsAfterCheckpoint = mock(async () => []) as any;
   checkpoint: ReadCheckpoint | null = null;
   nodes: ReadNode[] = [];
   edges: ReadEdge[] = [];

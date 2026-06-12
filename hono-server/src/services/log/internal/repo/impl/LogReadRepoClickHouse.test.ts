@@ -79,7 +79,7 @@ describe("LogReadRepoClickHouse row mapping", () => {
     const checkpoint = {
       userId: "u1",
       traceId: "t1",
-      lastNodeEventTime: 1000,
+      lastTraceEventTime: 0, lastNodeEventTime: 1000,
       lastNodeEventId: "n1",
       lastNodeEventType: 0,
       lastEdgeEventTime: 1100,
@@ -182,7 +182,7 @@ describe("LogReadRepoClickHouse row loading", () => {
     expect(result).toMatchObject({
       userId: "u1",
       traceId: "t1",
-      lastNodeEventTime: 1000,
+      lastTraceEventTime: 0, lastNodeEventTime: 1000,
       lastNodeEventId: "n1",
       lastNodeEventType: 0,
       lastEdgeEventTime: 1100,
@@ -282,7 +282,7 @@ describe("LogReadRepoClickHouse row loading", () => {
     const checkpoint = {
       userId: "u1",
       traceId: "t1",
-      lastNodeEventTime: 1000,
+      lastTraceEventTime: 0, lastNodeEventTime: 1000,
       lastNodeEventId: "n1",
       lastNodeEventType: 0,
       lastEdgeEventTime: 1100,
@@ -300,7 +300,7 @@ describe("LogReadRepoClickHouse row loading", () => {
     expect(nodeQuery?.query).toContain("started_at_ms");
     expect(nodeQuery?.query).toContain("ORDER BY");
     expect(nodeQuery?.query_params).toMatchObject({
-      lastNodeEventTime: 1000,
+      lastTraceEventTime: 0, lastNodeEventTime: 1000,
       lastNodeEventId: "n1",
       lastNodeEventType: 0,
     });
@@ -320,7 +320,7 @@ describe("LogReadRepoClickHouse row loading", () => {
 
     const nodeQuery = fakeClient.queries.find(q => q.query.includes("node_events"));
     expect(nodeQuery?.query_params).toMatchObject({
-      lastNodeEventTime: 0,
+      lastTraceEventTime: 0, lastNodeEventTime: 0,
       lastNodeEventId: "",
       lastNodeEventType: 0,
     });

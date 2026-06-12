@@ -10,6 +10,7 @@ import { computeFlowOrder } from "./flowOrder";
 import type {
   NodeEventRow as RawNodeEvent,
   EdgeEventRow as RawEdgeEvent,
+  TraceEventRow,
 } from "../repo/types";
 
 interface MaterializationDiagnostics {
@@ -65,16 +66,27 @@ export class TraceReadModelMaterializer {
       edges: existingEdges,
       summary: _existingSummary,
     } = await this.readRepo.loadLatestReadModel({ userId, traceId });
+    let traceName = _existingSummary?.name;
+    let importanceLabels = _existingSummary?.importanceLabels || {};
     
     // 3. Fetch newer raw telemetry events appended since the last checkpoint run
-    const { nodeEvents, edgeEvents } =
-      await this.readRepo.loadRawEventsAfterCheckpoint({
-        userId,
-        traceId,
-        checkpoint,
-      });
+    const [traceEvents, { nodeEvents, edgeEvents }] = await Promise.all([
+      this.readRepo.loadTraceEventsAfterCheckpoint({ userId, traceId, checkpoint }),
+      this.readRepo.loadRawEventsAfterCheckpoint({ userId, traceId, checkpoint }),
+    ]);
 
-    if (nodeEvents.length === 0 && edgeEvents.length === 0) {
+    // Update name and labels from trace events
+    if (traceEvents.length > 0) {
+      const latestTraceEvent = traceEvents[traceEvents.length - 1];
+      if (latestTraceEvent.name) {
+        traceName = latestTraceEvent.name;
+      }
+      if (Object.keys(latestTraceEvent.importance_labels).length > 0) {
+        importanceLabels = { ...importanceLabels, ...latestTraceEvent.importance_labels };
+      }
+    }
+
+    if (traceEvents.length === 0 && nodeEvents.length === 0 && edgeEvents.length === 0) {
       return;
     }
 
@@ -84,6 +96,8 @@ export class TraceReadModelMaterializer {
     const edgeMap = new Map<string, ReadEdge>(
       existingEdges.map((e) => [e.id, { ...e }]),
     );
+
+
 
     const diags: MaterializationDiagnostics = {
       diagMissingStarts: 0,
@@ -136,6 +150,8 @@ export class TraceReadModelMaterializer {
     const summary = this.buildSummary({
       userId,
       traceId,
+      name: traceName,
+      importanceLabels,
       nodesArray,
       savedEdges,
       diags,
@@ -147,6 +163,7 @@ export class TraceReadModelMaterializer {
       userId,
       traceId,
       checkpoint,
+      traceEvents,
       nodeEvents,
       edgeEvents,
     });
@@ -288,6 +305,7 @@ export class TraceReadModelMaterializer {
     traceId: string,
     nodeMap: Map<string, ReadNode>,
     diags: MaterializationDiagnostics,
+    
   ): void {
     if (event.started_at_ms === null) {
       diags.diagInvalidImportance++;
@@ -326,6 +344,8 @@ export class TraceReadModelMaterializer {
       flowOrder: existing?.flowOrder ?? 0,
       materializedAt: this.now(),
     } as ReadNode);
+
+
   }
 
   private handleNodeEnd(
@@ -453,7 +473,8 @@ export class TraceReadModelMaterializer {
     savedEdges: ReadEdge[];
     diags: MaterializationDiagnostics;
     flowDiagnostics: { diagCycles: number; diagOrphanEdges: number };
-  }): ReadTraceSummary {
+    name?: string;
+    importanceLabels: Record<number, string>;  }): ReadTraceSummary {
     const { userId, traceId, nodesArray, savedEdges, diags, flowDiagnostics } =
       params;
 
@@ -475,6 +496,8 @@ export class TraceReadModelMaterializer {
     return {
       userId,
       traceId,
+      name: params.name || traceId,
+      importanceLabels: params.importanceLabels,
       nodeCount: nodesArray.length,
       edgeCount: savedEdges.length,
       minImportanceLevel: nodesArray.length ? minImportanceLevel : 0,
@@ -492,14 +515,16 @@ export class TraceReadModelMaterializer {
     userId: string;
     traceId: string;
     checkpoint: ReadCheckpoint | null;
+    traceEvents: TraceEventRow[];
     nodeEvents: RawNodeEvent[];
     edgeEvents: RawEdgeEvent[];
   }): ReadCheckpoint {
-    const { userId, traceId, checkpoint, nodeEvents, edgeEvents } = params;
+    const { userId, traceId, checkpoint, traceEvents, nodeEvents, edgeEvents } = params;
 
     const next = {
       userId,
       traceId,
+      lastTraceEventTime: checkpoint?.lastTraceEventTime ?? 0,
       lastNodeEventTime: checkpoint?.lastNodeEventTime ?? 0,
       lastNodeEventId: checkpoint?.lastNodeEventId ?? "",
       lastNodeEventType: checkpoint?.lastNodeEventType ?? 0,
@@ -508,6 +533,10 @@ export class TraceReadModelMaterializer {
       lastEdgeEventType: checkpoint?.lastEdgeEventType ?? 0,
       checkpointedAt: this.now(),
     };
+
+    if (traceEvents.length > 0) {
+      next.lastTraceEventTime = traceEvents[traceEvents.length - 1].timestamp_ms;
+    }
 
     if (nodeEvents.length > 0) {
       const last = nodeEvents[nodeEvents.length - 1];

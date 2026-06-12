@@ -21,7 +21,7 @@ describe("TraceReadModelMaterializer - Authoritative Boundaries", () => {
     const checkpoint: ReadCheckpoint = {
       userId: "u1",
       traceId: "t1",
-      lastNodeEventTime: 200,
+      lastTraceEventTime: 0, lastNodeEventTime: 200,
       lastNodeEventId: "n1",
       lastNodeEventType: 1,
       lastEdgeEventTime: 0,

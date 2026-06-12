@@ -1,4 +1,14 @@
 /**
+ * Raw Trace Start event shape for high-level metadata.
+ */
+export type IngestTraceStart = {
+  traceId: string;
+  name?: string;
+  importanceLabels?: Record<number, string>;
+  timestamp: number; // UTC Milliseconds
+};
+
+/**
  * Raw Node Start event shape for telemetry ingestion.
  */
 export type IngestNodeStart = {
@@ -23,7 +33,6 @@ export type IngestNodeEnd = {
 
 /**
  * Raw Edge Start event shape for telemetry ingestion.
- * Edges model the direct causal relationships in the trace flow.
  */
 export type IngestEdgeStart = {
   id: string;
@@ -45,8 +54,19 @@ export type IngestEdgeEnd = {
 };
 
 /**
+ * Complete batch payload for telemetry ingestion.
+ */
+export type IngestBatch = {
+  userId: string;
+  traceStarts: IngestTraceStart[];
+  nodeStarts: IngestNodeStart[];
+  edgeStarts: IngestEdgeStart[];
+  nodeEnds: IngestNodeEnd[];
+  edgeEnds: IngestEdgeEnd[];
+};
+
+/**
  * Materialized Read-Optimized Node.
- * Reconstructed from NodeStart and NodeEnd events during trace materialization.
  */
 export type ReadNode = {
   id: string;
@@ -61,13 +81,12 @@ export type ReadNode = {
   startMessage: string | null;
   endMessage: string | null;
   importanceLevel: number;
-  flowOrder: number; // Topological ordering index computed by materializer
-  materializedAt: number; // Epoch timestamp of last reconstruction
+  flowOrder: number;
+  materializedAt: number;
 };
 
 /**
  * Materialized Read-Optimized Edge.
- * Reconstructed from EdgeStart and EdgeEnd events during trace materialization.
  */
 export type ReadEdge = {
   id: string;
@@ -76,8 +95,8 @@ export type ReadEdge = {
   edgeType: string;
   fromNodeId: string;
   toNodeId: string;
-  fromFlowOrder: number; // Cached source node topological order (for fast sorting)
-  toFlowOrder: number;   // Cached target node topological order (for fast sorting)
+  fromFlowOrder: number;
+  toFlowOrder: number;
   data: Record<string, string>;
   startedAt: number;
   endedAt: number | null;
@@ -88,11 +107,12 @@ export type ReadEdge = {
 
 /**
  * Materialized Trace Summary metadata.
- * Aggregates statistics and structural/timing diagnostics for rapid index listing.
  */
 export type ReadTraceSummary = {
   userId: string;
   traceId: string;
+  name: string;
+  importanceLabels: Record<number, string>;
   nodeCount: number;
   edgeCount: number;
   minImportanceLevel: number;
@@ -101,7 +121,6 @@ export type ReadTraceSummary = {
   endedAt: number | null;
   materializedAt: number;
 
-  // Structural & telemetry sanity diagnostics
   diagMissingStarts: number;
   diagMissingEnds: number;
   diagNegativeDurations: number;
@@ -112,9 +131,6 @@ export type ReadTraceSummary = {
   diagLimitExceeded: number;
 };
 
-/**
- * Bounded trace index response for the authenticated user.
- */
 export type TraceListResult = {
   traces: ReadTraceSummary[];
   totalCount: number;
@@ -125,58 +141,35 @@ export type TraceListResult = {
   hasNextPage: boolean;
 };
 
-/**
- * Tracks the raw event offset processed for a given trace.
- * Enables incremental, resumeable materialization runs.
- */
 export type ReadCheckpoint = {
   userId: string;
   traceId: string;
-
-  // Exact raw node progress
+  lastTraceEventTime: number;
   lastNodeEventTime: number;
   lastNodeEventId: string;
   lastNodeEventType: number;
-
-  // Exact raw edge progress
   lastEdgeEventTime: number;
   lastEdgeEventId: string;
   lastEdgeEventType: number;
-
   checkpointedAt: number;
 };
 
-/**
- * Guard details to track database read limitations.
- * Ensures the server does not fetch excessive rows when projecting large traces.
- */
 export type ProjectionReadCap = {
   cap: number;
   returnedCount: number;
-  capHit: boolean; // Indicates if rows were truncated due to the safety ceiling
+  capHit: boolean;
 };
 
-/**
- * Safe wrapper for querying visible nodes.
- */
 export type BoundedVisibleNodesResult = {
   nodes: ReadNode[];
   cap: ProjectionReadCap;
 };
 
-/**
- * Safe wrapper for querying visible edges.
- */
 export type BoundedVisibleEdgesResult = {
   edges: ReadEdge[];
   cap: ProjectionReadCap;
 };
 
-// --- Projected Flow structures ---
-
-/**
- * A normal trace node included in the projected visualization window.
- */
 export type ProjectedNormalNode = {
   kind: "normal";
   id: string;
@@ -191,13 +184,9 @@ export type ProjectedNormalNode = {
   materializedAt: number;
 };
 
-/**
- * An aggregated pseudo-node ("Ghost") representing a subflow of hidden nodes
- * that did not meet the active importance threshold filter.
- */
 export type ProjectedGhostNode = {
   kind: "ghost";
-  id: string; // Deterministic ghost node ID
+  id: string;
   hiddenNodeCount: number;
   hiddenEdgeCount: number;
   nodeTypeCounts: Record<string, number>;
@@ -205,33 +194,24 @@ export type ProjectedGhostNode = {
   maxImportanceLevel: number;
   startedAt: number;
   endedAt: number | null;
-  flowOrderStart: number; // Topological start bound of the collapsed group
-  flowOrderEnd: number;   // Topological end bound of the collapsed group
+  flowOrderStart: number;
+  flowOrderEnd: number;
 };
 
-/**
- * Union type representing visual nodes in the UI workspace.
- */
 export type ProjectedFlowNode = ProjectedNormalNode | ProjectedGhostNode;
 
-/**
- * Projected connection between nodes (either normal or ghosted).
- */
 export type ProjectedFlowEdge = {
   id: string;
   fromNodeId: string;
   toNodeId: string;
   edgeType: string;
-  edgeCount: number; // Aggregated edge count if connecting to/from ghost nodes
+  edgeCount: number;
   startedAt: number;
   endedAt: number | null;
   originalStartedAt: number;
   clockSkewMs: number;
 };
 
-/**
- * Diagnostic and paging metadata regarding the flow projection.
- */
 export type ProjectedFlowMetadata = {
   threshold: number;
   returnedNodeCount: number;
@@ -253,35 +233,23 @@ export type ProjectedFlowMetadata = {
   };
 };
 
-/**
- * Complete response structure representing the visible trace flow window.
- */
 export type ProjectedFlowResult = {
   nodes: ProjectedFlowNode[];
   edges: ProjectedFlowEdge[];
   metadata: ProjectedFlowMetadata;
 };
 
-/**
- * Paging parameters for sliding-window exploration.
- */
 export type PagingParams = {
   offset: number;
   limit: number;
 };
 
-/**
- * Generic wrapper for paged repository results.
- */
 export type PagedResult<T> = {
   items: T[];
   totalCount: number;
   hasMore: boolean;
 };
 
-/**
- * Helper container for projected raw node fetch.
- */
 export type BoundedProjectionNodesResult = {
   nodes: ReadNode[];
   cap: ProjectionReadCap;

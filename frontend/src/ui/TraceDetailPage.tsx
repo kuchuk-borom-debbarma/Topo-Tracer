@@ -29,6 +29,7 @@ import {
   formatCompactNumber,
   formatDate,
   formatDuration,
+  formatImportance,
   formatTime,
   nodeLabel,
   shortId,
@@ -43,7 +44,10 @@ const ROW_GAP = 156;
 type SelectedItem =
   | { type: "node"; value: ProjectedFlowNode }
   | { type: "edge"; value: ProjectedFlowEdge };
-type FlowNodeData = { value: ProjectedFlowNode };
+type FlowNodeData = {
+  value: ProjectedFlowNode;
+  importanceLabels?: Record<number, string>;
+};
 type TraceFlowNode = Node<FlowNodeData, "trace-node">;
 type TraceFlowEdge = Edge<{ value: ProjectedFlowEdge }>;
 
@@ -106,7 +110,7 @@ export function TraceDetailPage() {
           </Link>
           <div>
             <span className="overline">Trace detail</span>
-            <h1 title={traceId}>{shortId(traceId, 28)}</h1>
+            <h1 title={traceId}>{summary?.name || shortId(traceId, 28)}</h1>
           </div>
           <span className={`status-pill ${summary?.endedAt === null ? "running" : "complete"}`}>
             <span />
@@ -148,8 +152,8 @@ export function TraceDetailPage() {
               >
                 <span className="context-line" />
                 <span>
-                  <strong>{shortId(trace.traceId, 14)}</strong>
-                  <small>{formatCompactNumber(trace.nodeCount)} nodes</small>
+                  <strong>{trace.name}</strong>
+                  <small>{shortId(trace.traceId, 14)} • {formatCompactNumber(trace.nodeCount)} nodes</small>
                 </span>
                 <i className={trace.endedAt === null ? "running" : ""} />
               </Link>
@@ -194,6 +198,7 @@ export function TraceDetailPage() {
             {flowQuery.data && (
               <TraceCanvas
                 flow={flowQuery.data}
+                summary={summary}
                 selected={selected}
                 onSelect={setSelected}
               />
@@ -278,10 +283,10 @@ function GraphToolbar(props: {
       <div className="importance-control">
         <div className="importance-heading">
           <span><Icon name="filter" /> Importance threshold</span>
-          <strong>I{props.threshold}</strong>
+          <strong>{formatImportance(props.threshold, props.summary?.importanceLabels)}</strong>
         </div>
         <div className="slider-row">
-          <span>I{min}</span>
+          <span>{formatImportance(min, props.summary?.importanceLabels)}</span>
           <input
             type="range"
             min={min}
@@ -291,9 +296,9 @@ function GraphToolbar(props: {
             style={{ "--slider-progress": `${percentage}%` } as React.CSSProperties}
             onChange={(event) => props.onThresholdChange(Number(event.target.value))}
           />
-          <span>I{max}</span>
+          <span>{formatImportance(max, props.summary?.importanceLabels)}</span>
         </div>
-        <small>Shows nodes where importance is less than or equal to I{props.threshold}</small>
+        <small>Shows nodes where importance is less than or equal to {formatImportance(props.threshold, props.summary?.importanceLabels)}</small>
       </div>
     </div>
   );
@@ -317,12 +322,13 @@ function GraphStat(props: {
 
 function TraceCanvas(props: {
   flow: ProjectedFlowResult;
+  summary?: TraceSummary;
   selected: SelectedItem | null;
   onSelect: (selected: SelectedItem | null) => void;
 }) {
   const graph = useMemo(
-    () => buildFlow(props.flow, props.selected),
-    [props.flow, props.selected],
+    () => buildFlow(props.flow, props.summary, props.selected),
+    [props.flow, props.summary, props.selected],
   );
 
   if (props.flow.nodes.length === 0) {
@@ -382,7 +388,10 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
         <div className="node-card-top">
           <span className="node-kind-icon ghost"><Icon name="layers" /></span>
           <span>Collapsed subflow</span>
-          <strong>I{node.minImportanceLevel}-I{node.maxImportanceLevel}</strong>
+          <strong>
+            {formatImportance(node.minImportanceLevel, props.data.importanceLabels)}-
+            {formatImportance(node.maxImportanceLevel, props.data.importanceLabels)}
+          </strong>
         </div>
         <h3>{node.hiddenNodeCount} hidden nodes</h3>
         <p>{summarizeTypes(node.nodeTypeCounts)}</p>
@@ -403,7 +412,7 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
           <Icon name={node.nodeType.toLowerCase().includes("db") ? "database" : "activity"} />
         </span>
         <span>{node.nodeType}</span>
-        <strong>I{node.importanceLevel}</strong>
+        <strong>{formatImportance(node.importanceLevel, props.data.importanceLabels)}</strong>
       </div>
       <h3>{nodeLabel(node.nodeType, node.data)}</h3>
       <p>{formatTime(node.startedAt)} to {formatTime(node.endedAt)}</p>
@@ -433,13 +442,24 @@ function Inspector(props: {
         </button>
       </div>
 
-      {props.selected.type === "node" && <NodeInspector node={props.selected.value} />}
+      {props.selected.type === "node" && (
+        <NodeInspector
+          node={props.selected.value}
+          importanceLabels={props.summary?.importanceLabels}
+        />
+      )}
       {props.selected.type === "edge" && <EdgeInspector edge={props.selected.value} />}
     </aside>
   );
 }
 
-function NodeInspector({ node }: { node: ProjectedFlowNode }) {
+function NodeInspector({
+  node,
+  importanceLabels,
+}: {
+  node: ProjectedFlowNode;
+  importanceLabels?: Record<number, string>;
+}) {
   if (node.kind === "ghost") {
     return (
       <>
@@ -448,7 +468,10 @@ function NodeInspector({ node }: { node: ProjectedFlowNode }) {
           <DetailRow label="Hidden nodes" value={String(node.hiddenNodeCount)} />
           <DetailRow label="Internal edges" value={String(node.hiddenEdgeCount)} />
           <DetailRow label="Flow range" value={`${node.flowOrderStart}-${node.flowOrderEnd}`} />
-          <DetailRow label="Importance" value={`I${node.minImportanceLevel}-I${node.maxImportanceLevel}`} />
+          <DetailRow
+            label="Importance"
+            value={`${formatImportance(node.minImportanceLevel, importanceLabels)}-${formatImportance(node.maxImportanceLevel, importanceLabels)}`}
+          />
           <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
         </div>
         <DataBlock data={node.nodeTypeCounts} title="Node types" />
@@ -460,7 +483,10 @@ function NodeInspector({ node }: { node: ProjectedFlowNode }) {
       <div className="inspector-badge"><Icon name="activity" /> {node.nodeType}</div>
       <div className="inspector-section">
         <DetailRow label="Node ID" value={node.id} mono />
-        <DetailRow label="Importance" value={`I${node.importanceLevel}`} />
+        <DetailRow
+          label="Importance"
+          value={formatImportance(node.importanceLevel, importanceLabels)}
+        />
         <DetailRow label="Flow order" value={String(node.flowOrder)} />
         <DetailRow label="Started" value={formatDate(node.startedAt)} />
         <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
@@ -531,7 +557,11 @@ function GraphLoading() {
   );
 }
 
-function buildFlow(flow: ProjectedFlowResult, selected: SelectedItem | null): {
+function buildFlow(
+  flow: ProjectedFlowResult,
+  summary: TraceSummary | undefined,
+  selected: SelectedItem | null,
+): {
   nodes: TraceFlowNode[];
   edges: TraceFlowEdge[];
   nodeById: Map<string, ProjectedFlowNode>;
@@ -546,7 +576,7 @@ function buildFlow(flow: ProjectedFlowResult, selected: SelectedItem | null): {
   const nodes = orderedNodes.map<TraceFlowNode>((node) => ({
     id: node.id,
     type: "trace-node",
-    data: { value: node },
+    data: { value: node, importanceLabels: summary?.importanceLabels },
     position: positions.get(node.id) ?? { x: 80, y: 80 },
     selected: selected?.type === "node" && selectedId === node.id,
     sourcePosition: Position.Right,

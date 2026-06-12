@@ -32,7 +32,7 @@ Plans:
 **Requirements:** [SDK-01, SDK-02]
 
 Plans:
-- [ ] 04-01-PLAN.md — Update SDK to emit TraceStart events and handle importance labels.
+- [x] 04-01-PLAN.md — Update SDK to emit TraceStart events and handle importance labels.
 
 ## Phase 5: UI Integration
 **Goal:** Update the UI to display human-readable importance labels.
@@ -40,4 +40,4 @@ Plans:
 **Requirements:** [UI-01, UI-02]
 
 Plans:
-- [ ] 05-01-PLAN.md — Update TraceListPage and TraceDetailPage to display importance labels.
+- [x] 05-01-PLAN.md — Update TraceListPage and TraceDetailPage to display importance labels.

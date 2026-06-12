@@ -10,6 +10,13 @@ export interface TracerConfig {
   onDrop?: (events: IngestBatch, reason: string) => void;
 }
 
+export interface IngestTraceStart {
+  traceId: string;
+  name?: string;
+  importanceLabels?: Record<number, string>;
+  timestamp: number;
+}
+
 export interface IngestNodeStart {
   id: string;
   traceId: string;
@@ -44,6 +51,7 @@ export interface IngestEdgeEnd {
 }
 
 export interface IngestBatch {
+  traceStarts: IngestTraceStart[];
   nodeStarts: IngestNodeStart[];
   edgeStarts: IngestEdgeStart[];
   nodeEnds: IngestNodeEnd[];

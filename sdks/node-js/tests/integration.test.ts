@@ -6,12 +6,12 @@ describe("SDK Integration", () => {
 
   beforeEach(() => {
     // @ts-ignore
-    global.fetch = originalFetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ success: true }), { status: 200 })) as any;
   });
 
   afterEach(() => {
     // @ts-ignore
-    global.fetch = originalFetch;
+    globalThis.fetch = originalFetch as any;
   });
 
   test("Should send ingestion events to the server with manual flush", async () => {
@@ -123,5 +123,72 @@ describe("SDK Integration", () => {
 
     expect(droppedData).not.toBeNull();
     expect(droppedData.nodeStarts.length).toBe(1);
+  });
+
+  test("Should support trace name and importance labels on TraceStart but ignore on child spans", async () => {
+    const receivedPayloads: any[] = [];
+    
+    // @ts-ignore
+    global.fetch = async (url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      receivedPayloads.push(body);
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:3337",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+    });
+
+    await tracer.trace("Root Op", async (root) => {
+        await tracer.trace("Child Op", async (child) => {
+            // Child trace name should be ignored
+        }, { traceName: "Child Name" });
+    }, { traceName: "My Real Trace Name", importanceLabels: { 0: "Database" } });
+
+    await tracer.flush();
+
+    expect(receivedPayloads.length).toBe(1);
+    const payload = receivedPayloads[0];
+    
+    // TraceStart should have name and labels
+    expect(payload.traceStarts.length).toBe(1);
+    expect(payload.traceStarts[0].name).toBe("My Real Trace Name");
+    expect(payload.traceStarts[0].importanceLabels).toEqual({ 0: "Database" });
+
+    // Root node should NOT have traceName (D-24)
+    const rootStart = payload.nodeStarts.find((n: any) => n.startMessage === "Root Op");
+    expect(rootStart.traceName).toBeUndefined();
+
+    // Child node should NOT have traceName
+    const childStart = payload.nodeStarts.find((n: any) => n.startMessage === "Child Op");
+    expect(childStart.traceName).toBeUndefined();
+  });
+
+  test("Should maintain backward compatibility for trace(name, fn)", async () => {
+    const receivedPayloads: any[] = [];
+    
+    // @ts-ignore
+    global.fetch = async (url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      receivedPayloads.push(body);
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:3338",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+    });
+
+    await tracer.trace("Old Style", async (span) => {});
+
+    await tracer.flush();
+
+    expect(receivedPayloads.length).toBe(1);
+    const payload = receivedPayloads[0];
+    expect(payload.nodeStarts[0].startMessage).toBe("Old Style");
+    expect(payload.nodeStarts[0].traceName).toBeUndefined();
   });
 });

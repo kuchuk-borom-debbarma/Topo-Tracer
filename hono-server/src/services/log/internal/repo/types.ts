@@ -3,8 +3,19 @@
  */
 
 /**
+ * ClickHouse row structure for trace start events.
+ */
+export type TraceEventRow = {
+  user_id: string;
+  trace_id: string;
+  event_type: number; // 0 = start
+  name: string | null;
+  importance_labels: Record<number, string>;
+  timestamp_ms: number;
+};
+
+/**
  * ClickHouse row structure for raw node events (starts/ends).
- * Uses snake_case to match ClickHouse column definitions.
  */
 export type NodeEventRow = {
   id: string;
@@ -20,8 +31,7 @@ export type NodeEventRow = {
 };
 
 /**
- * ClickHouse row structure for raw edge events (starts/ends).
- * Uses snake_case to match ClickHouse column definitions.
+ * ClickHouse row structure for raw edge events.
  */
 export type EdgeEventRow = {
   id: string;
@@ -82,6 +92,8 @@ export type ReadEdgeRow = {
 export type TraceSummaryRow = {
   user_id: string;
   trace_id: string;
+  name: string | null;
+  importance_labels: Record<number, string>;
   node_count: number;
   edge_count: number;
   min_importance_level: number;
@@ -107,6 +119,7 @@ export type ReadCheckpointRow = {
   user_id: string;
   trace_id: string;
 
+  trace_progress_timestamp: number;
   node_progress_timestamp: number;
   node_progress_id: string;
   node_progress_event_type: number;

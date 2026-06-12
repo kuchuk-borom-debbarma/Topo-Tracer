@@ -5,7 +5,7 @@ import {
   IngestEdgeStart, 
   IngestNodeEnd, 
   IngestEdgeEnd,
-  IngestBatch
+  IngestBatch, IngestTraceStart
 } from "./types";
 import { Span } from "./Span";
 import { randomUUID } from "crypto";
@@ -20,6 +20,7 @@ export class Tracer {
   private readonly storage = new AsyncLocalStorage<Span>();
   private readonly config: TracerConfig;
   private buffer: IngestBatch = {
+    traceStarts: [],
     nodeStarts: [],
     edgeStarts: [],
     nodeEnds: [],
@@ -51,8 +52,8 @@ export class Tracer {
   /**
    * Fluent API for automatic context propagation.
    */
-  async trace<T>(name: string, fn: (span: Span) => Promise<T> | T): Promise<T> {
-    const span = this.startNode({ name });
+  async trace<T>(name: string, fn: (span: Span) => Promise<T> | T, options?: { traceName?: string, importanceLabels?: Record<number, string> }): Promise<T> {
+    const span = this.startNode({ name, traceName: options?.traceName, importanceLabels: options?.importanceLabels });
     return this.storage.run(span, async () => {
       try {
         const result = await fn(span);
@@ -80,7 +81,9 @@ export class Tracer {
     data?: Record<string, string>, 
     importanceLevel?: number,
     traceId?: string,
-    parentSpanId?: string
+    parentSpanId?: string,
+    traceName?: string,
+    importanceLabels?: Record<number, string>
   }): Span {
     const currentStore = this.storage.getStore();
     const id = randomUUID();
@@ -97,8 +100,20 @@ export class Tracer {
       importanceLevel: options.importanceLevel ?? 1,
     };
 
+    const traceStarts: IngestTraceStart[] = [];
+    // If starting a NEW trace (no traceId provided and no existing store), emit TraceStart
+    if (!options.traceId && !currentStore) {
+      traceStarts.push({
+        traceId,
+        name: options.traceName,
+        importanceLabels: options.importanceLabels,
+        timestamp: Date.now(),
+      });
+    }
+
     const span = new Span(nodeStart, (endedSpan) => {
       this.addToBuffer({
+        traceStarts: [],
         nodeStarts: [],
         edgeStarts: [],
         nodeEnds: [endedSpan.toNodeEnd()],
@@ -120,6 +135,7 @@ export class Tracer {
     }
 
     this.addToBuffer({
+      traceStarts,
       nodeStarts: [span.toNodeStart()],
       edgeStarts,
       nodeEnds: [],
@@ -150,13 +166,19 @@ export class Tracer {
     }, () => {});
   }
 
-  private addToBuffer(data: IngestBatch) {
+  private addToBuffer(data: {
+    traceStarts?: IngestTraceStart[],
+    nodeStarts: IngestNodeStart[],
+    edgeStarts: IngestEdgeStart[],
+    nodeEnds: IngestNodeEnd[],
+    edgeEnds: IngestEdgeEnd[],
+  }) {
     const totalCurrent = this.buffer.nodeStarts.length + 
                        this.buffer.edgeStarts.length + 
                        this.buffer.nodeEnds.length + 
                        this.buffer.edgeEnds.length;
     
-    const incoming = data.nodeStarts.length + 
+    const incoming = (data.traceStarts?.length || 0) + data.nodeStarts.length + 
                     data.edgeStarts.length + 
                     data.nodeEnds.length + 
                     data.edgeEnds.length;
@@ -170,6 +192,7 @@ export class Tracer {
       return;
     }
 
+    if (data.traceStarts) this.buffer.traceStarts.push(...data.traceStarts);
     this.buffer.nodeStarts.push(...data.nodeStarts);
     this.buffer.edgeStarts.push(...data.edgeStarts);
     this.buffer.nodeEnds.push(...data.nodeEnds);
@@ -185,17 +208,19 @@ export class Tracer {
     if (this.isFlushing) return;
     
     const batch: IngestBatch = {
+      traceStarts: [...this.buffer.traceStarts],
       nodeStarts: [...this.buffer.nodeStarts],
       edgeStarts: [...this.buffer.edgeStarts],
       nodeEnds: [...this.buffer.nodeEnds],
       edgeEnds: [...this.buffer.edgeEnds],
     };
 
-    if (batch.nodeStarts.length === 0 && batch.edgeStarts.length === 0 && 
+    if (batch.traceStarts.length === 0 && batch.nodeStarts.length === 0 && batch.edgeStarts.length === 0 && 
         batch.nodeEnds.length === 0 && batch.edgeEnds.length === 0) {
       return;
     }
 
+    this.buffer.traceStarts = [];
     this.buffer.nodeStarts = [];
     this.buffer.edgeStarts = [];
     this.buffer.nodeEnds = [];
@@ -239,7 +264,7 @@ export class Tracer {
       ...data,
     };
 
-    const response = await fetch(`${this.config.endpoint}/api/v1/ingest`, {
+    const response = await globalThis.fetch(`${this.config.endpoint}/api/v1/ingest`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

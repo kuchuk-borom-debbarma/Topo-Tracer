@@ -3,6 +3,7 @@ import type { ClickHouseClient } from "@clickhouse/client-web";
 import {
   CLICKHOUSE_EDGE_EVENTS_TABLE,
   CLICKHOUSE_NODE_EVENTS_TABLE,
+  CLICKHOUSE_TRACE_EVENTS_TABLE,
   getInitializedClickHouseClient,
 } from "../../../../../infra/db/clickhouse";
 import {
@@ -10,16 +11,13 @@ import {
   IngestEdgeStart,
   IngestNodeEnd,
   IngestNodeStart,
+  IngestTraceStart,
 } from "../../../api/types";
 import { ILogWriteRepo } from "../ILogWriteRepo";
-import { EdgeEventRow, NodeEventRow } from "../types";
+import { EdgeEventRow, NodeEventRow, TraceEventRow } from "../types";
 
 /**
  * ClickHouse implementation of the Log Write Repository.
- * Following code-base.md guidelines:
- * - Resides under internal/repo/impl.
- * - Restricts database client interaction and ClickHouse table names here.
- * - Formats/maps incoming DTO arrays into database-schema row types (snake_case).
  */
 export class LogWriteRepoClickHouse extends ILogWriteRepo {
   readonly logger: Logger<unknown>;
@@ -36,6 +34,20 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
     this.getClient = getClient;
   }
 
+  private buildTraceRows(data: {
+    userId: string;
+    traceStarts: IngestTraceStart[];
+  }): TraceEventRow[] {
+    return data.traceStarts.map((trace): TraceEventRow => ({
+      user_id: data.userId,
+      trace_id: trace.traceId,
+      event_type: 0, // 0 = Start
+      name: trace.name ?? null,
+      importance_labels: trace.importanceLabels ?? {},
+      timestamp_ms: trace.timestamp,
+    }));
+  }
+
   /**
    * Translates Node start and end objects to NodeEventRow database shapes.
    */
@@ -45,7 +57,6 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
     nodeEnds: IngestNodeEnd[];
   }): NodeEventRow[] {
     return [
-      // Start events carry node metadata captured when the node begins.
       ...data.nodeStarts.map((node): NodeEventRow => ({
         id: node.id,
         user_id: data.userId,
@@ -58,7 +69,6 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         message: node.startMessage ?? null,
         importance_level: node.importanceLevel,
       })),
-      // End events only carry completion data; start-only columns stay empty.
       ...data.nodeEnds.map((node): NodeEventRow => ({
         id: node.id,
         user_id: data.userId,
@@ -83,7 +93,6 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
     edgeEnds: IngestEdgeEnd[];
   }): EdgeEventRow[] {
     return [
-      // Start events carry edge metadata captured when the edge begins.
       ...data.edgeStarts.map((edge): EdgeEventRow => ({
         id: edge.id,
         user_id: data.userId,
@@ -96,7 +105,6 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         to_node_id: edge.toNodeId,
         data: edge.data,
       })),
-      // End events only mark completion; edge type is start-only.
       ...data.edgeEnds.map((edge): EdgeEventRow => ({
         id: edge.id,
         user_id: data.userId,
@@ -113,27 +121,37 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
   }
 
   /**
-   * Executes the ClickHouse insert query for the staged node and edge rows.
+   * Executes the ClickHouse insert query for the staged rows.
    */
   async ingestNodesNEdges(data: {
     userId: string;
+    traceStarts: IngestTraceStart[];
     nodeStarts: IngestNodeStart[];
     edgeStarts: IngestEdgeStart[];
     nodeEnds: IngestNodeEnd[];
     edgeEnds: IngestEdgeEnd[];
   }): Promise<void> {
+    const traceRows = this.buildTraceRows(data);
     const nodeRows = this.buildNodeRows(data);
     const edgeRows = this.buildEdgeRows(data);
 
     this.logger.trace("Prepared ClickHouse log event rows", {
       userId: data.userId,
+      traceRows: traceRows.length,
       nodeRows: nodeRows.length,
       edgeRows: edgeRows.length,
     });
 
     const client = this.getClient();
 
-    // Insert node events if present
+    if (traceRows.length > 0) {
+      await client.insert({
+        table: CLICKHOUSE_TRACE_EVENTS_TABLE,
+        values: traceRows,
+        format: "JSONEachRow",
+      });
+    }
+
     if (nodeRows.length > 0) {
       await client.insert({
         table: CLICKHOUSE_NODE_EVENTS_TABLE,
@@ -142,7 +160,6 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
       });
     }
 
-    // Insert edge events if present
     if (edgeRows.length > 0) {
       await client.insert({
         table: CLICKHOUSE_EDGE_EVENTS_TABLE,
@@ -152,4 +169,3 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
     }
   }
 }
-

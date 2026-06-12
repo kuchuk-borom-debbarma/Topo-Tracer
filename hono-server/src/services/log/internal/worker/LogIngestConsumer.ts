@@ -1,24 +1,12 @@
 import { Logger } from "tslog";
 import type { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
-import type { EventBusPublishedEvent } from "../../../../infra/event-bus/api/types";
 import type { ILogWriteRepo } from "../repo/ILogWriteRepo";
-import type { IngestEdgeEnd, IngestEdgeStart, IngestNodeEnd, IngestNodeStart } from "../../api/types";
-
-type TelemetryReceivedPayload = {
-  userId: string;
-  nodeStarts: IngestNodeStart[];
-  edgeStarts: IngestEdgeStart[];
-  nodeEnds: IngestNodeEnd[];
-  edgeEnds: IngestEdgeEnd[];
-};
+import type { IngestBatch } from "../../api/types";
 
 /**
- * Background consumer that reactively consumes 'log.telemetry.received' events,
- * persists the raw node/edge events in ClickHouse, and dispatches trace-level
+ * Background consumer that reactively consumes "log.telemetry.received" events,
+ * persists the raw trace, node, and edge events in ClickHouse, and dispatches trace-level
  * materialized signals.
- * Following code-base.md guidelines:
- * - Resides under internal/worker/ to encapsulate background tasks.
- * - Utilizes EventBus subscription and LogWriteRepo for writing.
  */
 export class LogIngestConsumer {
   private readonly logger: Logger<unknown>;
@@ -44,7 +32,7 @@ export class LogIngestConsumer {
       // fallow-ignore-next-line complexity
       async (events) => {
         for (const event of events) {
-          const payload = event.data as TelemetryReceivedPayload;
+          const payload = event.data as IngestBatch;
           if (!payload || !payload.userId) {
             continue;
           }
@@ -80,7 +68,6 @@ export class LogIngestConsumer {
             );
           } catch (err) {
             this.logger.error("Failed to process telemetry ingestion batch reactively", err);
-            // Throwing propagates to trigger message bus retry/offset rollback
             throw err;
           }
         }
@@ -88,9 +75,10 @@ export class LogIngestConsumer {
     );
   }
 
-  private getTraceIds(data: TelemetryReceivedPayload): string[] {
+  private getTraceIds(data: IngestBatch): string[] {
     return [
       ...new Set([
+        ...data.traceStarts.map((t) => t.traceId),
         ...data.nodeStarts.map((node) => node.traceId),
         ...data.edgeStarts.map((edge) => edge.traceId),
         ...data.nodeEnds.map((node) => node.traceId),
@@ -100,10 +88,13 @@ export class LogIngestConsumer {
   }
 
   private buildTraceIngestIdempotencyId(
-    data: TelemetryReceivedPayload,
+    data: IngestBatch,
     traceId: string,
   ): string {
     const parts = [
+      ...data.traceStarts
+        .filter((t) => t.traceId === traceId)
+        .map((t) => `trace-start:${t.traceId}:${t.timestamp}`),
       ...data.nodeStarts
         .filter((node) => node.traceId === traceId)
         .map((node) => `node-start:${node.id}:${node.startedAt}`),

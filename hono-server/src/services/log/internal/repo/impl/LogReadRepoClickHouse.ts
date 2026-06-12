@@ -5,7 +5,7 @@ import {
   CLICKHOUSE_READ_EDGES_TABLE,
   CLICKHOUSE_TRACE_SUMMARIES_TABLE,
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
-  CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE,
+  CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE, CLICKHOUSE_TRACE_EVENTS_TABLE,
   getInitializedClickHouseClient,
 } from "../../../../../infra/db/clickhouse";
 import {
@@ -18,7 +18,7 @@ import {
   PagedResult,
 } from "../../../api/types";
 import { ILogReadRepo, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
-import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEventRow, EdgeEventRow } from "../types";
+import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEventRow, TraceEventRow, EdgeEventRow } from "../types";
 
 /**
  * ClickHouse implementation of the Log Read Repository.
@@ -46,6 +46,33 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
   /**
    * Retrieves the latest materialization checkpoint record for a trace from ClickHouse.
    */
+  async loadTraceEventsAfterCheckpoint(params: {
+    userId: string;
+    traceId: string;
+    checkpoint: ReadCheckpoint | null;
+  }): Promise<TraceEventRow[]> {
+    const client = this.getClient();
+    const lastTime = params.checkpoint?.lastTraceEventTime ?? 0;
+
+    const result = await client.query({
+      query: `
+        SELECT * FROM ${CLICKHOUSE_TRACE_EVENTS_TABLE}
+        WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+        AND timestamp_ms > {lastTime:UInt64}
+        ORDER BY timestamp_ms ASC
+      `,
+      format: "JSON",
+      query_params: {
+        userId: params.userId,
+        traceId: params.traceId,
+        lastTime: lastTime,
+      },
+    });
+
+    const jsonRes = await result.json<any>();
+    return (Array.isArray(jsonRes) ? jsonRes : (jsonRes.data || [])) as TraceEventRow[];
+  }
+
   async loadCheckpoint(params: {
     userId: string;
     traceId: string;
@@ -75,6 +102,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     return {
       userId: row.user_id,
       traceId: row.trace_id,
+      lastTraceEventTime: row.trace_progress_timestamp,
       lastNodeEventTime: row.node_progress_timestamp,
       lastNodeEventId: row.node_progress_id,
       lastNodeEventType: row.node_progress_event_type,
@@ -108,6 +136,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(n.user_id, n.materialized_at_ms) as user_id,
             argMax(n.trace_id, n.materialized_at_ms) as trace_id,
             argMax(n.node_type, n.materialized_at_ms) as node_type,
+
             argMax(n.data, n.materialized_at_ms) as data,
             argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
             argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
@@ -292,6 +321,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
               argMax(n.user_id, n.materialized_at_ms) as user_id,
               argMax(n.trace_id, n.materialized_at_ms) as trace_id,
               argMax(n.node_type, n.materialized_at_ms) as node_type,
+  
+
               argMax(n.data, n.materialized_at_ms) as data,
               argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
               argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
@@ -461,6 +492,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(n.user_id, n.materialized_at_ms) as user_id,
             argMax(n.trace_id, n.materialized_at_ms) as trace_id,
             argMax(n.node_type, n.materialized_at_ms) as node_type,
+
             argMax(n.data, n.materialized_at_ms) as data,
             argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
             argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
@@ -544,6 +576,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             min(min_importance_level) as min_importance_level,
             max(max_importance_level) as max_importance_level,
             min(started_at_ms) as started_at_ms,
+
             max(ended_at_ms) as ended_at_ms,
             max(updated_at_ms) as materialized_at_ms
           FROM ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE}
@@ -555,7 +588,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       }),
       client.query({
         query: `
-          SELECT * FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
+          SELECT 
+            *,
+            coalesce(name, trace_id) as name,
+            importance_labels FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE}
           WHERE user_id = {userId:String} AND trace_id = {traceId:String}
           ORDER BY materialized_at_ms DESC
           LIMIT 1
@@ -584,6 +620,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     return {
       userId: params.userId,
       traceId: params.traceId,
+      name: rtRow && rtRow.name ? rtRow.name : (workerRow && workerRow.name ? workerRow.name : params.traceId),
       nodeCount: rtRow ? Number(rtRow.node_count) : (workerRow ? workerRow.node_count : 0),
       edgeCount: rtRow ? Number(rtRow.edge_count) : (workerRow ? workerRow.edge_count : 0),
       minImportanceLevel: rtRow && rtRow.min_importance_level !== null ? Number(rtRow.min_importance_level) : (workerRow ? workerRow.min_importance_level : 0),
@@ -591,6 +628,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       startedAt: rtRow && rtRow.started_at_ms !== null ? Number(rtRow.started_at_ms) : (workerRow ? Number(workerRow.started_at_ms) : 0),
       endedAt: rtRow && rtRow.ended_at_ms !== null ? Number(rtRow.ended_at_ms) : (workerRow && workerRow.ended_at_ms !== null ? Number(workerRow.ended_at_ms) : null),
       materializedAt: rtRow && rtRow.materialized_at_ms !== null ? Number(rtRow.materialized_at_ms) : (workerRow ? Number(workerRow.materialized_at_ms) : Date.now()),
+      importanceLabels: workerRow ? workerRow.importance_labels : {},
       
       // Diagnostics are supplied by the asynchronous worker
       diagMissingStarts: workerRow ? workerRow.diagnostic_missing_starts_count : 0,
@@ -621,6 +659,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
           SELECT
             s.trace_id as trace_id,
             argMax(s.user_id, s.materialized_at_ms) as user_id,
+            argMax(coalesce(s.name, s.trace_id), s.materialized_at_ms) as name,
+            argMax(s.importance_labels, s.materialized_at_ms) as importance_labels,
             argMax(s.node_count, s.materialized_at_ms) as node_count,
             argMax(s.edge_count, s.materialized_at_ms) as edge_count,
             argMax(s.min_importance_level, s.materialized_at_ms) as min_importance_level,
@@ -750,6 +790,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       user_id: node.userId,
       trace_id: node.traceId,
       node_type: node.nodeType,
+
       data: node.data,
       started_at_ms: node.startedAt,
       ended_at_ms: node.endedAt,
@@ -786,6 +827,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     return {
       user_id: summary.userId,
       trace_id: summary.traceId,
+      name: summary.name || null,
       node_count: summary.nodeCount,
       edge_count: summary.edgeCount,
       min_importance_level: summary.minImportanceLevel,
@@ -793,6 +835,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       started_at_ms: summary.startedAt,
       ended_at_ms: summary.endedAt,
       materialized_at_ms: summary.materializedAt,
+      importance_labels: summary.importanceLabels,
       diagnostic_missing_starts_count: summary.diagMissingStarts,
       diagnostic_missing_ends_count: summary.diagMissingEnds,
       diagnostic_negative_duration_count: summary.diagNegativeDurations,
@@ -808,6 +851,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     return {
       userId: row.user_id,
       traceId: row.trace_id,
+      name: row.name || row.trace_id,
       nodeCount: Number(row.node_count),
       edgeCount: Number(row.edge_count),
       minImportanceLevel: Number(row.min_importance_level),
@@ -815,6 +859,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       startedAt: Number(row.started_at_ms),
       endedAt: row.ended_at_ms === null ? null : Number(row.ended_at_ms),
       materializedAt: Number(row.materialized_at_ms),
+      importanceLabels: row.importance_labels,
       diagMissingStarts: Number(row.diagnostic_missing_starts_count),
       diagMissingEnds: Number(row.diagnostic_missing_ends_count),
       diagNegativeDurations: Number(row.diagnostic_negative_duration_count),
@@ -830,6 +875,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     return {
       user_id: checkpoint.userId,
       trace_id: checkpoint.traceId,
+      trace_progress_timestamp: checkpoint.lastTraceEventTime,
       node_progress_timestamp: checkpoint.lastNodeEventTime,
       node_progress_id: checkpoint.lastNodeEventId,
       node_progress_event_type: checkpoint.lastNodeEventType,

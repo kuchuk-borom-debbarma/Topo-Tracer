@@ -1,0 +1,10 @@
+{
+  "workflow": "standard",
+  "components": ["hono-server", "sdks/node-js", "frontend"],
+  "tech_stack": {
+    "backend": "Hono (Node.js/Bun)",
+    "database": "ClickHouse",
+    "sdk": "TypeScript",
+    "frontend": "React"
+  }
+}

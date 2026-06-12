@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { mock, describe, expect, test } from "bun:test";
 import { Logger } from "tslog";
 // @ts-ignore
 import { readFileSync } from "fs";
@@ -41,12 +41,15 @@ class FakeLogWriteRepo implements ILogWriteRepo {
 }
 
 class FakeLogReadRepo extends ILogReadRepo {
+  loadTraceEventsAfterCheckpoint = mock(async () => []) as any;
   loadBoundedProjectionNodesCalls: any[] = [];
   loadBoundedVisibleEdgesCalls: any[] = [];
   loadTraceSummariesCalls: any[] = [];
   loadTraceSummaryResult: ReadTraceSummary | null = {
     userId: "u1",
     traceId: "trace-1",
+    name: "trace-1",
+    importanceLabels: {},
     nodeCount: 1,
     edgeCount: 0,
     materializedAt: 100,
