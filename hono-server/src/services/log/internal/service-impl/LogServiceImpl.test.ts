@@ -385,10 +385,10 @@ describe("LogServiceImpl trace listing", () => {
       },
     ]);
     expect(result).toMatchObject({
-      totalCount: 1,
+      totalCount: 51,
       page: 3,
       limit: 25,
-      totalPages: 1,
+      totalPages: 3,
       hasPreviousPage: true,
       hasNextPage: false,
     });

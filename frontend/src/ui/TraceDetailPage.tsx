@@ -14,6 +14,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { memo, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import "@xyflow/react/dist/style.css";
 import { fetchTraceFlow, fetchTraceSummary, fetchTraces } from "../api";
 import type {
@@ -36,34 +37,35 @@ import {
 } from "../utils";
 import { Icon } from "./Icon";
 
-const NODE_WIDTH = 252;
-const NODE_HEIGHT = 112;
-const COLUMN_GAP = 330;
-const ROW_GAP = 156;
+const NODE_WIDTH = 250;
+const NODE_HEIGHT = 104;
+const COLUMN_GAP = 310;
+const ROW_GAP = 132;
 
 type SelectedItem =
   | { type: "node"; value: ProjectedFlowNode }
   | { type: "edge"; value: ProjectedFlowEdge };
+
 type FlowNodeData = {
   value: ProjectedFlowNode;
   importanceLabels?: Record<number, string>;
+  selected: boolean;
 };
+
 type TraceFlowNode = Node<FlowNodeData, "trace-node">;
 type TraceFlowEdge = Edge<{ value: ProjectedFlowEdge }>;
 
 export function TraceDetailPage() {
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { traceId: string };
-  const search = useSearch({ strict: false }) as {
-    threshold?: number;
-    cursor?: string;
-  };
+  const search = useSearch({ strict: false }) as { threshold?: number; cursor?: string };
   const traceId = params.traceId;
   const [selected, setSelected] = useState<SelectedItem | null>(null);
 
   const summaryQuery = useQuery({
     queryKey: ["trace-summary", traceId],
     queryFn: () => fetchTraceSummary(traceId),
+    retry: false,
   });
   const summary = summaryQuery.data;
   const threshold = normalizeThreshold(
@@ -71,18 +73,17 @@ export function TraceDetailPage() {
     summary?.minImportanceLevel ?? 0,
     summary?.maxImportanceLevel ?? 9,
   );
+
   const flowQuery = useQuery({
     queryKey: ["trace-flow", traceId, threshold, search.cursor],
-    queryFn: () => fetchTraceFlow({
-      traceId,
-      threshold,
-      cursor: search.cursor,
-      limit: 160,
-    }),
+    queryFn: () => fetchTraceFlow({ traceId, threshold, cursor: search.cursor, limit: 180 }),
+    enabled: Boolean(traceId) && !summaryQuery.isError,
+    retry: false,
   });
+
   const nearbyQuery = useQuery({
-    queryKey: ["traces", 1, 10],
-    queryFn: () => fetchTraces({ page: 1, limit: 10 }),
+    queryKey: ["traces", 1, 8],
+    queryFn: () => fetchTraces({ page: 1, limit: 8 }),
   });
 
   useEffect(() => {
@@ -101,83 +102,80 @@ export function TraceDetailPage() {
     });
   };
 
+  const refresh = () => {
+    summaryQuery.refetch();
+    flowQuery.refetch();
+    nearbyQuery.refetch();
+  };
+
   return (
-    <main className="trace-detail-page">
-      <header className="detail-topbar">
-        <div className="detail-breadcrumb">
-          <Link to="/traces" search={{ page: 1 }} className="back-link">
+    <main className="trace-detail-page trace-workbench">
+      <header className="trace-workbench-header">
+        <div className="trace-title-cluster">
+          <Link to="/traces" search={{ page: 1 }} className="button subtle">
             <Icon name="arrow-left" />
+            Traces
           </Link>
           <div>
-            <span className="overline">Trace detail</span>
-            <h1 title={traceId}>{summary?.name || shortId(traceId, 28)}</h1>
+            <span className="panel-kicker">Trace flow</span>
+            <h2 title={traceId}>{summary?.name || shortId(traceId, 28)}</h2>
+            <p>{shortId(traceId, 24)}</p>
           </div>
-          <span className={`status-pill ${summary?.endedAt === null ? "running" : "complete"}`}>
-            <span />
-            {summary?.endedAt === null ? "Running" : "Materialized"}
-          </span>
         </div>
-        <div className="detail-actions">
+
+        <div className="trace-workbench-actions">
+          <span className={`status-pill ${summary?.endedAt === null ? "live" : "neutral"}`}>
+            {summary?.endedAt === null ? "Active" : "Materialized"}
+          </span>
           <button
-            className="button secondary"
-            onClick={() => {
-              summaryQuery.refetch();
-              flowQuery.refetch();
-            }}
-            disabled={flowQuery.isFetching}
+            className="button subtle"
+            type="button"
+            onClick={refresh}
+            disabled={summaryQuery.isFetching || flowQuery.isFetching}
           >
             <Icon name="refresh" className={flowQuery.isFetching ? "spinning" : ""} />
             Refresh
           </button>
-          <button className="icon-button outlined" aria-label="Open trace externally">
-            <Icon name="external" />
-          </button>
         </div>
       </header>
 
-      <section className="detail-layout">
-        <aside className="trace-context-rail">
-          <div className="context-heading">
+      <section className="trace-workbench-metrics">
+        <Metric label="Nodes" value={formatCompactNumber(summary?.nodeCount ?? 0)} />
+        <Metric label="Edges" value={formatCompactNumber(summary?.edgeCount ?? 0)} />
+        <Metric
+          label="Duration"
+          value={summary ? formatDuration(summary.startedAt, summary.endedAt) : "-"}
+        />
+        <Metric
+          label="Diagnostics"
+          value={String(summary ? diagnosticCount(summary) : 0)}
+          alert={Boolean(summary && diagnosticCount(summary))}
+        />
+      </section>
+
+      <section className="trace-workbench-grid">
+        <aside className="trace-rail">
+          <div className="rail-heading">
             <span>Recent traces</span>
-            <Link to="/traces" search={{ page: 1 }}>View all</Link>
+            <Link to="/traces" search={{ page: 1 }}>All</Link>
           </div>
-          <div className="context-list">
+          <div className="rail-list">
             {nearbyQuery.data?.traces.map((trace) => (
               <Link
                 key={trace.traceId}
                 to="/traces/$traceId"
                 params={{ traceId: trace.traceId }}
                 search={{ threshold: trace.minImportanceLevel, cursor: undefined }}
-                className={`context-trace ${trace.traceId === traceId ? "active" : ""}`}
+                className={`rail-trace ${trace.traceId === traceId ? "active" : ""}`}
               >
-                <span className="context-line" />
-                <span>
-                  <strong>{trace.name}</strong>
-                  <small>{shortId(trace.traceId, 14)} • {formatCompactNumber(trace.nodeCount)} nodes</small>
-                </span>
-                <i className={trace.endedAt === null ? "running" : ""} />
+                <strong>{trace.name || shortId(trace.traceId, 12)}</strong>
+                <span>{formatCompactNumber(trace.nodeCount)} nodes</span>
               </Link>
             ))}
           </div>
-          <div className="context-summary">
-            <span className="overline">Current window</span>
-            <SummaryMiniRow label="Flow order" value={
-              flowQuery.data
-                ? `${flowQuery.data.metadata.paging.fromFlowOrder}-${flowQuery.data.metadata.paging.toFlowOrder}`
-                : "-"
-            } />
-            <SummaryMiniRow
-              label="Visible"
-              value={String(flowQuery.data?.metadata.visibleNodeCount ?? 0)}
-            />
-            <SummaryMiniRow
-              label="Collapsed"
-              value={String(flowQuery.data?.metadata.ghostNodeCount ?? 0)}
-            />
-          </div>
         </aside>
 
-        <section className="graph-stage">
+        <section className="trace-graph-workspace">
           <GraphToolbar
             summary={summary}
             flow={flowQuery.data}
@@ -185,17 +183,28 @@ export function TraceDetailPage() {
             onThresholdChange={(value) => updateSearch({ threshold: value })}
           />
 
-          <div className="graph-frame">
-            {flowQuery.isLoading && <GraphLoading />}
-            {flowQuery.isError && (
-              <div className="graph-empty">
-                <div className="empty-icon"><Icon name="terminal" /></div>
-                <h3>Projection unavailable</h3>
-                <p>The bounded graph window could not be loaded.</p>
-                <button className="button primary" onClick={() => flowQuery.refetch()}>Retry</button>
-              </div>
+          <div className="graph-frame trace-graph-frame">
+            {summaryQuery.isError && (
+              <GraphEmpty
+                icon="shield"
+                title="Trace not available"
+                copy="This trace is not visible for the current account."
+                action={<Link to="/traces" search={{ page: 1 }} className="button primary">Back to traces</Link>}
+              />
             )}
-            {flowQuery.data && (
+
+            {!summaryQuery.isError && flowQuery.isLoading && <GraphLoading />}
+
+            {!summaryQuery.isError && flowQuery.isError && (
+              <GraphEmpty
+                icon="terminal"
+                title="Projection unavailable"
+                copy="The bounded graph window could not be loaded."
+                action={<button className="button primary" onClick={() => flowQuery.refetch()}>Retry</button>}
+              />
+            )}
+
+            {!summaryQuery.isError && flowQuery.data && (
               <TraceCanvas
                 flow={flowQuery.data}
                 summary={summary}
@@ -207,6 +216,7 @@ export function TraceDetailPage() {
             {flowQuery.data && (
               <div className="window-pagination floating-panel">
                 <button
+                  type="button"
                   onClick={() => updateSearch({
                     threshold,
                     cursor: flowQuery.data.metadata.paging.previousCursor ?? undefined,
@@ -217,11 +227,11 @@ export function TraceDetailPage() {
                   <Icon name="arrow-left" />
                 </button>
                 <span>
-                  Nodes {flowQuery.data.metadata.paging.fromFlowOrder}-
-                  {flowQuery.data.metadata.paging.toFlowOrder}
+                  {flowQuery.data.metadata.paging.fromFlowOrder}-{flowQuery.data.metadata.paging.toFlowOrder}
                   <small>of {formatCompactNumber(flowQuery.data.metadata.paging.totalNodeCount)}</small>
                 </span>
                 <button
+                  type="button"
                   onClick={() => updateSearch({
                     threshold,
                     cursor: flowQuery.data.metadata.paging.nextCursor ?? undefined,
@@ -236,13 +246,18 @@ export function TraceDetailPage() {
           </div>
         </section>
 
-        <Inspector
-          selected={selected}
-          summary={summary}
-          onClose={() => setSelected(null)}
-        />
+        <Inspector selected={selected} summary={summary} />
       </section>
     </main>
+  );
+}
+
+function Metric(props: { label: string; value: string; alert?: boolean }) {
+  return (
+    <article className={`workbench-metric ${props.alert ? "alert" : ""}`}>
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </article>
   );
 }
 
@@ -254,68 +269,31 @@ function GraphToolbar(props: {
 }) {
   const min = props.summary?.minImportanceLevel ?? 0;
   const max = Math.max(min, props.summary?.maxImportanceLevel ?? 9);
-  const percentage = max === min ? 100 : ((props.threshold - min) / (max - min)) * 100;
 
   return (
-    <div className="graph-toolbar">
-      <div className="graph-stats">
-        <GraphStat
-          label="Nodes"
-          value={`${props.flow?.metadata.returnedNodeCount ?? 0}`}
-          detail={`/ ${formatCompactNumber(props.summary?.nodeCount ?? 0)}`}
-        />
-        <GraphStat
-          label="Edges"
-          value={`${props.flow?.metadata.returnedEdgeCount ?? 0}`}
-          detail={`/ ${formatCompactNumber(props.summary?.edgeCount ?? 0)}`}
-        />
-        <GraphStat
-          label="Duration"
-          value={props.summary ? formatDuration(props.summary.startedAt, props.summary.endedAt) : "-"}
-        />
-        <GraphStat
-          label="Diagnostics"
-          value={`${props.summary ? diagnosticCount(props.summary) : 0}`}
-          alert={Boolean(props.summary && diagnosticCount(props.summary))}
-        />
+    <div className="graph-toolbar trace-toolbar">
+      <div className="toolbar-stat">
+        <span>Visible</span>
+        <strong>{props.flow?.metadata.visibleNodeCount ?? 0}</strong>
       </div>
-
-      <div className="importance-control">
-        <div className="importance-heading">
-          <span><Icon name="filter" /> Importance threshold</span>
-          <strong>{formatImportance(props.threshold, props.summary?.importanceLabels)}</strong>
-        </div>
-        <div className="slider-row">
-          <span>{formatImportance(min, props.summary?.importanceLabels)}</span>
-          <input
-            type="range"
-            min={min}
-            max={max}
-            step={1}
-            value={props.threshold}
-            style={{ "--slider-progress": `${percentage}%` } as React.CSSProperties}
-            onChange={(event) => props.onThresholdChange(Number(event.target.value))}
-          />
-          <span>{formatImportance(max, props.summary?.importanceLabels)}</span>
-        </div>
-        <small>Shows nodes where importance is less than or equal to {formatImportance(props.threshold, props.summary?.importanceLabels)}</small>
+      <div className="toolbar-stat">
+        <span>Collapsed</span>
+        <strong>{props.flow?.metadata.ghostNodeCount ?? 0}</strong>
       </div>
-    </div>
-  );
-}
-
-function GraphStat(props: {
-  label: string;
-  value: string;
-  detail?: string;
-  alert?: boolean;
-}) {
-  return (
-    <div className="graph-stat">
-      <span>{props.label}</span>
-      <strong className={props.alert ? "alert" : ""}>
-        {props.value} <small>{props.detail}</small>
-      </strong>
+      <label className="importance-control compact">
+        <span>
+          <Icon name="filter" />
+          Importance {formatImportance(props.threshold, props.summary?.importanceLabels)}
+        </span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={1}
+          value={props.threshold}
+          onChange={(event) => props.onThresholdChange(Number(event.target.value))}
+        />
+      </label>
     </div>
   );
 }
@@ -333,11 +311,11 @@ function TraceCanvas(props: {
 
   if (props.flow.nodes.length === 0) {
     return (
-      <div className="graph-empty">
-        <div className="empty-icon"><Icon name="graph" /></div>
-        <h3>No nodes in this window</h3>
-        <p>Move the importance threshold or navigate to another window.</p>
-      </div>
+      <GraphEmpty
+        icon="graph"
+        title="No nodes in this window"
+        copy="Adjust the threshold or move to another graph window."
+      />
     );
   }
 
@@ -347,9 +325,9 @@ function TraceCanvas(props: {
       edges={graph.edges}
       nodeTypes={nodeTypes}
       fitView
-      fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
-      minZoom={0.18}
-      maxZoom={1.7}
+      fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+      minZoom={0.16}
+      maxZoom={1.8}
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
       onPaneClick={() => props.onSelect(null)}
@@ -362,18 +340,13 @@ function TraceCanvas(props: {
         if (value) props.onSelect({ type: "edge", value });
       }}
     >
-      <Background
-        variant={BackgroundVariant.Dots}
-        gap={24}
-        size={1.15}
-        color="#d6dce8"
-      />
+      <Background variant={BackgroundVariant.Dots} gap={22} size={1.1} color="#384151" />
       <Controls showInteractive={false} />
       <MiniMap
         pannable
         zoomable
-        nodeColor={(node) => String(node.style?.backgroundColor ?? "#6d5dfc")}
-        maskColor="rgba(244, 247, 251, 0.72)"
+        nodeColor={(node) => String(node.style?.backgroundColor ?? "#8ee4af")}
+        maskColor="rgba(6, 12, 20, 0.72)"
       />
     </ReactFlow>
   );
@@ -381,117 +354,102 @@ function TraceCanvas(props: {
 
 const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode>) {
   const node = props.data.value;
+
   if (node.kind === "ghost") {
     return (
-      <div className={`trace-node-card ghost ${props.selected ? "selected" : ""}`}>
+      <div className={`trace-node-card ghost ${props.data.selected ? "selected" : ""}`}>
         <Handle type="target" position={Position.Left} />
         <div className="node-card-top">
           <span className="node-kind-icon ghost"><Icon name="layers" /></span>
-          <span>Collapsed subflow</span>
-          <strong>
-            {formatImportance(node.minImportanceLevel, props.data.importanceLabels)}-
-            {formatImportance(node.maxImportanceLevel, props.data.importanceLabels)}
-          </strong>
+          <strong>{node.hiddenNodeCount} hidden</strong>
         </div>
-        <h3>{node.hiddenNodeCount} hidden nodes</h3>
         <p>{summarizeTypes(node.nodeTypeCounts)}</p>
-        <div className="node-card-footer">
-          <span>{node.hiddenEdgeCount} internal edges</span>
-          <span>#{node.flowOrderStart}-{node.flowOrderEnd}</span>
-        </div>
+        <small>Flow {node.flowOrderStart}-{node.flowOrderEnd}</small>
         <Handle type="source" position={Position.Right} />
       </div>
     );
   }
 
   return (
-    <div className={`trace-node-card ${props.selected ? "selected" : ""}`}>
+    <div className={`trace-node-card ${props.data.selected ? "selected" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="node-card-top">
-        <span className={`node-kind-icon importance-${Math.min(node.importanceLevel, 4)}`}>
-          <Icon name={node.nodeType.toLowerCase().includes("db") ? "database" : "activity"} />
-        </span>
-        <span>{node.nodeType}</span>
+        <span className="node-kind-icon"><Icon name="activity" /></span>
         <strong>{formatImportance(node.importanceLevel, props.data.importanceLabels)}</strong>
       </div>
       <h3>{nodeLabel(node.nodeType, node.data)}</h3>
-      <p>{formatTime(node.startedAt)} to {formatTime(node.endedAt)}</p>
-      <div className="node-card-footer">
-        <span>{formatDuration(node.startedAt, node.endedAt)}</span>
-        <span>#{node.flowOrder}</span>
-      </div>
+      <p>{node.nodeType}</p>
+      <small>{formatTime(node.startedAt)} · #{node.flowOrder}</small>
       <Handle type="source" position={Position.Right} />
     </div>
   );
 });
 
-const nodeTypes = { "trace-node": TraceNodeCard };
+const nodeTypes = {
+  "trace-node": TraceNodeCard,
+};
 
-function Inspector(props: {
-  selected: SelectedItem | null;
-  summary?: TraceSummary;
-  onClose: () => void;
-}) {
-  if (!props.selected) return null;
+function Inspector(props: { selected: SelectedItem | null; summary?: TraceSummary }) {
+  if (!props.selected) {
+    return (
+      <aside className="inspector trace-inspector">
+        <span className="panel-kicker">Inspector</span>
+        <h3>Trace summary</h3>
+        <DetailRow label="Started" value={props.summary ? formatDate(props.summary.startedAt) : "-"} />
+        <DetailRow label="Materialized" value={props.summary ? formatDate(props.summary.materializedAt) : "-"} />
+        <DetailRow
+          label="Importance"
+          value={props.summary
+            ? `${formatImportance(props.summary.minImportanceLevel)}-${formatImportance(props.summary.maxImportanceLevel)}`
+            : "-"}
+        />
+        <Diagnostics summary={props.summary} />
+      </aside>
+    );
+  }
 
   return (
-    <aside className="inspector">
-      <div className="inspector-header">
-        <button className="icon-button" onClick={props.onClose} aria-label="Close inspector">
-          <Icon name="x" />
-        </button>
-      </div>
-
-      {props.selected.type === "node" && (
+    <aside className="inspector trace-inspector">
+      <span className="panel-kicker">Inspector</span>
+      {props.selected.type === "node" ? (
         <NodeInspector
           node={props.selected.value}
           importanceLabels={props.summary?.importanceLabels}
         />
+      ) : (
+        <EdgeInspector edge={props.selected.value} />
       )}
-      {props.selected.type === "edge" && <EdgeInspector edge={props.selected.value} />}
     </aside>
   );
 }
 
-function NodeInspector({
-  node,
-  importanceLabels,
-}: {
+function NodeInspector({ node, importanceLabels }: {
   node: ProjectedFlowNode;
   importanceLabels?: Record<number, string>;
 }) {
   if (node.kind === "ghost") {
     return (
       <>
-        <div className="inspector-badge"><Icon name="layers" /> Aggregated hidden detail</div>
-        <div className="inspector-section">
-          <DetailRow label="Hidden nodes" value={String(node.hiddenNodeCount)} />
-          <DetailRow label="Internal edges" value={String(node.hiddenEdgeCount)} />
-          <DetailRow label="Flow range" value={`${node.flowOrderStart}-${node.flowOrderEnd}`} />
-          <DetailRow
-            label="Importance"
-            value={`${formatImportance(node.minImportanceLevel, importanceLabels)}-${formatImportance(node.maxImportanceLevel, importanceLabels)}`}
-          />
-          <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
-        </div>
+        <h3>Collapsed subflow</h3>
+        <DetailRow label="Hidden nodes" value={String(node.hiddenNodeCount)} />
+        <DetailRow label="Internal edges" value={String(node.hiddenEdgeCount)} />
+        <DetailRow label="Flow range" value={`${node.flowOrderStart}-${node.flowOrderEnd}`} />
+        <DetailRow
+          label="Importance"
+          value={`${formatImportance(node.minImportanceLevel, importanceLabels)}-${formatImportance(node.maxImportanceLevel, importanceLabels)}`}
+        />
         <DataBlock data={node.nodeTypeCounts} title="Node types" />
       </>
     );
   }
+
   return (
     <>
-      <div className="inspector-badge"><Icon name="activity" /> {node.nodeType}</div>
-      <div className="inspector-section">
-        <DetailRow label="Node ID" value={node.id} mono />
-        <DetailRow
-          label="Importance"
-          value={formatImportance(node.importanceLevel, importanceLabels)}
-        />
-        <DetailRow label="Flow order" value={String(node.flowOrder)} />
-        <DetailRow label="Started" value={formatDate(node.startedAt)} />
-        <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
-        <DetailRow label="Clock skew" value={`${node.clockSkewMs} ms`} />
-      </div>
+      <h3>{nodeLabel(node.nodeType, node.data)}</h3>
+      <DetailRow label="Type" value={node.nodeType} />
+      <DetailRow label="Importance" value={formatImportance(node.importanceLevel, importanceLabels)} />
+      <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
+      <DetailRow label="Flow order" value={`#${node.flowOrder}`} />
       <DataBlock data={node.data} title="Attributes" />
     </>
   );
@@ -500,59 +458,83 @@ function NodeInspector({
 function EdgeInspector({ edge }: { edge: ProjectedFlowEdge }) {
   return (
     <>
-      <div className="inspector-badge"><Icon name="arrow-right" /> {edge.edgeType}</div>
-      <div className="inspector-section">
-        <DetailRow label="Edge ID" value={edge.id} mono />
-        <DetailRow label="From" value={edge.fromNodeId} mono />
-        <DetailRow label="To" value={edge.toNodeId} mono />
-        <DetailRow label="Edge count" value={String(edge.edgeCount)} />
-        <DetailRow label="Duration" value={formatDuration(edge.startedAt, edge.endedAt)} />
-        <DetailRow label="Clock skew" value={`${edge.clockSkewMs} ms`} />
-      </div>
+      <h3>{edge.edgeType}</h3>
+      <DetailRow label="From" value={shortId(edge.fromNodeId, 18)} />
+      <DetailRow label="To" value={shortId(edge.toNodeId, 18)} />
+      <DetailRow label="Count" value={String(edge.edgeCount)} />
+      <DetailRow label="Duration" value={formatDuration(edge.startedAt, edge.endedAt)} />
+      <DetailRow label="Updated" value={formatTime(edge.startedAt)} />
     </>
   );
 }
 
-function DataBlock(props: { data: Record<string, string | number>; title: string }) {
-  const entries = Object.entries(props.data);
+function Diagnostics({ summary }: { summary?: TraceSummary }) {
+  const diagnostics = summary ? diagnosticItems(summary) : [];
+  if (diagnostics.length === 0) {
+    return <p className="muted-copy">No diagnostics reported.</p>;
+  }
+
   return (
-    <div className="inspector-section">
-      <h3>{props.title} <span>{entries.length}</span></h3>
-      {entries.length === 0
-        ? <p className="muted-copy">No attributes recorded.</p>
-        : <div className="data-block">
+    <div className="diagnostic-stack">
+      {diagnostics.map((item) => (
+        <DetailRow key={item.label} label={item.label} value={String(item.value)} />
+      ))}
+    </div>
+  );
+}
+
+function DetailRow(props: { label: string; value: string }) {
+  return (
+    <div className="detail-row">
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
+  );
+}
+
+function DataBlock(props: { data: Record<string, unknown>; title: string }) {
+  const entries = Object.entries(props.data ?? {});
+  return (
+    <section className="data-block-wrap">
+      <h4>{props.title}</h4>
+      {entries.length === 0 ? (
+        <p className="muted-copy">No attributes recorded.</p>
+      ) : (
+        <div className="data-block">
           {entries.map(([key, value]) => (
             <div key={key}>
               <span>{key}</span>
               <code>{String(value)}</code>
             </div>
           ))}
-        </div>}
-    </div>
+        </div>
+      )}
+    </section>
   );
-}
-
-function DetailRow(props: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="detail-row">
-      <span>{props.label}</span>
-      <strong className={props.mono ? "mono" : ""} title={props.value}>{props.value}</strong>
-    </div>
-  );
-}
-
-function SummaryMiniRow(props: { label: string; value: string }) {
-  return <div><span>{props.label}</span><strong>{props.value}</strong></div>;
 }
 
 function GraphLoading() {
   return (
-    <div className="graph-loading">
-      <div className="loading-node one" />
-      <div className="loading-node two" />
-      <div className="loading-node three" />
-      <div className="loading-line line-one" />
-      <div className="loading-line line-two" />
+    <div className="graph-empty">
+      <div className="empty-icon"><Icon name="refresh" className="spinning" /></div>
+      <h3>Loading projection</h3>
+      <p>Preparing bounded trace graph.</p>
+    </div>
+  );
+}
+
+function GraphEmpty(props: {
+  icon: "graph" | "shield" | "terminal";
+  title: string;
+  copy: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="graph-empty">
+      <div className="empty-icon"><Icon name={props.icon} /></div>
+      <h3>{props.title}</h3>
+      <p>{props.copy}</p>
+      {props.action}
     </div>
   );
 }
@@ -567,154 +549,124 @@ function buildFlow(
   nodeById: Map<string, ProjectedFlowNode>;
   edgeById: Map<string, ProjectedFlowEdge>;
 } {
-  const orderedNodes = [...flow.nodes].sort(compareFlowNodes);
+  const orderedNodes = [...flow.nodes].sort((a, b) => nodeFlowStart(a) - nodeFlowStart(b));
   const nodeById = new Map(orderedNodes.map((node) => [node.id, node]));
   const edgeById = new Map(flow.edges.map((edge) => [edge.id, edge]));
   const positions = layoutGraph(orderedNodes, flow.edges);
-  const selectedId = selected?.value.id;
 
-  const nodes = orderedNodes.map<TraceFlowNode>((node) => ({
+  const nodes: TraceFlowNode[] = orderedNodes.map((node) => ({
     id: node.id,
     type: "trace-node",
-    data: { value: node, importanceLabels: summary?.importanceLabels },
-    position: positions.get(node.id) ?? { x: 80, y: 80 },
-    selected: selected?.type === "node" && selectedId === node.id,
-    sourcePosition: Position.Right,
-    targetPosition: Position.Left,
+    position: positions.get(node.id) ?? { x: 0, y: 0 },
+    data: {
+      value: node,
+      importanceLabels: summary?.importanceLabels,
+      selected: selected?.type === "node" && selected.value.id === node.id,
+    },
     style: {
       width: NODE_WIDTH,
-      backgroundColor: node.kind === "ghost" ? "#eef1f7" : nodeColor(node),
-      "--node-color": node.kind === "ghost" ? "#8d97a7" : nodeColor(node),
-    } as React.CSSProperties,
+      minHeight: NODE_HEIGHT,
+      backgroundColor: node.kind === "ghost" ? "#1d2736" : "#0f1b2a",
+      borderColor: selected?.type === "node" && selected.value.id === node.id ? "#8ee4af" : "#243044",
+    },
   }));
 
-  const edges = flow.edges
-    .filter((edge) => nodeById.has(edge.fromNodeId) && nodeById.has(edge.toNodeId))
-    .map<TraceFlowEdge>((edge) => ({
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges: TraceFlowEdge[] = flow.edges
+    .filter((edge) => nodeIds.has(edge.fromNodeId) && nodeIds.has(edge.toNodeId))
+    .map((edge) => ({
       id: edge.id,
       source: edge.fromNodeId,
       target: edge.toNodeId,
+      label: edge.edgeType,
+      animated: selected?.type === "edge" && selected.value.id === edge.id,
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#7f8da3" },
       data: { value: edge },
-      label: edge.edgeCount > 1 ? `${edge.edgeType} x${edge.edgeCount}` : edge.edgeType,
-      selected: selected?.type === "edge" && selectedId === edge.id,
-      type: "smoothstep",
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: selectedId === edge.id ? "#5b4ff1" : "#98a2b3",
-        width: 17,
-        height: 17,
-      },
       style: {
-        stroke: selectedId === edge.id ? "#5b4ff1" : "#98a2b3",
-        strokeWidth: selectedId === edge.id ? 2.8 : 1.7,
+        stroke: selected?.type === "edge" && selected.value.id === edge.id ? "#8ee4af" : "#64748b",
+        strokeWidth: selected?.type === "edge" && selected.value.id === edge.id ? 3 : 1.8,
       },
-      labelStyle: { fill: "#667085", fontSize: 10, fontWeight: 700 },
-      labelBgStyle: { fill: "#f8f9fc", fillOpacity: 0.94 },
-      labelBgPadding: [5, 3],
-      labelBgBorderRadius: 5,
     }));
 
   return { nodes, edges, nodeById, edgeById };
 }
 
-function layoutGraph(
-  nodes: ProjectedFlowNode[],
-  edges: ProjectedFlowEdge[],
-): Map<string, { x: number; y: number }> {
-  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
-  const incoming = new Map(nodes.map((node) => [node.id, [] as string[]]));
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+function layoutGraph(nodes: ProjectedFlowNode[], edges: ProjectedFlowEdge[]): Map<string, { x: number; y: number }> {
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, string[]>();
+  for (const node of nodes) {
+    outgoing.set(node.id, []);
+    incoming.set(node.id, []);
+  }
+
   for (const edge of edges) {
-    if (!nodeById.has(edge.fromNodeId) || !nodeById.has(edge.toNodeId)) continue;
     outgoing.get(edge.fromNodeId)?.push(edge.toNodeId);
     incoming.get(edge.toNodeId)?.push(edge.fromNodeId);
   }
 
   const indegree = new Map(nodes.map((node) => [node.id, incoming.get(node.id)?.length ?? 0]));
-  const rank = new Map(nodes.map((node) => [node.id, 0]));
-  const queue = nodes
-    .filter((node) => (indegree.get(node.id) ?? 0) === 0)
-    .sort(compareFlowNodes)
-    .map((node) => node.id);
+  const rank = new Map<string, number>();
+  const queue = nodes.filter((node) => (indegree.get(node.id) ?? 0) === 0);
   const visited = new Set<string>();
 
+  for (const node of queue) rank.set(node.id, 0);
   while (queue.length) {
-    const id = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
-    for (const child of outgoing.get(id) ?? []) {
-      rank.set(child, Math.max(rank.get(child) ?? 0, (rank.get(id) ?? 0) + 1));
-      indegree.set(child, (indegree.get(child) ?? 1) - 1);
-      if ((indegree.get(child) ?? 0) === 0) queue.push(child);
+    const current = queue.shift()!;
+    if (visited.has(current.id)) continue;
+    visited.add(current.id);
+    for (const child of outgoing.get(current.id) ?? []) {
+      rank.set(child, Math.max(rank.get(child) ?? 0, (rank.get(current.id) ?? 0) + 1));
+      indegree.set(child, (indegree.get(child) ?? 0) - 1);
+      if ((indegree.get(child) ?? 0) <= 0) {
+        const next = nodes.find((node) => node.id === child);
+        if (next) queue.push(next);
+      }
     }
   }
 
   let fallbackRank = Math.max(0, ...rank.values());
   for (const node of nodes) {
-    if (!visited.has(node.id)) rank.set(node.id, ++fallbackRank);
+    if (!rank.has(node.id)) rank.set(node.id, ++fallbackRank);
   }
 
-  const uniqueRanks = Array.from(new Set(rank.values())).sort((a, b) => a - b);
-  const compressed = new Map(uniqueRanks.map((value, index) => [value, index]));
   const columns = new Map<number, ProjectedFlowNode[]>();
   for (const node of nodes) {
-    const column = compressed.get(rank.get(node.id) ?? 0) ?? 0;
-    const bucket = columns.get(column) ?? [];
-    bucket.push(node);
-    columns.set(column, bucket);
+    const column = rank.get(node.id) ?? 0;
+    columns.set(column, [...(columns.get(column) ?? []), node]);
   }
 
   const positions = new Map<string, { x: number; y: number }>();
-  for (const [column, bucket] of columns) {
-    bucket.sort(compareFlowNodes);
-    const band = Math.floor(column / 2);
-    const slot = column % 2;
-    const displayColumn = band % 2 === 0 ? slot : 1 - slot;
-    bucket.forEach((node, row) => {
-      positions.set(node.id, {
-        x: 72 + displayColumn * COLUMN_GAP,
-        y: 64 + (band + row) * ROW_GAP,
-      });
-    });
+  for (const [column, columnNodes] of columns) {
+    columnNodes
+      .sort((a, b) => nodeFlowStart(a) - nodeFlowStart(b))
+      .forEach((node, row) => positions.set(node.id, {
+        x: column * COLUMN_GAP,
+        y: row * ROW_GAP,
+      }));
   }
+
   return positions;
 }
 
-function compareFlowNodes(a: ProjectedFlowNode, b: ProjectedFlowNode): number {
-  return flowOrder(a) - flowOrder(b) || a.id.localeCompare(b.id);
-}
-
-function flowOrder(node: ProjectedFlowNode): number {
-  return node.kind === "normal" ? node.flowOrder : node.flowOrderStart;
-}
-
-function nodeColor(node: ProjectedNormalNode): string {
-  const colors = ["#14b8a6", "#4f7cff", "#7c5ce7", "#c365d8", "#dd7d3f"];
-  return colors[Math.min(Math.max(node.importanceLevel, 0), colors.length - 1)];
-}
-
-function selectedTitle(selected: SelectedItem): string {
-  if (selected.type === "edge") return selected.value.edgeType;
-  if (selected.value.kind === "ghost") return "Collapsed subflow";
-  return nodeLabel(selected.value.nodeType, selected.value.data);
+function nodeFlowStart(node: ProjectedFlowNode): number {
+  return node.kind === "ghost" ? node.flowOrderStart : node.flowOrder;
 }
 
 function summarizeTypes(counts: Record<string, number>): string {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  if (!entries.length) return "Mixed node types";
-  return entries.slice(0, 2).map(([type, count]) => `${count} ${type}`).join(" / ");
+  const entries = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
+  if (entries.length === 0) return "Mixed hidden nodes";
+  return entries.map(([type, count]) => `${type} ${count}`).join(", ");
 }
 
-function normalizeThreshold(
-  value: number | undefined,
-  min: number,
-  max: number,
-): number {
-  const candidate = Number.isFinite(value) ? Math.floor(value!) : min;
-  return Math.min(max, Math.max(min, candidate));
+function normalizeThreshold(value: number | undefined, min: number, max: number): number {
+  if (value === undefined || Number.isNaN(value)) return min;
+  return Math.min(max, Math.max(min, Math.floor(value)));
 }
 
-function buildDiagnostics(summary: TraceSummary): { label: string; value: number }[] {
+function diagnosticItems(summary: TraceSummary): Array<{ label: string; value: number }> {
   return [
     { label: "Missing starts", value: summary.diagMissingStarts },
     { label: "Missing ends", value: summary.diagMissingEnds },

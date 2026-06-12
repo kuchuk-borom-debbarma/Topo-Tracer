@@ -97,7 +97,7 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
     });
 
     // Determine the tenant/user owning this telemetry run
-    const userId = c.get("userId") || c.req.header("X-User-Id") || "system-self-tracing";
+      const userId = "system-self-tracing";
 
     if (spansBuffer.nodeStarts.length > 0) {
       const payload = {

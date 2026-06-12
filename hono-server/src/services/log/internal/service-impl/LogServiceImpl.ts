@@ -26,6 +26,9 @@ const DEFAULT_PROJECTION_NODE_CAP = 500;
 const MAX_PROJECTION_NODE_CAP = 1000;
 const DEFAULT_TRACE_LIST_LIMIT = 20;
 const MAX_TRACE_LIST_LIMIT = 100;
+const SYSTEM_SELF_TRACING_USER_ID = "system-self-tracing";
+const INTERNAL_TRACE_NODE_TYPES = new Set(["api", "cpu", "db", "eventbus", "internal"]);
+const INTERNAL_TRACE_NAME_PREFIXES = ["GET /api/", "POST /api/", "PUT /api/", "PATCH /api/", "DELETE /api/"];
 
 /**
  * Concrete implementation of the Log Service.
@@ -149,7 +152,7 @@ export class LogServiceImpl extends ILogService {
       () => this.readRepo.loadTraceSummary({ userId, traceId }),
       { type: "db", importanceLevel: 1 }
     );
-    if (!summary) {
+    if (!summary || this.isInternalTraceSummary(summary)) {
       throw new Error("Trace not found");
     }
 
@@ -253,7 +256,7 @@ export class LogServiceImpl extends ILogService {
     );
     const offset = (page - 1) * limit;
 
-    const result = await InternalTracer.trace(
+    let result = await InternalTracer.trace(
       "loadTraceSummaries",
       () => this.readRepo.loadTraceSummaries({
         userId: data.userId,
@@ -261,13 +264,34 @@ export class LogServiceImpl extends ILogService {
       }),
       { type: "db", importanceLevel: 1 },
     );
-    const totalPages = result.totalCount === 0
+
+    const traces = result.items.filter((summary) => !this.isInternalTraceSummary(summary));
+    let nextOffset = offset + limit;
+    while (traces.length < limit && result.hasMore) {
+      result = await InternalTracer.trace(
+        "loadTraceSummaries",
+        () => this.readRepo.loadTraceSummaries({
+          userId: data.userId,
+          paging: { offset: nextOffset, limit },
+        }),
+        { type: "db", importanceLevel: 1 },
+      );
+      traces.push(...result.items.filter((summary) => !this.isInternalTraceSummary(summary)));
+      nextOffset += limit;
+    }
+
+    const pageItemCount = Math.min(traces.length, limit);
+    const visibleTotalCount = result.hasMore
+      ? Math.max(result.totalCount, offset + pageItemCount + 1)
+      : offset + pageItemCount;
+
+    const totalPages = visibleTotalCount === 0
       ? 0
-      : Math.ceil(result.totalCount / limit);
+      : Math.ceil(visibleTotalCount / limit);
 
     return {
-      traces: result.items,
-      totalCount: result.totalCount,
+      traces: traces.slice(0, limit),
+      totalCount: visibleTotalCount,
       page,
       limit,
       totalPages,
@@ -284,7 +308,18 @@ export class LogServiceImpl extends ILogService {
     traceId: string;
   }): Promise<ReadTraceSummary | null> {
     this.logger.trace("getTraceSummary", { userId: data.userId, traceId: data.traceId });
-    return this.readRepo.loadTraceSummary(data);
+    const summary = await this.readRepo.loadTraceSummary(data);
+    if (!summary || this.isInternalTraceSummary(summary)) return null;
+    return summary;
+  }
+
+  private isInternalTraceSummary(summary: ReadTraceSummary): boolean {
+    if (summary.userId === SYSTEM_SELF_TRACING_USER_ID) return true;
+    if (INTERNAL_TRACE_NAME_PREFIXES.some((prefix) => summary.name.startsWith(prefix))) return true;
+
+    return Object.values(summary.importanceLabels ?? {}).some((label) =>
+      INTERNAL_TRACE_NODE_TYPES.has(String(label).toLowerCase())
+    );
   }
 
   /**

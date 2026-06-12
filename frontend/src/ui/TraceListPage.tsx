@@ -53,14 +53,11 @@ export function TraceListPage() {
 
   return (
     <main className="page trace-list-page trace-dashboard-page">
-      <section className="trace-dashboard-hero">
+      <section className="trace-dashboard-hero compact">
         <div className="trace-dashboard-copy">
           <span className="hero-kicker">Trace operations</span>
-          <h2>Find the right trace fast and stay oriented while you do it.</h2>
-          <p>
-            This workspace keeps active traces, graph health, and access controls within reach so
-            the UI feels operational instead of decorative.
-          </p>
+          <h2>Trace directory</h2>
+          <p>Only traces owned by this account appear here.</p>
         </div>
 
         <div className="trace-dashboard-actions">
@@ -181,7 +178,25 @@ export function TraceListPage() {
                     const updatedAt = trace.materializedAt;
 
                     return (
-                      <tr key={trace.traceId}>
+                      <tr
+                        key={trace.traceId}
+                        className="trace-click-row"
+                        tabIndex={0}
+                        onClick={() => navigate({
+                          to: "/traces/$traceId",
+                          params: { traceId: trace.traceId },
+                          search: { threshold: trace.minImportanceLevel, cursor: undefined },
+                        })}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          navigate({
+                            to: "/traces/$traceId",
+                            params: { traceId: trace.traceId },
+                            search: { threshold: trace.minImportanceLevel, cursor: undefined },
+                          });
+                        }}
+                      >
                         <td>
                           <div className="trace-primary-cell">
                             <span className="trace-row-badge">{trace.name[0]?.toUpperCase() ?? "T"}</span>
@@ -225,9 +240,10 @@ export function TraceListPage() {
                           <Link
                             to="/traces/$traceId"
                             params={{ traceId: trace.traceId }}
-                            search={{ threshold: 0, cursor: undefined }}
+                            search={{ threshold: trace.minImportanceLevel, cursor: undefined }}
                             className="row-action"
                             aria-label={`Open trace ${trace.name || trace.traceId}`}
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <Icon name="arrow-right" />
                           </Link>
