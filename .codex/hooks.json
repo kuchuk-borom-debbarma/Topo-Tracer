@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/kuchukboromdebbarma/.local/bin/headroom init hook ensure --profile init-topo-tracer-3b658497 --marker headroom-init-codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/kuchukboromdebbarma/.local/bin/headroom init hook ensure --profile init-topo-tracer-3b658497 --marker headroom-init-codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
