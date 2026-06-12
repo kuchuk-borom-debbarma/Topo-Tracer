@@ -9,6 +9,8 @@ type PostgresContext = Context<PostgresEnv>;
 let sqlClient: postgres.Sql | undefined;
 let postgresBootstrapped = false;
 
+const EXPECTED_BOOTSTRAP_NOTICE_CODES = new Set(["42P07", "42701"]);
+
 /**
  * Direct initialization helper for PostgreSQL client.
  * Used for background tasks/daemons that start before any HTTP requests or outside a Hono Context.
@@ -25,6 +27,10 @@ const initializePostgresClientDirectly = (connectionString?: string): postgres.S
       max: 10,
       idle_timeout: 20,
       connect_timeout: 30,
+      onnotice: (notice) => {
+        if (EXPECTED_BOOTSTRAP_NOTICE_CODES.has(notice.code)) return;
+        console.info(notice);
+      },
     });
   }
   return sqlClient;
