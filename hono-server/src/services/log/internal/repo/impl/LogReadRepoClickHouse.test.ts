@@ -168,6 +168,7 @@ describe("LogReadRepoClickHouse row loading", () => {
       {
         user_id: "u1",
         trace_id: "t1",
+        trace_progress_timestamp: 0,
         node_progress_timestamp: 1000,
         node_progress_id: "n1",
         node_progress_event_type: 0,
@@ -300,11 +301,10 @@ describe("LogReadRepoClickHouse row loading", () => {
     expect(nodeQuery?.query).toContain("started_at_ms");
     expect(nodeQuery?.query).toContain("ORDER BY");
     expect(nodeQuery?.query_params).toMatchObject({
-      lastTraceEventTime: 0, lastNodeEventTime: 1000,
+      lastNodeEventTime: 1000,
       lastNodeEventId: "n1",
       lastNodeEventType: 0,
     });
-
     expect(edgeQuery?.query_params).toMatchObject({
       lastEdgeEventTime: 1100,
       lastEdgeEventId: "e1",
@@ -320,7 +320,7 @@ describe("LogReadRepoClickHouse row loading", () => {
 
     const nodeQuery = fakeClient.queries.find(q => q.query.includes("node_events"));
     expect(nodeQuery?.query_params).toMatchObject({
-      lastTraceEventTime: 0, lastNodeEventTime: 0,
+      lastNodeEventTime: 0,
       lastNodeEventId: "",
       lastNodeEventType: 0,
     });
