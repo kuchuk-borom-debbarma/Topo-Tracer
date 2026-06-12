@@ -37,6 +37,7 @@ The Topo-Tracer Node.js SDK is now production-ready, featuring a high-quality fl
 
 | Date | Task | Status |
 |------|------|--------|
+| 2026-06-12 | Add API key management | Complete |
 | 2026-06-12 | Fix Hono TypeScript check | Complete |
 | 2026-06-12 | Fix trace-start ingest path | Complete |
 | 2026-06-12 | Clean inspector heading and badge readability | Complete |

@@ -3484,6 +3484,99 @@ body::before {
   color: rgba(248, 250, 252, 0.94);
 }
 
+.top-nav {
+  align-items: center;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px;
+}
+
+.top-nav-link {
+  align-items: center;
+  border-radius: 8px;
+  color: rgba(226, 232, 240, 0.72);
+  display: inline-flex;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  text-decoration: none;
+}
+
+.top-nav-link:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(248, 250, 252, 0.94);
+}
+
+.top-nav-link svg {
+  height: 16px;
+  width: 16px;
+}
+
+.api-keys-page {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.api-keys-header,
+.api-key-create-row,
+.api-key-created,
+.api-key-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.api-key-create-panel,
+.api-key-created,
+.api-key-row {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.api-key-create-panel form {
+  display: grid;
+  gap: 10px;
+}
+
+.api-key-create-row {
+  gap: 12px;
+}
+
+.api-key-create-row input {
+  flex: 1;
+}
+
+.api-key-created code {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.api-key-list {
+  display: grid;
+  gap: 10px;
+}
+
+.api-key-row small {
+  color: rgba(226, 232, 240, 0.62);
+  display: block;
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .api-keys-header,
+  .api-key-create-row,
+  .api-key-created,
+  .api-key-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* Inspector and badge cleanup */
 .inspector-header {
   border-bottom: 0;

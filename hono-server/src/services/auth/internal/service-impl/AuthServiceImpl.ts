@@ -5,7 +5,7 @@ import { IAuthRepo } from "../repo/IAuthRepo";
 import { TopoTraceException } from "../../../../common/types";
 import { IExternalNotificationService } from "../../../external-notification/api/IExternalNotificationService";
 import { generateToken, verifyToken } from "../util/jwt";
-import { User } from "../../api/types";
+import type { ApiKey, CreatedApiKey, User } from "../../api/types";
 import { ICache } from "../../../../infra/cache/api/ICache";
 import { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
 import { InternalTracer } from "../../../../infra/tracing/InternalTracer";
@@ -338,6 +338,59 @@ export class AuthServiceImpl extends IAuthService {
       throw new TopoTraceException("Invalid or expired token", 401);
     }
   }
-}
 
+  async getUserByApiKey(data: { apiKey: string }): Promise<User> {
+    const keyHash = this.hashApiKey(data.apiKey);
+    const user = await this.authRepo.getUserByApiKeyHash(keyHash);
+    if (!user) {
+      throw new TopoTraceException("Invalid API key", 401);
+    }
+    return user;
+  }
+
+  async createApiKey(data: { userId: string; name: string }): Promise<CreatedApiKey> {
+    const name = data.name.trim();
+    if (!name) {
+      throw new TopoTraceException("API key name is required", 400);
+    }
+
+    const key = `tt_${crypto.randomBytes(32).toString("base64url")}`;
+    const keyHash = this.hashApiKey(key);
+    const row = await this.authRepo.insertApiKey({
+      userId: data.userId,
+      name,
+      keyHash,
+      keyPrefix: key.slice(0, 10),
+    });
+
+    return {
+      ...this.mapApiKey(row),
+      key,
+    };
+  }
+
+  async listApiKeys(data: { userId: string }): Promise<ApiKey[]> {
+    const rows = await this.authRepo.listApiKeys(data.userId);
+    return rows.map((row) => this.mapApiKey(row));
+  }
+
+  async revokeApiKey(data: { userId: string; apiKeyId: string }): Promise<void> {
+    await this.authRepo.revokeApiKey(data);
+  }
+
+  private hashApiKey(apiKey: string): string {
+    return crypto.createHash("sha256").update(apiKey).digest("hex");
+  }
+
+  private mapApiKey(row: { id: string; name: string; keyPrefix: string; createdAt: Date; lastUsedAt: Date | null; revokedAt: Date | null }): ApiKey {
+    return {
+      id: row.id,
+      name: row.name,
+      keyPrefix: row.keyPrefix,
+      createdAt: row.createdAt,
+      lastUsedAt: row.lastUsedAt,
+      revokedAt: row.revokedAt,
+    };
+  }
+}
 

@@ -50,8 +50,8 @@ describe("jwtAuthMiddleware", () => {
 
   it("should support fallback to X-API-Key header", async () => {
     const mockUser = { id: "user-456", email: "user456@test.com", username: "testuser" };
-    const originalGetUserByToken = authService.getUserByToken;
-    authService.getUserByToken = async () => mockUser as any;
+    const originalGetUserByApiKey = authService.getUserByApiKey;
+    authService.getUserByApiKey = async () => mockUser as any;
 
     try {
       const app = new Hono<AppEnv>();
@@ -68,7 +68,7 @@ describe("jwtAuthMiddleware", () => {
       const body = await res.json();
       expect(body.userId).toBe("user-456");
     } finally {
-      authService.getUserByToken = originalGetUserByToken;
+      authService.getUserByApiKey = originalGetUserByApiKey;
     }
   });
 

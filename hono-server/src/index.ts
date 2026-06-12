@@ -168,6 +168,35 @@ app.get("/api/v1/auth/me", jwtAuthMiddleware(), async (c) => {
   return c.json({ user: c.get("user") });
 });
 
+app.get("/api/v1/auth/api-keys", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
+  const apiKeys = await authService.listApiKeys({ userId });
+  return c.json({ apiKeys });
+});
+
+app.post("/api/v1/auth/api-keys", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
+  const body = await c.req.json();
+  if (!body.name) {
+    return c.json({ error: "Missing required field (name)" }, 400);
+  }
+
+  try {
+    const apiKey = await authService.createApiKey({ userId, name: body.name });
+    return c.json({ apiKey });
+  } catch (error: any) {
+    const status = error.statusCode || 500;
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
+app.delete("/api/v1/auth/api-keys/:apiKeyId", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
+  const apiKeyId = c.req.param("apiKeyId");
+  await authService.revokeApiKey({ userId, apiKeyId });
+  return c.json({ success: true });
+});
+
 app.post("/api/v1/auth/reset-password/start", async (c) => {
   try {
     const body = await c.req.json();

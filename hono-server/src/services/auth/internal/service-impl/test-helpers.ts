@@ -18,35 +18,32 @@ export const mockLogger = new Logger({ name: "AuthServiceImplTest", type: "hidde
 export const jwtSecret = "my-secret-key-9876";
 
 export class MockAuthRepo extends IAuthRepo {
-  transaction = mock(async (fn: any): Promise<any> => {
-    return fn(this);
-  });
-  getUserByFilter = mock(async (filters: any): Promise<User> => {
-    throw new Error("Not implemented");
-  });
-  insertUser = mock(async (data: any): Promise<User> => {
-    throw new Error("Not implemented");
-  });
-  insertPendingSignUpUser = mock(async (data: any): Promise<PendingUser> => {
-    throw new Error("Not implemented");
-  });
-  getPendingUserById = mock(async (token: string): Promise<PendingUser> => {
-    throw new Error("Not implemented");
-  });
-  upsertUserTokenOTP = mock(async (data: any): Promise<TokenOTP> => {
-    throw new Error("Not implemented");
-  });
-  getTokenOTPById = mock(async (token: string): Promise<TokenOTP> => {
-    throw new Error("Not implemented");
-  });
-  getUserById = mock(async (token: string): Promise<User> => {
-    throw new Error("Not implemented");
-  });
-  updateUserPassword = mock(async (data: any): Promise<void> => {});
-  insertUserTokenOTP = mock(async (data: any): Promise<TokenOTP> => {
-    throw new Error("Not implemented");
-  });
-  deleteUserTokenOTPs = mock(async (data: any): Promise<void> => {});
+  transaction = mock(async (fn: any) => fn(this));
+
+  getUserByFilter = mock(async () => mockUser());
+  insertUser = mock(async () => mockUser());
+  insertPendingSignUpUser = mock(async () => mockPending());
+  getPendingUserById = mock(async () => mockPending());
+  upsertUserTokenOTP = mock(async () => mockTokenOtp());
+  getTokenOTPById = mock(async () => mockTokenOtp());
+  getUserById = mock(async () => mockUser());
+  updateUserPassword = mock(async () => {});
+  insertUserTokenOTP = mock(async () => mockTokenOtp());
+  deleteUserTokenOTPs = mock(async () => {});
+  insertApiKey = mock(async (data: any) => ({
+    id: "api-key-1",
+    userId: data.userId,
+    name: data.name,
+    keyHash: data.keyHash,
+    keyPrefix: data.keyPrefix,
+    createdAt: new Date(),
+    lastUsedAt: null,
+    revokedAt: null,
+  }));
+  listApiKeys = mock(async () => []);
+  revokeApiKey = mock(async () => {});
+  getUserByApiKeyHash = mock(async () => null);
+  markApiKeyUsed = mock(async () => {});
 }
 
 export class MockNotificationService extends IExternalNotificationService {

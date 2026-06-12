@@ -1,6 +1,7 @@
-import { User } from "../../../api/types";
+import type { User } from "../../../api/types";
 import { IAuthRepo } from "../IAuthRepo";
-import { PendingUser, TokenOTP } from "../types";
+import type { ApiKeyRow, PendingUser, TokenOTP } from "../types";
+import crypto from "crypto";
 import { postgres } from "../../../../../infra/db";
 import { TopoTraceException } from "../../../../../common/types";
 import { hashPassword } from "../../util/hash";
@@ -291,7 +292,81 @@ export class AuthRepoPg extends IAuthRepo {
     }
   }
 
+async insertApiKey(data: {
+    userId: string;
+    name: string;
+    keyHash: string;
+    keyPrefix: string;
+  }): Promise<ApiKeyRow> {
+    const id = crypto.randomUUID();
+    const rows = await this.sql<any[]>`
+      INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, created_at)
+      VALUES (${id}, ${data.userId}, ${data.name}, ${data.keyHash}, ${data.keyPrefix}, NOW())
+      RETURNING id, user_id, name, key_hash, key_prefix, created_at, last_used_at, revoked_at
+    `;
+    return mapApiKeyRow(rows[0]);
+  }
+
+  async listApiKeys(userId: string): Promise<ApiKeyRow[]> {
+    const rows = await this.sql<any[]>`
+      SELECT id, user_id, name, key_hash, key_prefix, created_at, last_used_at, revoked_at
+      FROM api_keys
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+    `;
+    return rows.map(mapApiKeyRow);
+  }
+
+  async revokeApiKey(data: { userId: string; apiKeyId: string }): Promise<void> {
+    await this.sql`
+      UPDATE api_keys
+      SET revoked_at = NOW()
+      WHERE id = ${data.apiKeyId} AND user_id = ${data.userId} AND revoked_at IS NULL
+    `;
+  }
+
+  async getUserByApiKeyHash(keyHash: string): Promise<User | null> {
+    const rows = await this.sql<any[]>`
+      SELECT u.id, u.username, u.email, u.created_at, u.updated_at, k.id as api_key_id
+      FROM api_keys k
+      JOIN users u ON u.id = k.user_id
+      WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row) return null;
+    await this.markApiKeyUsed(row.api_key_id);
+    return {
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async markApiKeyUsed(apiKeyId: string): Promise<void> {
+    await this.sql`
+      UPDATE api_keys
+      SET last_used_at = NOW()
+      WHERE id = ${apiKeyId}
+    `;
+  }
+
   async transaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
     return this.sql.begin(fn) as unknown as Promise<T>;
   }
+}
+
+function mapApiKeyRow(row: any): ApiKeyRow {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    keyHash: row.key_hash,
+    keyPrefix: row.key_prefix,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at ?? null,
+    revokedAt: row.revoked_at ?? null,
+  };
 }

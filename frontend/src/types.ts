@@ -6,6 +6,19 @@ export type User = {
   updatedAt: string;
 };
 
+export type ApiKey = {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+};
+
+export type CreatedApiKey = ApiKey & {
+  key: string;
+};
+
 export type TraceSummary = {
   userId: string;
   traceId: string;

@@ -1,25 +1,26 @@
-/**
- * Represents a user whose registration is pending OTP verification.
- * Kept internal to the repository layer.
- */
 export type PendingUser = {
   id: string;
-  email: string;
   username: string;
-  hashedPassword: string; // The hashed credential, kept strictly inside internal/
+  email: string;
+  hashedPassword: string;
   traceId?: string;
   parentSpanId?: string;
 };
 
-/**
- * Represents the verification state (token and associated OTP code).
- * Used during the signup confirmation step.
- */
 export type TokenOTP = {
   id: string;
-  token: string; // References the pending user registration ID or registered user ID
-  otp: string;   // The temporary verification code
+  token: string;
+  otp: string;
   tokenType: "USER_SIGNUP" | "PASSWORD_RESET" | "DUMMY";
 };
 
-
+export type ApiKeyRow = {
+  id: string;
+  userId: string;
+  name: string;
+  keyHash: string;
+  keyPrefix: string;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
+};

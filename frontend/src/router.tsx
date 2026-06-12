@@ -69,13 +69,20 @@ const traceDetailRoute = createRoute({
   component: lazyRouteComponent(() => import("./ui/TraceDetailPage"), "TraceDetailPage"),
 });
 
+const apiKeysRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/settings/api-keys",
+  component: lazyRouteComponent(() => import("./ui/ApiKeysPage"), "ApiKeysPage"),
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  authenticatedRoute.addChildren([
-    tracesRoute,
-    traceDetailRoute,
-  ]),
+    authenticatedRoute.addChildren([
+      tracesRoute,
+      traceDetailRoute,
+      apiKeysRoute,
+    ]),
 ]);
 
 export const router = createRouter({

@@ -1,9 +1,6 @@
 /**
  * Public representation of a User.
- * Following code-base.md guidelines:
- * - Public types are kept in api/types.ts.
- * - Sensitive database-specific fields (e.g., password hashes) are omitted
- *   to ensure database-only details do not leak through the service boundary.
+ * Sensitive database-specific fields are omitted.
  */
 export type User = {
   id: string;
@@ -13,3 +10,15 @@ export type User = {
   updatedAt: Date;
 };
 
+export type ApiKey = {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
+};
+
+export type CreatedApiKey = ApiKey & {
+  key: string;
+};

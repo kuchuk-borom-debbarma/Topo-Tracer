@@ -1,6 +1,8 @@
 import { clearToken, getToken } from "./auth";
 import type {
   ProjectedFlowResult,
+  ApiKey,
+  CreatedApiKey,
   TraceListResult,
   TraceSummary,
   User,
@@ -52,6 +54,23 @@ export async function finishSignUp(input: {
 
 export async function fetchCurrentUser(): Promise<{ user: User }> {
   return request("/api/v1/auth/me");
+}
+
+export async function fetchApiKeys(): Promise<{ apiKeys: ApiKey[] }> {
+  return request("/api/v1/auth/api-keys");
+}
+
+export async function createApiKey(input: { name: string }): Promise<{ apiKey: CreatedApiKey }> {
+  return request("/api/v1/auth/api-keys", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function revokeApiKey(apiKeyId: string): Promise<{ success: boolean }> {
+  return request(`/api/v1/auth/api-keys/${encodeURIComponent(apiKeyId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function fetchTraces(input: {
