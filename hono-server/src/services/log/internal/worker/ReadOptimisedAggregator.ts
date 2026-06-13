@@ -1,5 +1,6 @@
 import type { IEventBus } from "../../../../infra/event-bus/api/IEventBus";
 import type { EventBusPublishedEvent } from "../../../../infra/event-bus/api/types";
+import pLimit from "p-limit";
 
 /**
  * Payload type delivered via the log.trace.ingested event.
@@ -22,8 +23,13 @@ export interface ITraceReadModelMaterializer {
  * Following code-base.md guidelines:
  * - Subscribes to the log.trace.ingested topic via the IEventBus contract.
  * - Coalesces multiple concurrent events for the same traceId inside a batch to avoid redundant rebuild runs.
+ * - Shards materialization work in parallel to prevent head-of-line blocking.
  */
 export class ReadOptimisedAggregator {
+  // PERFORMANCE: Bound concurrent materializations per worker instance to prevent
+  // resource exhaustion (ClickHouse connection pool, memory).
+  private readonly limit = pLimit(10);
+
   constructor(
     private readonly eventBus: IEventBus,
     private readonly materializer: ITraceReadModelMaterializer
@@ -63,12 +69,15 @@ export class ReadOptimisedAggregator {
       traces.set(event.data.traceId, event.data);
     }
 
-    // TODO: Consider bounded parallel rebuilds here. Parallelizing across traces
-    // can improve throughput, but it may overload storage when many worker
-    // instances run and still needs idempotent rebuilds for duplicate delivery.
-    for (const trace of traces.values()) {
-      await this.rebuildTrace(trace);
-    }
+    // PERFORMANCE: Shard materialization in parallel across unique traces in the batch.
+    // Kafka keying (by traceId) ensures that events for the SAME trace stay ordered
+    // and arrive at the same partition/consumer, while different traces can be
+    // processed concurrently.
+    const tasks = Array.from(traces.values()).map((trace) =>
+      this.limit(() => this.rebuildTrace(trace))
+    );
+
+    await Promise.all(tasks);
   }
 
   /**
