@@ -6,6 +6,7 @@ export type User = {
   id: string;
   username: string;
   email: string;
+  authVersion: number;
   createdAt: Date;
   updatedAt: Date;
 };

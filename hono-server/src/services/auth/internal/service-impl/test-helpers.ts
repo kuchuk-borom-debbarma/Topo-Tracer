@@ -55,6 +55,7 @@ export function mockUser(id = "user-789"): User {
     id,
     username: "userA",
     email: "userA@test.com",
+    authVersion: 1,
     createdAt: new Date(1000),
     updatedAt: new Date(1000),
   };

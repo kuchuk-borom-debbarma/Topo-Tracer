@@ -10,7 +10,7 @@ describe("AuthServiceImpl - Session / Profile Lookup Flow", () => {
     const userRecord = mockUser("user-789");
     (repo.getUserById as any).mockResolvedValue(userRecord);
 
-    const token = await generateToken({ userId: "user-789", email: "userA@test.com" }, jwtSecret, 3600);
+    const token = await generateToken({ userId: "user-789", email: "userA@test.com", authVersion: 1 }, jwtSecret, 3600);
 
     // First request: Cache miss, fetches from database
     const user1 = await service.getUserByToken({ token, jwtSecret });

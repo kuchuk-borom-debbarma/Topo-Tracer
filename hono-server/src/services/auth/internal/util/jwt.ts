@@ -10,6 +10,7 @@ import { sign, verify } from "hono/jwt";
 export type JWTPayload = {
   sub: string;
   email: string;
+  authVersion: number;
   exp: number;
 };
 
@@ -18,17 +19,19 @@ export type JWTPayload = {
  *
  * @param payload.userId - The user ID to include in the payload as 'sub'.
  * @param payload.email - The user email to include.
+ * @param payload.authVersion - The current security version.
  * @param secret - Secret key used for signing.
  * @param expiresInSeconds - Token validity duration (default: 24 hours).
  */
 export async function generateToken(
-  payload: { userId: string; email: string },
+  payload: { userId: string; email: string; authVersion: number },
   secret: string,
   expiresInSeconds = 24 * 60 * 60,
 ): Promise<string> {
   const jwtPayload: JWTPayload = {
     sub: payload.userId,
     email: payload.email,
+    authVersion: payload.authVersion,
     exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
   };
   return await sign(jwtPayload, secret, "HS256");

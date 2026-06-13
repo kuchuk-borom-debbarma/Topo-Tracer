@@ -207,7 +207,7 @@ export class AuthServiceImpl extends IAuthService {
 
       // 2. Generate and sign the JWT access token using the utility
       const token = await generateToken(
-        { userId: user.id, email: user.email },
+        { userId: user.id, email: user.email, authVersion: user.authVersion },
         jwtSecret,
         expiresInSeconds,
       );
@@ -320,16 +320,23 @@ export class AuthServiceImpl extends IAuthService {
       // 2. Try to retrieve user from cache
       const cacheKey = `user:id:${payload.sub}`;
       const cachedUser = await this.cache.get<User>(cacheKey);
+      
+      let user: User;
       if (cachedUser) {
         this.logger.trace(`getUserByToken cache hit for userId="${payload.sub}"`);
-        return cachedUser;
+        user = cachedUser;
+      } else {
+        // 3. Fetch from repository if cache miss
+        user = await this.authRepo.getUserById(payload.sub);
+        // 4. Populate cache with a 1-hour TTL
+        await this.cache.set(cacheKey, user, 3600);
       }
 
-      // 3. Fetch from repository if cache miss
-      const user = await this.authRepo.getUserById(payload.sub);
-
-      // 4. Populate cache with a 1-hour TTL
-      await this.cache.set(cacheKey, user, 3600);
+      // 5. Security version check: Invalidate token if user's authVersion has been bumped
+      if (payload.authVersion < user.authVersion) {
+        this.logger.warn(`getUserByToken security version mismatch for userId="${user.id}": token_v=${payload.authVersion}, user_v=${user.authVersion}`);
+        throw new TopoTraceException("Invalid or expired token", 401);
+      }
 
       return user;
     } catch (err) {

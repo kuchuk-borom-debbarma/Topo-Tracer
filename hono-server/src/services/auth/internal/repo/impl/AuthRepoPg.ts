@@ -43,6 +43,7 @@ export class AuthRepoPg extends IAuthRepo {
       id: row.id,
       username: row.username,
       email: row.email,
+      authVersion: row.auth_version,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -50,7 +51,7 @@ export class AuthRepoPg extends IAuthRepo {
 
   private async fetchUserRowByEmail(email: string): Promise<any | null> {
     const rows = await this.sql<any[]>`
-      SELECT id, username, email, password_hash, created_at, updated_at
+      SELECT id, username, email, password_hash, auth_version, created_at, updated_at
       FROM users
       WHERE email = ${email}
     `;
@@ -79,9 +80,9 @@ export class AuthRepoPg extends IAuthRepo {
     const passwordHash = data.isPasswordHashed ? data.password : await hashPassword(data.password);
 
     const rows = await this.sql<any[]>`
-      INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
-      VALUES (${id}, ${data.username}, ${data.email}, ${passwordHash}, NOW(), NOW())
-      RETURNING id, username, email, created_at, updated_at
+      INSERT INTO users (id, username, email, password_hash, auth_version, created_at, updated_at)
+      VALUES (${id}, ${data.username}, ${data.email}, ${passwordHash}, 1, NOW(), NOW())
+      RETURNING id, username, email, auth_version, created_at, updated_at
     `;
 
     const row = rows[0];
@@ -89,6 +90,7 @@ export class AuthRepoPg extends IAuthRepo {
       id: row.id,
       username: row.username,
       email: row.email,
+      authVersion: row.auth_version,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -211,7 +213,7 @@ export class AuthRepoPg extends IAuthRepo {
    */
   async getUserById(token: string): Promise<User> {
     const rows = await this.sql<any[]>`
-      SELECT id, username, email, created_at, updated_at
+      SELECT id, username, email, auth_version, created_at, updated_at
       FROM users
       WHERE id = ${token}
     `;
@@ -225,6 +227,7 @@ export class AuthRepoPg extends IAuthRepo {
       id: row.id,
       username: row.username,
       email: row.email,
+      authVersion: row.auth_version,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -240,7 +243,9 @@ export class AuthRepoPg extends IAuthRepo {
     const passwordHash = await hashPassword(data.password);
     const result = await this.sql`
       UPDATE users
-      SET password_hash = ${passwordHash}, updated_at = NOW()
+      SET password_hash = ${passwordHash}, 
+          auth_version = auth_version + 1,
+          updated_at = NOW()
       WHERE id = ${data.userId}
     `;
     if (result.count === 0) {
@@ -327,7 +332,7 @@ async insertApiKey(data: {
 
   async getUserByApiKeyHash(keyHash: string): Promise<User | null> {
     const rows = await this.sql<any[]>`
-      SELECT u.id, u.username, u.email, u.created_at, u.updated_at, k.id as api_key_id
+      SELECT u.id, u.username, u.email, u.auth_version, u.created_at, u.updated_at, k.id as api_key_id
       FROM api_keys k
       JOIN users u ON u.id = k.user_id
       WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
@@ -340,6 +345,7 @@ async insertApiKey(data: {
       id: row.id,
       username: row.username,
       email: row.email,
+      authVersion: row.auth_version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

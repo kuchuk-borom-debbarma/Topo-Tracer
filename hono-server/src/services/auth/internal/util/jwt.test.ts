@@ -8,7 +8,7 @@ describe("JWT Utilities", () => {
   const email = "test@example.com";
 
   it("should generate a valid token and verify it correctly", async () => {
-    const token = await generateToken({ userId, email }, secret);
+    const token = await generateToken({ userId, email, authVersion: 1 }, secret);
     const decoded = await verifyToken(token, secret);
 
     expect(decoded.sub).toBe(userId);
@@ -17,14 +17,14 @@ describe("JWT Utilities", () => {
   });
 
   it("should fail validation with an invalid secret", async () => {
-    const token = await generateToken({ userId, email }, secret);
+    const token = await generateToken({ userId, email, authVersion: 1 }, secret);
 
     await expect(verifyToken(token, "wrong-secret")).rejects.toThrow();
   });
 
   it("should reject an expired token", async () => {
     // Generate a token that expired 10 seconds ago
-    const token = await generateToken({ userId, email }, secret, -10);
+    const token = await generateToken({ userId, email, authVersion: 1 }, secret, -10);
 
     await expect(verifyToken(token, secret)).rejects.toThrow();
   });
