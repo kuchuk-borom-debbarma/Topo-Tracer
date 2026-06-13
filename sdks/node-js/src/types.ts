@@ -42,6 +42,7 @@ export interface IngestNodeStart {
   startMessage: string;
   startedAt: number;
   importanceLevel: number;
+  name?: string; // Human-friendly code artifact identifier (e.g. "AuthController.login")
 }
 
 export interface IngestNodeEnd {

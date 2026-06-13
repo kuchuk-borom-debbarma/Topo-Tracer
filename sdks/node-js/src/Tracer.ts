@@ -162,7 +162,8 @@ export class Tracer {
     traceId?: string,
     parentSpanId?: string,
     traceName?: string,
-    importanceLabels?: Record<number, string>
+    importanceLabels?: Record<number, string>,
+    nodeName?: string, // Human-friendly code artifact identifier (e.g. "AuthController.login")
   }): Span {
     const currentStore = this.storage.getStore();
     const currentParent = currentStore?.activeSpan;
@@ -212,6 +213,7 @@ export class Tracer {
       startMessage: options.name,
       startedAt: Date.now(),
       importanceLevel,
+      name: options.nodeName,
     };
 
     const traceStarts: IngestTraceStart[] = [];

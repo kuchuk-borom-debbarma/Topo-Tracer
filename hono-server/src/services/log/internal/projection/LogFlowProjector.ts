@@ -106,6 +106,7 @@ export class LogFlowProjector {
           id: node.id,
           nodeType: node.nodeType,
           data: node.data,
+          name: node.name,
           startedAt: node.startedAt,
           endedAt: node.endedAt,
           originalStartedAt: node.originalStartedAt,

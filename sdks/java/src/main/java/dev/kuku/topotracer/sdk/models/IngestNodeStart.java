@@ -9,5 +9,6 @@ public record IngestNodeStart(
     Map<String, String> data,
     String startMessage,
     long startedAt,
-    int importanceLevel
+    int importanceLevel,
+    String name
 ) {}

@@ -27,6 +27,7 @@ export type NodeEventRow = {
   node_type: string | null;
   data: Record<string, string>;
   message: string | null;
+  name: string | null;
   importance_level: number | null;
 };
 
@@ -55,6 +56,7 @@ export type ReadNodeRow = {
   trace_id: string;
   node_type: string;
   data: Record<string, string>;
+  name: string | null;
   started_at_ms: number;
   ended_at_ms: number | null;
   original_started_at_ms: number;

@@ -15,6 +15,7 @@ public class Span {
     private final String traceId;
     private final String nodeType;
     private final String startMessage;
+    private final String name;
     private final long startedAt;
     private final int importanceLevel;
     private final Map<String, String> data; // Shared mutable map reference
@@ -28,6 +29,7 @@ public class Span {
         this.traceId = nodeStart.traceId();
         this.nodeType = nodeStart.nodeType();
         this.startMessage = nodeStart.startMessage();
+        this.name = nodeStart.name();
         this.startedAt = nodeStart.startedAt();
         this.importanceLevel = nodeStart.importanceLevel();
         this.data = nodeStart.data(); // Share reference to dynamic attribute map
@@ -81,6 +83,10 @@ public class Span {
         return startMessage;
     }
 
+    public String getName() {
+        return name;
+    }
+
     public long getStartedAt() {
         return startedAt;
     }
@@ -109,7 +115,8 @@ public class Span {
             data, // Shares map reference
             startMessage,
             startedAt,
-            importanceLevel
+            importanceLevel,
+            name
         );
     }
 

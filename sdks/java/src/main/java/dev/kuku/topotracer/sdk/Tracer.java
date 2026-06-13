@@ -321,7 +321,8 @@ public class Tracer {
             data,
             name,
             System.currentTimeMillis(),
-            importance
+            importance,
+            opts.getName()
         );
 
         List<IngestTraceStart> traceStarts = new ArrayList<>();
@@ -447,7 +448,8 @@ public class Tracer {
             new ConcurrentHashMap<>(),
             "external",
             System.currentTimeMillis(),
-            0
+            0,
+            null
         );
         return new Span(nodeStart, null);
     }

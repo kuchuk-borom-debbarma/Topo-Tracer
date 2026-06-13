@@ -30,6 +30,7 @@ export class TraceGenerator {
         ended_at_ms: null,
         node_type: "step",
         data: this.createDefaultData(),
+        name: null,
         message: `Start ${i}`,
         importance_level: 1,
       });
@@ -43,6 +44,7 @@ export class TraceGenerator {
         ended_at_ms: startTs + i * 10 + 5,
         node_type: null,
         data: {},
+        name: null,
         message: `End ${i}`,
         importance_level: null,
       });
@@ -81,6 +83,7 @@ export class TraceGenerator {
       ended_at_ms: null,
       node_type: "parent",
       data: this.createDefaultData(),
+      name: null,
       message: "Parent Start",
       importance_level: 1,
     });
@@ -94,6 +97,7 @@ export class TraceGenerator {
       ended_at_ms: startTs + 1000,
       node_type: null,
       data: {},
+      name: null,
       message: "Parent End",
       importance_level: null,
     });
@@ -110,6 +114,7 @@ export class TraceGenerator {
         ended_at_ms: null,
         node_type: "child",
         data: this.createDefaultData(),
+        name: null,
         message: `Child Start ${i}`,
         importance_level: 1,
       });
@@ -123,6 +128,7 @@ export class TraceGenerator {
         ended_at_ms: startTs + 20 + i,
         node_type: null,
         data: {},
+        name: null,
         message: `Child End ${i}`,
         importance_level: null,
       });
@@ -156,6 +162,7 @@ export class TraceGenerator {
         traceId: this.traceId,
         nodeType: "step",
         data: this.createDefaultData(),
+        name: null,
         startedAt: startTs + i * 10,
         endedAt: startTs + i * 10 + 5,
         originalStartedAt: startTs + i * 10,
@@ -201,6 +208,7 @@ export class TraceGenerator {
       traceId: this.traceId,
       nodeType: "parent",
       data: this.createDefaultData(),
+      name: null,
       startedAt: startTs,
       endedAt: startTs + 1000,
       originalStartedAt: startTs,
@@ -220,6 +228,7 @@ export class TraceGenerator {
         traceId: this.traceId,
         nodeType: "child",
         data: this.createDefaultData(),
+        name: null,
         startedAt: startTs + 10 + i,
         endedAt: startTs + 20 + i,
         originalStartedAt: startTs + 10 + i,

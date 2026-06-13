@@ -361,16 +361,23 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
     );
   }
 
+  const displayName = node.name || node.startMessage || node.nodeType;
+
   return (
     <div className={`trace-node-card ${props.data.selected ? "selected" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="node-card-top">
-        <span className="node-kind-icon"><Icon name="activity" /></span>
-        <strong>{formatImportance(node.importanceLevel, props.data.importanceLabels)}</strong>
+        <span className="node-badge">{node.nodeType}</span>
+        <span className="node-importance">{formatImportance(node.importanceLevel, props.data.importanceLabels)}</span>
       </div>
-      <h3>{nodeLabel(node.nodeType, node.data, node.startMessage)}</h3>
-      <p>{node.nodeType}</p>
-      <small>{formatTime(node.startedAt)} · #{node.flowOrder}</small>
+      <h3 className="node-name" title={displayName}>{displayName}</h3>
+      {node.name && node.startMessage && node.name !== node.startMessage && (
+        <p className="node-start-msg" title={node.startMessage}>{node.startMessage}</p>
+      )}
+      <div className="node-card-footer">
+        <code className="node-id-pill">{shortId(node.id, 10)}</code>
+        <small>#{node.flowOrder}</small>
+      </div>
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -392,7 +399,7 @@ function Inspector(props: {
   const subtitle = props.selected.type === "node"
     ? props.selected.value.kind === "ghost"
       ? `${props.selected.value.hiddenNodeCount} hidden nodes`
-      : nodeLabel(props.selected.value.nodeType, props.selected.value.data, props.selected.value.kind === "normal" ? props.selected.value.startMessage : undefined)
+      : nodeLabel(props.selected.value.nodeType, props.selected.value.data, props.selected.value.kind === "normal" ? props.selected.value.startMessage : undefined, props.selected.value.kind === "normal" ? props.selected.value.name : undefined)
     : props.selected.value.edgeType;
 
   return (
@@ -438,9 +445,16 @@ function NodeInspector({ node, importanceLabels }: {
 
   return (
     <>
-      <h3>{nodeLabel(node.nodeType, node.data, node.startMessage)}</h3>
+      <h3>{nodeLabel(node.nodeType, node.data, node.startMessage, node.name)}</h3>
+      {node.name && (
+        <DetailRow label="Name" value={node.name} />
+      )}
+      <DetailRow label="ID" value={node.id} />
       <DetailRow label="Type" value={node.nodeType} />
       <DetailRow label="Importance" value={formatImportance(node.importanceLevel, importanceLabels)} />
+      {node.startMessage && node.startMessage !== node.name && (
+        <DetailRow label="Label" value={node.startMessage} />
+      )}
       <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
       <DetailRow label="Flow order" value={`#${node.flowOrder}`} />
       <DataBlock data={node.data} title="Attributes" />

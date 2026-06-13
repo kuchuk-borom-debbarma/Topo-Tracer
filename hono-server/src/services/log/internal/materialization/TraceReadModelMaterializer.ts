@@ -334,6 +334,7 @@ export class TraceReadModelMaterializer {
       traceId,
       nodeType: event.node_type ?? existing?.nodeType ?? "span",
       data: event.data ?? existing?.data ?? {},
+      name: event.name ?? existing?.name ?? null,
       startedAt: event.started_at_ms,
       originalStartedAt: event.started_at_ms,
       clockSkewMs: existing?.clockSkewMs ?? 0,

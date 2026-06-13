@@ -16,6 +16,7 @@ export type IngestNodeStart = {
   traceId: string;
   nodeType: string;
   data: Record<string, string>;
+  name?: string; // Human-friendly code artifact identifier (e.g. ClassName.methodName(Args))
   startMessage?: string;
   startedAt: number; // UTC Milliseconds
   importanceLevel: number; // Used for projection filtering
@@ -74,6 +75,7 @@ export type ReadNode = {
   traceId: string;
   nodeType: string;
   data: Record<string, string>;
+  name: string | null;
   startedAt: number;
   endedAt: number | null;
   originalStartedAt: number;
@@ -175,6 +177,7 @@ export type ProjectedNormalNode = {
   id: string;
   nodeType: string;
   data: Record<string, string>;
+  name?: string | null;
   startedAt: number;
   endedAt: number | null;
   originalStartedAt: number;

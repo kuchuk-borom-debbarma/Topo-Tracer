@@ -67,6 +67,7 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         node_type: node.nodeType,
         data: node.data,
         message: node.startMessage ?? null,
+        name: node.name ?? null,
         importance_level: node.importanceLevel,
       })),
       ...data.nodeEnds.map((node): NodeEventRow => ({
@@ -79,6 +80,7 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         node_type: null,
         data: {},
         message: node.endMessage ?? null,
+        name: null,
         importance_level: null,
       })),
     ];

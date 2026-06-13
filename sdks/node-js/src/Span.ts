@@ -53,6 +53,10 @@ export class Span {
     return this.nodeStart.nodeType;
   }
 
+  get name(): string | undefined {
+    return this.nodeStart.name;
+  }
+
   toNodeStart(): IngestNodeStart {
     return {
       ...this.nodeStart,

@@ -8,6 +8,7 @@ describe("computeFlowOrder", () => {
     traceId: "t1",
     nodeType: "span",
     data: {},
+    name: null,
     endedAt: null,
     originalStartedAt: 0,
     clockSkewMs: 0,

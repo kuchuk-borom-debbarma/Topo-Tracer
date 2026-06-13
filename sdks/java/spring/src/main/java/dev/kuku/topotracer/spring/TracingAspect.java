@@ -11,8 +11,14 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 /**
  * Aspect to automatically wrap method executions annotated with @Traced in a Span.
+ * The node `name` is automatically derived as "ClassName.methodName(ParamType1, ParamType2)"
+ * using AOP reflection — no user intervention required.
  */
 @Aspect
 public class TracingAspect {
@@ -25,10 +31,21 @@ public class TracingAspect {
     @Around("@annotation(traced)")
     public Object traceMethod(ProceedingJoinPoint joinPoint, Traced traced) throws Throwable {
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        Method method = signature.getMethod();
+        String className = signature.getDeclaringType().getSimpleName();
+        String methodName = method.getName();
+
+        // Auto-derive the startMessage (label): use annotation value if provided, else "ClassName.methodName"
         String spanName = traced.value();
         if (spanName.isEmpty()) {
-            spanName = signature.getDeclaringType().getSimpleName() + "." + signature.getMethod().getName();
+            spanName = className + "." + methodName;
         }
+
+        // Auto-derive the name: always "ClassName.methodName(ParamType1, ParamType2)" for full fidelity
+        String paramTypes = Arrays.stream(method.getParameterTypes())
+            .map(Class::getSimpleName)
+            .collect(Collectors.joining(", "));
+        String autoName = className + "." + methodName + "(" + paramTypes + ")";
 
         // Determine node type from String or Enum
         String nodeType = traced.nodeType();
@@ -42,6 +59,7 @@ public class TracingAspect {
 
         TraceOptions options = TraceOptions.builder()
             .nodeType(nodeType)
+            .name(autoName)
             .dynamicImportance(traced.dynamicImportance());
 
         // Determine importance from integer, enum, or dynamic config

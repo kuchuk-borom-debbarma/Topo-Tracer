@@ -14,6 +14,7 @@ describe("LogFlowProjector", () => {
     traceId,
     nodeType: "span",
     data: {},
+    name: null,
     startedAt: 1000 + flowOrder,
     endedAt: 1100 + flowOrder,
     originalStartedAt: 1000 + flowOrder,

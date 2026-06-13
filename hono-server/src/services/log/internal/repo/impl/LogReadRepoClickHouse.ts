@@ -138,6 +138,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(n.node_type, n.materialized_at_ms) as node_type,
 
             argMax(n.data, n.materialized_at_ms) as data,
+            argMax(n.name, n.materialized_at_ms) as name,
             argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
             argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
             argMax(n.original_started_at_ms, n.materialized_at_ms) as original_started_at_ms,
@@ -196,6 +197,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         traceId: row.trace_id,
         nodeType: row.node_type,
         data: row.data,
+        name: row.name,
         startedAt: row.started_at_ms,
         endedAt: row.ended_at_ms,
         originalStartedAt: row.original_started_at_ms,
@@ -324,6 +326,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
   
 
               argMax(n.data, n.materialized_at_ms) as data,
+              argMax(n.name, n.materialized_at_ms) as name,
               argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
               argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
               argMax(n.original_started_at_ms, n.materialized_at_ms) as original_started_at_ms,
@@ -365,6 +368,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       traceId: row.trace_id,
       nodeType: row.node_type,
       data: row.data,
+      name: row.name,
       startedAt: row.started_at_ms,
       endedAt: row.ended_at_ms,
       originalStartedAt: row.original_started_at_ms,
@@ -494,6 +498,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(n.node_type, n.materialized_at_ms) as node_type,
 
             argMax(n.data, n.materialized_at_ms) as data,
+            argMax(n.name, n.materialized_at_ms) as name,
             argMax(n.started_at_ms, n.materialized_at_ms) as started_at_ms,
             argMax(n.ended_at_ms, n.materialized_at_ms) as ended_at_ms,
             argMax(n.original_started_at_ms, n.materialized_at_ms) as original_started_at_ms,
@@ -532,6 +537,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       traceId: row.trace_id,
       nodeType: row.node_type,
       data: row.data,
+      name: row.name,
       startedAt: row.started_at_ms,
       endedAt: row.ended_at_ms,
       originalStartedAt: row.original_started_at_ms,
@@ -792,6 +798,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       node_type: node.nodeType,
 
       data: node.data,
+      name: node.name,
       started_at_ms: node.startedAt,
       ended_at_ms: node.endedAt,
       original_started_at_ms: node.originalStartedAt,

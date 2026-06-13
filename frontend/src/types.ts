@@ -56,6 +56,7 @@ export type ProjectedNormalNode = {
   id: string;
   nodeType: string;
   data: Record<string, string>;
+  name?: string | null;
   startedAt: number;
   endedAt: number | null;
   originalStartedAt: number;

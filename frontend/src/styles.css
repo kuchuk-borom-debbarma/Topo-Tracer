@@ -3863,6 +3863,84 @@ body {
   font-weight: 750;
 }
 
+/* Node card: redesigned layout for name + nodeType + ID */
+
+.node-card-top {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.node-badge {
+  background: rgba(114, 230, 170, 0.12);
+  border: 1px solid rgba(114, 230, 170, 0.22);
+  border-radius: 6px;
+  color: rgba(114, 230, 170, 0.85);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  max-width: 120px;
+  overflow: hidden;
+  padding: 2px 7px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.node-importance {
+  color: rgba(226, 232, 240, 0.44);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.node-name {
+  color: rgba(248, 250, 252, 0.92);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  margin: 4px 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-start-msg {
+  color: rgba(203, 213, 225, 0.52);
+  font-size: 11px;
+  font-style: italic;
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-card-footer {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.node-id-pill {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+  color: rgba(203, 213, 225, 0.48);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 9.5px;
+  padding: 1px 6px;
+}
+
+.node-card-footer small {
+  color: rgba(203, 213, 225, 0.38);
+  font-size: 10px;
+}
+
 .react-flow__edge-path {
   stroke: rgba(203, 213, 225, 0.44);
   stroke-width: 1.4;

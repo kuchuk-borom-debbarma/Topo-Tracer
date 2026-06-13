@@ -14,6 +14,7 @@ public class TraceOptions {
     private String traceId;
     private String parentSpanId;
     private String nodeType;
+    private String name;
     private final Map<String, String> data = new HashMap<>();
 
     public static TraceOptions builder() {
@@ -94,6 +95,11 @@ public class TraceOptions {
         return this;
     }
 
+    public TraceOptions name(String name) {
+        this.name = name;
+        return this;
+    }
+
     public String getTraceName() {
         return traceName;
     }
@@ -120,6 +126,10 @@ public class TraceOptions {
 
     public String getNodeType() {
         return nodeType;
+    }
+
+    public String getName() {
+        return name;
     }
 
     public Map<String, String> getData() {
