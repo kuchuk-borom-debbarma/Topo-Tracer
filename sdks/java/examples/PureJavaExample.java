@@ -57,6 +57,7 @@ public class PureJavaExample {
                     Span sqlSpan = TraceContext.getActive();
                     System.out.println("Running execute-sql-insert span... importance: " + sqlSpan.getImportanceLevel());
                     sqlSpan.setAttribute("db.statement", "INSERT INTO orders ...");
+                    tracer.log("Executing SQL insert query", 1); // Log with importance level override (omitting metadata)
                     sleep(20);
                 }, TraceOptions.builder().nodeType(TopoNodeType.DB_CALL));
 

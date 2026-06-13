@@ -25,6 +25,7 @@ export async function runBasicExample(): Promise<void> {
         importanceLevel: Importance.MEDIUM,
       });
       manualSpan.setAttribute("discount.code", "SUMMER-FAKE");
+      tracer.log("Checked discount applicability", Importance.HIGH);
       await sleep(15);
       manualSpan.end("manual span completed");
     },

@@ -84,6 +84,7 @@ public class SpringExample implements CommandLineRunner {
         public void validateStock(String orderId) {
             Span activeSpan = TraceContext.getActive();
             System.out.println("Validating stock (dynamic importance: " + activeSpan.getImportanceLevel() + ")...");
+            tracer.log("Stock validation check completed successfully", 2);
         }
 
         @Async
