@@ -10,23 +10,25 @@ public class PureJavaExample {
     public static void main(String[] args) {
         System.out.println("Starting Pure Java Topo-Tracer Example...");
 
-        // 1. Initialize Tracer
+        // 1. Initialize Tracer with custom nodeType importance mappings
         Tracer tracer = new Tracer.Builder()
             .endpoint("http://localhost:3999") // points to hono-server local ingest
             .apiKey("dev-key")
             .serviceName("pure-java-app")
             .batchSize(2)
             .flushIntervalMs(1000)
+            .nodeTypeImportance("custom-validation", 3) // Custom type mapped to importance 3
             .build();
 
-        // 2. Start a Trace with custom metadata
+        // 2. Start a Trace with custom metadata using NodeType and Importance Enums
         TraceOptions rootOptions = TraceOptions.builder()
             .traceName("Pure Java Demo Order Process")
             .importanceLabel(0, "Request Entry")
             .importanceLabel(1, "Service Call")
             .importanceLabel(2, "Database Query")
             .importanceLabel(3, "Sub-Query Detail")
-            .importanceLevel(0); // Root trace starts at importance level 0
+            .importance(TopoImportance.CRITICAL) // Map critical importance enum -> level 0
+            .nodeType(TopoNodeType.CONTROLLER);  // Map controller type enum -> "controller"
 
         // 3. Programmatic/Fluent trace calls with nested spans
         tracer.trace("create-order", () -> {
@@ -36,31 +38,28 @@ public class PureJavaExample {
 
             System.out.println("Running create-order span... traceId: " + activeSpan.getTraceId() + ", spanId: " + activeSpan.getId());
 
-            // Nested call 1: automatically inherits parent traceId, creates child edge, importance = parent (0)
+            // Nested call 1: custom nodeType mapping resolves importance to 3
             tracer.trace("validate-payment", () -> {
-                System.out.println("Running validate-payment span...");
+                System.out.println("Running validate-payment span... importance: " + TraceContext.getActive().getImportanceLevel());
                 TraceContext.getActive().setAttribute("payment.method", "credit-card");
                 sleep(50);
-            });
+            }, TraceOptions.builder().nodeType("custom-validation"));
 
-            // Nested call 2: has dynamic nested importance enabled.
-            // Importance will scale to parent.importance + 1 (which will be 1)
-            TraceOptions childOptions = TraceOptions.builder().dynamicImportance(true);
+            // Nested call 2: using standard NodeType.DB_CALL which maps to level 0 internally
             tracer.trace("save-to-db", () -> {
                 Span dbSpan = TraceContext.getActive();
                 System.out.println("Running save-to-db span... importance: " + dbSpan.getImportanceLevel());
                 dbSpan.setAttribute("db.table", "orders");
 
-                // Deeper nested call: inherits parent importance (1) + scales dynamic nested importance to 2!
-                TraceOptions subDbOptions = TraceOptions.builder().dynamicImportance(true);
+                // Deeper nested call: using NodeType.DB_CALL
                 tracer.trace("execute-sql-insert", () -> {
                     Span sqlSpan = TraceContext.getActive();
                     System.out.println("Running execute-sql-insert span... importance: " + sqlSpan.getImportanceLevel());
                     sqlSpan.setAttribute("db.statement", "INSERT INTO orders ...");
                     sleep(20);
-                }, subDbOptions);
+                }, TraceOptions.builder().nodeType(TopoNodeType.DB_CALL));
 
-            }, childOptions);
+            }, TraceOptions.builder().nodeType(TopoNodeType.DB_CALL));
 
             // 4. Thread-switching scenario: Propagating context to executor threads
             ExecutorService executor = Executors.newFixedThreadPool(2);

@@ -4,6 +4,8 @@ import dev.kuku.topotracer.sdk.Span;
 import dev.kuku.topotracer.sdk.TraceContext;
 import dev.kuku.topotracer.sdk.TraceOptions;
 import dev.kuku.topotracer.sdk.Tracer;
+import dev.kuku.topotracer.sdk.TopoImportance;
+import dev.kuku.topotracer.sdk.TopoNodeType;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -28,12 +30,21 @@ public class TracingAspect {
             spanName = signature.getDeclaringType().getSimpleName() + "." + signature.getMethod().getName();
         }
 
+        // Determine node type from String or Enum
+        String nodeType = traced.nodeType();
+        if (nodeType.isEmpty()) {
+            nodeType = traced.type().getValue();
+        }
+
         TraceOptions options = TraceOptions.builder()
-            .nodeType(traced.nodeType())
+            .nodeType(nodeType)
             .dynamicImportance(traced.dynamicImportance());
 
+        // Determine importance from integer, enum, or dynamic config
         if (traced.importanceLevel() != -1) {
             options.importanceLevel(traced.importanceLevel());
+        } else if (traced.importance() != TopoImportance.DYNAMIC) {
+            options.importance(traced.importance());
         }
 
         Span span = tracer.startNode(spanName, options);

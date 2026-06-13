@@ -1,5 +1,8 @@
 package dev.kuku.topotracer.spring;
 
+import dev.kuku.topotracer.sdk.TopoNodeType;
+import dev.kuku.topotracer.sdk.TopoImportance;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -18,7 +21,22 @@ public @interface Traced {
     String value() default "";
 
     /**
-     * Explicit importance level. If -1, inherits from parent or defaults to 1.
+     * Type-safe Enum for standard Topo-Tracer node types.
+     */
+    TopoNodeType type() default TopoNodeType.METHOD;
+
+    /**
+     * Type-safe Enum for standard Topo-Tracer importance levels.
+     */
+    TopoImportance importance() default TopoImportance.DYNAMIC;
+
+    /**
+     * Custom node type string fallback. Takes precedence if provided.
+     */
+    String nodeType() default "";
+
+    /**
+     * Explicit importance level integer fallback. Takes precedence if not -1.
      */
     int importanceLevel() default -1;
 
@@ -27,9 +45,4 @@ public @interface Traced {
      * scale to parentImportance + 1.
      */
     boolean dynamicImportance() default false;
-
-    /**
-     * Custom node type (e.g., "method", "db-query", "service").
-     */
-    String nodeType() default "method";
 }

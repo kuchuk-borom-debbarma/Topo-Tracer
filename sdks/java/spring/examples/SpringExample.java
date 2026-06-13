@@ -3,6 +3,8 @@ package dev.kuku.topotracer.spring;
 import dev.kuku.topotracer.sdk.Span;
 import dev.kuku.topotracer.sdk.TraceContext;
 import dev.kuku.topotracer.sdk.Tracer;
+import dev.kuku.topotracer.sdk.TopoNodeType;
+import dev.kuku.topotracer.sdk.TopoImportance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -64,8 +66,8 @@ public class SpringExample implements CommandLineRunner {
         @Autowired
         private RestTemplate restTemplate;
 
-        // Auto-trace method with AOP, nesting is automatically established
-        @Traced(value = "order-processing", nodeType = "service")
+        // Auto-trace method with AOP enums, nesting is automatically established
+        @Traced(value = "order-processing", type = TopoNodeType.METHOD, importance = TopoImportance.CRITICAL)
         public void processOrder(String orderId, double amount) {
             Span activeSpan = TraceContext.getActive();
             System.out.println("Active traceId: " + activeSpan.getTraceId() + ", spanId: " + activeSpan.getId());
@@ -78,7 +80,7 @@ public class SpringExample implements CommandLineRunner {
             triggerAsyncReportGeneration(orderId);
         }
 
-        @Traced(value = "validate-stock", dynamicImportance = true)
+        @Traced(value = "validate-stock", type = TopoNodeType.METHOD, dynamicImportance = true)
         public void validateStock(String orderId) {
             Span activeSpan = TraceContext.getActive();
             System.out.println("Validating stock (dynamic importance: " + activeSpan.getImportanceLevel() + ")...");
@@ -94,7 +96,7 @@ public class SpringExample implements CommandLineRunner {
             }
         }
 
-        @Traced("outgoing-call")
+        @Traced(value = "outgoing-call", type = TopoNodeType.REMOTE_CALL)
         public void triggerOutgoingCall() {
             // Outbound call automatically gets X-Trace-Id and X-Span-Id header injected
             restTemplate.getForObject("http://localhost:8080/api/v1/ping", String.class);

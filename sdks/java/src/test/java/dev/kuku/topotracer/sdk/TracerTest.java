@@ -171,4 +171,46 @@ public class TracerTest {
         executor.shutdown();
         assertTrue(executor.awaitTermination(2, TimeUnit.SECONDS));
     }
+
+    @Test
+    public void testNodeTypeEnumAndImportanceEnum() throws Exception {
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .flushIntervalMs(0)
+            .build();
+
+        tracer.trace("controller-span", () -> {
+            Span active = TraceContext.getActive();
+            assertEquals(0, active.getImportanceLevel());
+            assertEquals("controller", active.getNodeType());
+
+            tracer.trace("db-span", () -> {
+                Span activeDb = TraceContext.getActive();
+                assertEquals(0, activeDb.getImportanceLevel());
+                assertEquals("db-call", activeDb.getNodeType());
+            }, TraceOptions.builder().nodeType(TopoNodeType.DB_CALL));
+
+            tracer.trace("critical-span", () -> {
+                Span activeCrit = TraceContext.getActive();
+                assertEquals(0, activeCrit.getImportanceLevel());
+                assertEquals("method", activeCrit.getNodeType());
+            }, TraceOptions.builder().nodeType(TopoNodeType.METHOD).importance(TopoImportance.CRITICAL));
+        }, TraceOptions.builder().nodeType(TopoNodeType.CONTROLLER));
+    }
+
+    @Test
+    public void testConfigurableNodeTypeMapping() throws Exception {
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .flushIntervalMs(0)
+            .nodeTypeImportance("custom-type", 3)
+            .build();
+
+        tracer.trace("custom-span", () -> {
+            Span active = TraceContext.getActive();
+            assertEquals(3, active.getImportanceLevel());
+        }, TraceOptions.builder().nodeType("custom-type"));
+    }
 }

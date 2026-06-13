@@ -36,6 +36,7 @@ public class Tracer {
     private final int maxRetries;
     private final int retryDelayMs;
     private final Consumer<IngestBatch> onDrop;
+    private final Map<String, Integer> nodeTypeImportanceMapping;
 
     private final List<IngestTraceStart> traceStartsBuffer = new ArrayList<>();
     private final List<IngestNodeStart> nodeStartsBuffer = new ArrayList<>();
@@ -104,6 +105,22 @@ public class Tracer {
             return this;
         }
 
+        private final Map<String, Integer> nodeTypeImportanceMapping = new HashMap<>();
+
+        public Builder nodeTypeImportanceMapping(Map<String, Integer> nodeTypeImportanceMapping) {
+            if (nodeTypeImportanceMapping != null) {
+                this.nodeTypeImportanceMapping.putAll(nodeTypeImportanceMapping);
+            }
+            return this;
+        }
+
+        public Builder nodeTypeImportance(String nodeType, int importance) {
+            if (nodeType != null) {
+                this.nodeTypeImportanceMapping.put(nodeType.trim().toLowerCase(), importance);
+            }
+            return this;
+        }
+
         public Tracer build() {
             if (endpoint == null || endpoint.isBlank()) {
                 throw new IllegalArgumentException("Endpoint is required");
@@ -125,6 +142,36 @@ public class Tracer {
         this.maxRetries = builder.maxRetries;
         this.retryDelayMs = builder.retryDelayMs;
         this.onDrop = builder.onDrop;
+
+        Map<String, Integer> mappings = new ConcurrentHashMap<>();
+        // Default mappings
+        mappings.put("controller", 0);
+        mappings.put("http-request", 0);
+        mappings.put("request", 0);
+        mappings.put("remote-call", 0);
+        mappings.put("http-client", 0);
+        mappings.put("outbound-http", 0);
+        mappings.put("remote", 0);
+        mappings.put("api-call", 0);
+        mappings.put("client", 0);
+        mappings.put("db-call", 0);
+        mappings.put("db", 0);
+        mappings.put("database", 0);
+        mappings.put("db-query", 0);
+        mappings.put("query", 0);
+        mappings.put("repository", 0);
+        mappings.put("io", 1);
+        mappings.put("file", 1);
+        mappings.put("network", 1);
+        mappings.put("stream", 1);
+
+        // Merge builder mappings (overrides defaults)
+        for (Map.Entry<String, Integer> entry : builder.nodeTypeImportanceMapping.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                mappings.put(entry.getKey().trim().toLowerCase(), entry.getValue());
+            }
+        }
+        this.nodeTypeImportanceMapping = mappings;
 
         this.httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
@@ -234,37 +281,14 @@ public class Tracer {
             }
             type = type.trim().toLowerCase();
 
-            switch (type) {
-                case "controller":
-                case "http-request":
-                case "request":
-                case "remote-call":
-                case "http-client":
-                case "outbound-http":
-                case "remote":
-                case "api-call":
-                case "client":
-                case "db-call":
-                case "db":
-                case "database":
-                case "db-query":
-                case "query":
-                case "repository":
-                    importance = 0;
-                    break;
-                case "io":
-                case "file":
-                case "network":
-                case "stream":
-                    importance = 1;
-                    break;
-                default:
-                    if (currentParent != null) {
-                        importance = currentParent.getImportanceLevel() + 1;
-                    } else {
-                        importance = 2;
-                    }
-                    break;
+            if (nodeTypeImportanceMapping.containsKey(type)) {
+                importance = nodeTypeImportanceMapping.get(type);
+            } else {
+                if (currentParent != null) {
+                    importance = currentParent.getImportanceLevel() + 1;
+                } else {
+                    importance = 2;
+                }
             }
         }
 

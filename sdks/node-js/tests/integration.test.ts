@@ -1,5 +1,5 @@
 import { expect, test, describe, afterEach, beforeEach } from "bun:test";
-import { Tracer } from "../src/Tracer";
+import { Tracer, NodeType, Importance } from "../src";
 
 describe("SDK Integration", () => {
   let originalFetch = global.fetch;
@@ -233,5 +233,53 @@ describe("SDK Integration", () => {
 
     expect(receivedHeaders["x-api-key"]).toBe("api-key-only");
     expect(receivedHeaders["x-user-id"]).toBe("");
+  });
+
+  test("Should support NodeType and Importance enums and custom mappings config", async () => {
+    const receivedPayloads: any[] = [];
+    
+    // @ts-ignore
+    global.fetch = async (url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      receivedPayloads.push(body);
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:5555",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+      nodeTypeImportanceMapping: {
+        "custom-node": 3,
+      },
+    });
+
+    await tracer.trace("Controller Op", async () => {
+      await tracer.trace("DB Op", async () => {
+        await tracer.trace("Custom Op", async () => {
+          await tracer.trace("Critical Custom Op", async () => {}, { 
+            type: "custom-node", 
+            importanceLevel: Importance.CRITICAL 
+          });
+        }, { type: "custom-node" });
+      }, { type: NodeType.DB_CALL });
+    }, { type: NodeType.CONTROLLER });
+
+    await tracer.flush();
+
+    expect(receivedPayloads.length).toBe(1);
+    const payload = receivedPayloads[0];
+
+    const controllerSpan = payload.nodeStarts.find((n: any) => n.startMessage === "Controller Op");
+    expect(controllerSpan.importanceLevel).toBe(0); // Mapped controller type -> 0
+
+    const dbSpan = payload.nodeStarts.find((n: any) => n.startMessage === "DB Op");
+    expect(dbSpan.importanceLevel).toBe(0); // Mapped db-call type -> 0
+
+    const customSpan = payload.nodeStarts.find((n: any) => n.startMessage === "Custom Op");
+    expect(customSpan.importanceLevel).toBe(3); // Configured custom-node mapping -> 3
+
+    const criticalCustomSpan = payload.nodeStarts.find((n: any) => n.startMessage === "Critical Custom Op");
+    expect(criticalCustomSpan.importanceLevel).toBe(0); // Explicit Importance.CRITICAL override -> 0
   });
 });

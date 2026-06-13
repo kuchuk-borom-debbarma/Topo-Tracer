@@ -32,6 +32,7 @@ public class TopoTracerAutoConfiguration {
             .flushIntervalMs(properties.getFlushIntervalMs())
             .maxRetries(properties.getMaxRetries())
             .retryDelayMs(properties.getRetryDelayMs())
+            .nodeTypeImportanceMapping(properties.getNodeTypeImportanceMapping())
             .build();
     }
 

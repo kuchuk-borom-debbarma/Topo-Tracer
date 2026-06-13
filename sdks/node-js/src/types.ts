@@ -1,3 +1,19 @@
+export enum NodeType {
+  CONTROLLER = "controller",
+  DB_CALL = "db-call",
+  REMOTE_CALL = "remote-call",
+  IO = "io",
+  METHOD = "method",
+}
+
+export enum Importance {
+  CRITICAL = 0,
+  HIGH = 1,
+  MEDIUM = 2,
+  LOW = 3,
+  DYNAMIC = -1,
+}
+
 export interface TracerConfig {
   endpoint: string;
   apiKey: string;
@@ -8,6 +24,7 @@ export interface TracerConfig {
   maxRetries?: number;
   retryDelay?: number;
   onDrop?: (events: IngestBatch, reason: string) => void;
+  nodeTypeImportanceMapping?: Record<string, number>;
 }
 
 export interface IngestTraceStart {

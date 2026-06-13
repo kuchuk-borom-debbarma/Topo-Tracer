@@ -5,7 +5,8 @@ import {
   IngestEdgeStart, 
   IngestNodeEnd, 
   IngestEdgeEnd,
-  IngestBatch, IngestTraceStart
+  IngestBatch, IngestTraceStart,
+  NodeType, Importance
 } from "./types";
 import { Span } from "./Span";
 import { randomUUID } from "crypto";
@@ -15,6 +16,28 @@ const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_FLUSH_INTERVAL = 5000;
 const DEFAULT_MAX_RETRIES = 5;
 const DEFAULT_RETRY_DELAY = 1000;
+
+const DEFAULT_NODE_TYPE_IMPORTANCE: Record<string, number> = {
+  "controller": 0,
+  "http-request": 0,
+  "request": 0,
+  "remote-call": 0,
+  "http-client": 0,
+  "outbound-http": 0,
+  "remote": 0,
+  "api-call": 0,
+  "client": 0,
+  "db-call": 0,
+  "db": 0,
+  "database": 0,
+  "db-query": 0,
+  "query": 0,
+  "repository": 0,
+  "io": 1,
+  "file": 1,
+  "network": 1,
+  "stream": 1,
+};
 
 function buildIngestUrl(endpoint: string): string {
   const trimmed = endpoint.replace(/\/+$/, "");
@@ -44,6 +67,7 @@ function countBatchEvents(batch: IngestBatch): number {
 export class Tracer {
   private readonly storage = new AsyncLocalStorage<Span>();
   private readonly config: TracerConfig;
+  private readonly nodeTypeImportanceMapping: Record<string, number>;
   private buffer: IngestBatch = createEmptyBatch();
   private flushTimer: any = null;
   private isFlushing = false;
@@ -57,6 +81,20 @@ export class Tracer {
       maxRetries: DEFAULT_MAX_RETRIES,
       retryDelay: DEFAULT_RETRY_DELAY,
       ...config,
+    };
+
+    // Initialize nodeType importance mapping
+    const customMappings = config.nodeTypeImportanceMapping || {};
+    const normalizedCustomMappings: Record<string, number> = {};
+    for (const [key, val] of Object.entries(customMappings)) {
+      if (key !== undefined && val !== undefined) {
+        normalizedCustomMappings[key.trim().toLowerCase()] = val;
+      }
+    }
+
+    this.nodeTypeImportanceMapping = {
+      ...DEFAULT_NODE_TYPE_IMPORTANCE,
+      ...normalizedCustomMappings,
     };
     
     if (this.config.flushInterval && this.config.flushInterval > 0) {
@@ -73,8 +111,23 @@ export class Tracer {
   /**
    * Fluent API for automatic context propagation.
    */
-  async trace<T>(name: string, fn: (span: Span) => Promise<T> | T, options?: { traceName?: string, importanceLabels?: Record<number, string> }): Promise<T> {
-    const span = this.startNode({ name, traceName: options?.traceName, importanceLabels: options?.importanceLabels });
+  async trace<T>(
+    name: string, 
+    fn: (span: Span) => Promise<T> | T, 
+    options?: { 
+      type?: string | NodeType, 
+      importanceLevel?: number | Importance, 
+      traceName?: string, 
+      importanceLabels?: Record<number, string> 
+    }
+  ): Promise<T> {
+    const span = this.startNode({ 
+      name, 
+      type: options?.type, 
+      importanceLevel: options?.importanceLevel, 
+      traceName: options?.traceName, 
+      importanceLabels: options?.importanceLabels 
+    });
     return this.storage.run(span, async () => {
       try {
         const result = await fn(span);
@@ -98,9 +151,9 @@ export class Tracer {
 
   startNode(options: { 
     name: string, 
-    type?: string, 
+    type?: string | NodeType, 
     data?: Record<string, string>, 
-    importanceLevel?: number,
+    importanceLevel?: number | Importance,
     traceId?: string,
     parentSpanId?: string,
     traceName?: string,
@@ -111,14 +164,31 @@ export class Tracer {
     const traceId = options.traceId || currentStore?.traceId || randomUUID();
     const parentSpanId = options.parentSpanId || currentStore?.id;
     
+    // Resolve importance level dynamically
+    let importanceLevel = 2; // Default dynamic root level
+    const explicitLevel = options.importanceLevel;
+    
+    if (explicitLevel !== undefined && explicitLevel !== null && explicitLevel !== Importance.DYNAMIC && explicitLevel !== -1) {
+      importanceLevel = explicitLevel;
+    } else {
+      const typeStr = options.type ? String(options.type).trim().toLowerCase() : "default";
+      if (this.nodeTypeImportanceMapping[typeStr] !== undefined) {
+        importanceLevel = this.nodeTypeImportanceMapping[typeStr]!;
+      } else {
+        if (currentStore) {
+          importanceLevel = currentStore.importanceLevel + 1;
+        }
+      }
+    }
+
     const nodeStart: IngestNodeStart = {
       id,
       traceId,
-      nodeType: options.type || "default",
+      nodeType: options.type ? String(options.type) : "default",
       data: options.data || {},
       startMessage: options.name,
       startedAt: Date.now(),
-      importanceLevel: options.importanceLevel ?? 1,
+      importanceLevel,
     };
 
     const traceStarts: IngestTraceStart[] = [];

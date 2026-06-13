@@ -1,4 +1,5 @@
 import { createTracer, flushTracer, sleep } from "./_helpers";
+import { NodeType, Importance } from "../src";
 
 const tracer = createTracer("basic-example-service");
 
@@ -10,24 +11,24 @@ export async function runBasicExample(): Promise<void> {
       rootSpan.setAttribute("customer.id", "cust_demo_001");
 
       await tracer.trace(
-        "load-cart",
+        "load-cart-db",
         async (childSpan) => {
-          childSpan.setAttribute("importance.label", "work");
           childSpan.setAttribute("storage.kind", "cache");
           await sleep(25);
         },
-        {},
+        { type: NodeType.DB_CALL },
       );
 
       const manualSpan = tracer.createSpan("manual-discount-check", {
-        type: "rule-engine",
-        importanceLevel: 2,
+        type: NodeType.METHOD,
+        importanceLevel: Importance.MEDIUM,
       });
       manualSpan.setAttribute("discount.code", "SUMMER-FAKE");
       await sleep(15);
       manualSpan.end("manual span completed");
     },
     {
+      type: NodeType.CONTROLLER,
       traceName: "Checkout Flow Demo",
       importanceLabels: {
         0: "request",

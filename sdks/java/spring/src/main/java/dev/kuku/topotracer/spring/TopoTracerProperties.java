@@ -97,4 +97,14 @@ public class TopoTracerProperties {
     public void setImportanceLabels(Map<Integer, String> importanceLabels) {
         this.importanceLabels = importanceLabels;
     }
+
+    private Map<String, Integer> nodeTypeImportanceMapping = new HashMap<>();
+
+    public Map<String, Integer> getNodeTypeImportanceMapping() {
+        return nodeTypeImportanceMapping;
+    }
+
+    public void setNodeTypeImportanceMapping(Map<String, Integer> nodeTypeImportanceMapping) {
+        this.nodeTypeImportanceMapping = nodeTypeImportanceMapping;
+    }
 }

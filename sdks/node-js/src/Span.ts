@@ -45,6 +45,14 @@ export class Span {
     return this.nodeStart.traceId;
   }
 
+  get importanceLevel(): number {
+    return this.nodeStart.importanceLevel;
+  }
+
+  get nodeType(): string {
+    return this.nodeStart.nodeType;
+  }
+
   toNodeStart(): IngestNodeStart {
     return {
       ...this.nodeStart,

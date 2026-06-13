@@ -42,6 +42,19 @@ public class TraceOptions {
         return this;
     }
 
+    public TraceOptions importance(TopoImportance importance) {
+        if (importance != null) {
+            if (importance == TopoImportance.DYNAMIC) {
+                this.dynamicImportance = true;
+                this.importanceLevel = null;
+            } else {
+                this.importanceLevel = importance.getLevel();
+                this.dynamicImportance = false;
+            }
+        }
+        return this;
+    }
+
     public TraceOptions dynamicImportance(boolean dynamicImportance) {
         this.dynamicImportance = dynamicImportance;
         return this;
@@ -59,6 +72,13 @@ public class TraceOptions {
 
     public TraceOptions nodeType(String nodeType) {
         this.nodeType = nodeType;
+        return this;
+    }
+
+    public TraceOptions nodeType(TopoNodeType nodeType) {
+        if (nodeType != null) {
+            this.nodeType = nodeType.getValue();
+        }
         return this;
     }
 
