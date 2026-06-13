@@ -30,3 +30,7 @@ Guides for consumers instrumenting their applications with the Topo-Tracer SDK.
 - [7.1. Distributed Tracing](./7.node_js_sdk/7.1.distributed_tracing.md)
 - [7.2. Example Traces](./7.node_js_sdk/7.2.example_traces.md)
 - [7.3. Performance Tuning](./7.node_js_sdk/7.3.performance_tuning.md)
+
+## 8. Java & Spring SDK
+Documentation for the Java client and its Spring Boot auto-configuration.
+- [8.1. Java & Spring Integration](./8.java_sdk/8.1.java_and_spring.md)
