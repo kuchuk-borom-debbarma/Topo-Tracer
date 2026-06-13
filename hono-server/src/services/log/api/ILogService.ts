@@ -55,7 +55,7 @@ export abstract class ILogService {
   }): Promise<ProjectedFlowResult>;
 
   /**
-   * Lists materialized trace summaries for a user using bounded pagination.
+   * Lists materialized trace summaries for a user using bounded paging.
    */
   abstract listTraces(data: {
     userId: string;

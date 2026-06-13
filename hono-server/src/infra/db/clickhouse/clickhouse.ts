@@ -11,7 +11,7 @@ import {
 } from "../../../common/env";
 import { CLICKHOUSE_SCHEMA_STATEMENTS } from "./schema";
 
-export type ClickHouseEnvConfig = {
+type ClickHouseEnvConfig = {
   url: string;
   username: string;
   password: string;
@@ -20,7 +20,7 @@ export type ClickHouseEnvConfig = {
 
 export type ClickHouseEnv = AppEnv;
 
-export type ClickHouseContext = Context<ClickHouseEnv>;
+type ClickHouseContext = Context<ClickHouseEnv>;
 
 // Simple singleton: long-lived servers keep this for the process lifetime, and
 // Workers keep it when the isolate is reused. A cold Worker isolate starts empty.
@@ -35,7 +35,7 @@ const getClickHouseStringEnv = (
   return getStringEnvValue(c, key) ?? fallback;
 };
 
-export const getClickHouseEnvConfig = (
+const getClickHouseEnvConfig = (
   c: ClickHouseContext,
 ): ClickHouseEnvConfig => {
   return {
@@ -46,13 +46,13 @@ export const getClickHouseEnvConfig = (
   };
 };
 
-export const getClickHouseClientConfig = (
+const getClickHouseClientConfig = (
   c: ClickHouseContext,
 ): ClickHouseClientConfigOptions => {
   return getClickHouseEnvConfig(c);
 };
 
-export const createClickHouseClient = (
+const createClickHouseClient = (
   config: ClickHouseClientConfigOptions,
 ): ClickHouseClient => {
   return createClient(config);
@@ -62,7 +62,7 @@ export const createClickHouseClient = (
  * Direct initialization helper for ClickHouse client.
  * Used for background tasks/daemons that start before any HTTP requests or outside a Hono Context.
  */
-export const initializeClickHouseClientDirectly = (
+const initializeClickHouseClientDirectly = (
   config?: ClickHouseClientConfigOptions,
 ): ClickHouseClient => {
   if (!clickHouseClient) {
@@ -96,7 +96,7 @@ export const bootstrapClickHouse = async (
 
 // Env bindings come from Hono context, so the first request creates the client.
 // After that, use the singleton whenever the runtime keeps this module alive.
-export const getClickHouseClient = (c: ClickHouseContext): ClickHouseClient => {
+const getClickHouseClient = (c: ClickHouseContext): ClickHouseClient => {
   clickHouseClient ??= createClickHouseClient(getClickHouseClientConfig(c));
   return clickHouseClient;
 };
@@ -123,23 +123,12 @@ export const initClickHouse: MiddlewareHandler<ClickHouseEnv> = async (
 };
 
 export {
-  CLICKHOUSE_CREATE_EDGE_EVENTS_TABLE,
-  CLICKHOUSE_CREATE_NODE_EVENTS_TABLE,
-  CLICKHOUSE_CREATE_READ_NODES_TABLE,
-  CLICKHOUSE_CREATE_READ_EDGES_TABLE,
-  CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE,
-  CLICKHOUSE_CREATE_MATERIALIZATION_CHECKPOINTS_TABLE,
-  CLICKHOUSE_CREATE_TRACE_SUMMARIES_REALTIME_TABLE,
-  CLICKHOUSE_CREATE_NODE_EVENTS_SUMMARY_MV,
-  CLICKHOUSE_CREATE_EDGE_EVENTS_SUMMARY_MV,
   CLICKHOUSE_EDGE_EVENTS_TABLE,
   CLICKHOUSE_NODE_EVENTS_TABLE,
+  CLICKHOUSE_TRACE_EVENTS_TABLE,
   CLICKHOUSE_READ_NODES_TABLE,
   CLICKHOUSE_READ_EDGES_TABLE,
   CLICKHOUSE_TRACE_SUMMARIES_TABLE,
   CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE,
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
-  CLICKHOUSE_NODE_EVENTS_SUMMARY_MV,
-  CLICKHOUSE_EDGE_EVENTS_SUMMARY_MV,
-  CLICKHOUSE_SCHEMA_STATEMENTS,
 } from "./schema";

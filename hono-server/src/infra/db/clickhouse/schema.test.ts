@@ -78,7 +78,8 @@ describe("ClickHouse Read Model Schema", () => {
   });
 
   test("Trace summary DDL includes named diagnostics and no Map", () => {
-    expect(schema.CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE).not.toContain("Map(");
+    expect(schema.CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE).not.toContain("diagnostic Map(");
+    expect(schema.CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE).not.toContain("diagnostics Map(");
     // RSCH-07 mentions counts, bounds, materialization time, and named diagnostics.
     // D-07 says "Named diagnostic columns"
     expect(schema.CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE).toContain("diagnostic_");

@@ -12,5 +12,3 @@ import { cache } from "../../cache";
 export const idempotencyStore: IIdempotencyStore = new CacheIdempotencyStore(cache);
 
 export * from "./api/IIdempotencyStore";
-export { CacheIdempotencyStore } from "./internal/CacheIdempotencyStore";
-export { InMemoryIdempotencyStore } from "./internal/InMemoryIdempotencyStore";

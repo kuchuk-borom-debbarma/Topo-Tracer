@@ -55,4 +55,3 @@ export abstract class IAuthService {
   }): Promise<void>;
 }
 
-export default IAuthService;

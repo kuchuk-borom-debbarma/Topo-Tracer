@@ -25,8 +25,8 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
     let parentSpanId: string | undefined;
     let sampled = true;
 
-    if (traceParentHeader) {
-      const parsed = parseTraceParent(traceParentHeader);
+    const parsed = traceParentHeader ? parseTraceParent(traceParentHeader) : null;
+    if (parsed) {
       traceId = parsed.traceId;
       parentSpanId = parsed.spanId;
       sampled = parsed.sampled;
@@ -121,5 +121,3 @@ export const requestTracingMiddleware = (): MiddlewareHandler => {
     }
   };
 };
-
-export default requestTracingMiddleware;

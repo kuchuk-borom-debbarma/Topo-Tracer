@@ -34,7 +34,6 @@ export class InternalTracer {
   /**
    * Retrieves the active request span context.
    */
-  // fallow-ignore-next-line unused-class-member
   static getStore(): ActiveSpanContext | undefined {
     return this.storage.getStore();
   }
@@ -64,7 +63,7 @@ export class InternalTracer {
   ): Promise<T> {
     const store = this.getStore();
     if (!store) {
-      throw new Error("InternalTracer.trace() called outside run() context");
+      return fn(randomUUID().replace(/-/g, "").slice(0, 16));
     }
 
     const traceId = store.traceId;

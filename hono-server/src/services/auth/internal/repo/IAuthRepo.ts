@@ -73,4 +73,3 @@ export abstract class IAuthRepo {
   abstract transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
 }
 
-export default IAuthRepo;
