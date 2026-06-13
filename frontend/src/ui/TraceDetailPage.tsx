@@ -37,10 +37,10 @@ import {
 } from "../utils";
 import { Icon } from "./Icon";
 
-const NODE_WIDTH = 228;
-const NODE_HEIGHT = 88;
-const COLUMN_GAP = 285;
-const ROW_GAP = 116;
+const NODE_WIDTH = 248;
+const NODE_HEIGHT = 96;
+const COLUMN_GAP = 300;
+const ROW_GAP = 130;
 
 type SelectedItem =
   | { type: "node"; value: ProjectedFlowNode }
@@ -362,6 +362,10 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
   }
 
   const displayName = node.name || node.startMessage || node.nodeType;
+  const dataEntries = Object.entries(node.data ?? {});
+  const MAX_VISIBLE = 5;
+  const visibleEntries = dataEntries.slice(0, MAX_VISIBLE);
+  const hiddenCount = dataEntries.length - visibleEntries.length;
 
   return (
     <div className={`trace-node-card ${props.data.selected ? "selected" : ""}`}>
@@ -374,6 +378,19 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
       {node.name && node.startMessage && node.name !== node.startMessage && (
         <p className="node-start-msg" title={node.startMessage}>{node.startMessage}</p>
       )}
+      {visibleEntries.length > 0 && (
+        <ul className="node-data-list">
+          {visibleEntries.map(([k, v]) => (
+            <li key={k} className="node-data-entry">
+              <span className="node-data-key">{k}</span>
+              <span className="node-data-val" title={String(v)}>{String(v)}</span>
+            </li>
+          ))}
+          {hiddenCount > 0 && (
+            <li className="node-data-more">+{hiddenCount} more</li>
+          )}
+        </ul>
+      )}
       <div className="node-card-footer">
         <code className="node-id-pill">{shortId(node.id, 10)}</code>
         <small>#{node.flowOrder}</small>
@@ -382,6 +399,7 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
     </div>
   );
 });
+
 
 const nodeTypes = {
   "trace-node": TraceNodeCard,
