@@ -24,16 +24,20 @@ public class TracingAspect {
 
     @Around("@annotation(traced)")
     public Object traceMethod(ProceedingJoinPoint joinPoint, Traced traced) throws Throwable {
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         String spanName = traced.value();
         if (spanName.isEmpty()) {
-            MethodSignature signature = (MethodSignature) joinPoint.getSignature();
             spanName = signature.getDeclaringType().getSimpleName() + "." + signature.getMethod().getName();
         }
 
         // Determine node type from String or Enum
         String nodeType = traced.nodeType();
         if (nodeType.isEmpty()) {
-            nodeType = traced.type().getValue();
+            if (traced.type() == TopoNodeType.METHOD) {
+                nodeType = signature.getDeclaringType().getSimpleName();
+            } else {
+                nodeType = traced.type().getValue();
+            }
         }
 
         TraceOptions options = TraceOptions.builder()
