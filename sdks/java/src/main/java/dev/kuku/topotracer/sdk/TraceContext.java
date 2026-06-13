@@ -1,13 +1,16 @@
 package dev.kuku.topotracer.sdk;
 
 import org.slf4j.MDC;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Thread-local context propagation holder for the active Span.
+ * Thread-local context propagation holder for the active Span and sibling child tracking.
  * Integrates with SLF4J MDC for automatic logging decoration.
  */
 public class TraceContext {
     private static final ThreadLocal<Span> activeSpan = new ThreadLocal<>();
+    private static final ThreadLocal<Map<String, Span>> lastChildMap = ThreadLocal.withInitial(HashMap::new);
 
     /**
      * Get the current active span in this thread.
@@ -30,10 +33,25 @@ public class TraceContext {
     }
 
     /**
-     * Clear the active span from this thread and remove tracing fields from SLF4J MDC.
+     * Get the last child span started under a parent in the current thread.
+     */
+    public static Span getLastChild(String parentId) {
+        return lastChildMap.get().get(parentId);
+    }
+
+    /**
+     * Set the last child span started under a parent in the current thread.
+     */
+    public static void setLastChild(String parentId, Span child) {
+        lastChildMap.get().put(parentId, child);
+    }
+
+    /**
+     * Clear the active span and child mappings from this thread.
      */
     public static void clear() {
         activeSpan.remove();
+        lastChildMap.remove();
         MDC.remove("traceId");
         MDC.remove("spanId");
     }

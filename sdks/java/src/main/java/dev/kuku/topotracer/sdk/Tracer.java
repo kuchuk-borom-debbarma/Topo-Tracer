@@ -268,7 +268,8 @@ public class Tracer {
 
         String parentSpanId = opts.getParentSpanId();
         if (parentSpanId == null && currentParent != null) {
-            parentSpanId = currentParent.getId();
+            Span prevSibling = TraceContext.getLastChild(currentParent.getId());
+            parentSpanId = prevSibling != null ? prevSibling.getId() : currentParent.getId();
         }
 
         int importance;
@@ -352,6 +353,10 @@ public class Tracer {
             List.of(),
             List.of()
         );
+
+        if (currentParent != null) {
+            TraceContext.setLastChild(currentParent.getId(), span);
+        }
 
         return span;
     }

@@ -64,8 +64,13 @@ function countBatchEvents(batch: IngestBatch): number {
          batch.edgeEnds.length;
 }
 
+interface FlowContext {
+  activeSpan: Span;
+  lastChildMap: Map<string, Span>;
+}
+
 export class Tracer {
-  private readonly storage = new AsyncLocalStorage<Span>();
+  private readonly storage = new AsyncLocalStorage<FlowContext>();
   private readonly config: TracerConfig;
   private readonly nodeTypeImportanceMapping: Record<string, number>;
   private buffer: IngestBatch = createEmptyBatch();
@@ -128,7 +133,7 @@ export class Tracer {
       traceName: options?.traceName, 
       importanceLabels: options?.importanceLabels 
     });
-    return this.storage.run(span, async () => {
+    return this.run(span, async () => {
       try {
         const result = await fn(span);
         return result;
@@ -160,9 +165,15 @@ export class Tracer {
     importanceLabels?: Record<number, string>
   }): Span {
     const currentStore = this.storage.getStore();
+    const currentParent = currentStore?.activeSpan;
     const id = randomUUID();
-    const traceId = options.traceId || currentStore?.traceId || randomUUID();
-    const parentSpanId = options.parentSpanId || currentStore?.id;
+    const traceId = options.traceId || currentParent?.traceId || randomUUID();
+    
+    let parentSpanId = options.parentSpanId;
+    if (!parentSpanId && currentStore && currentParent) {
+      const prevSibling = currentStore.lastChildMap.get(currentParent.id);
+      parentSpanId = prevSibling ? prevSibling.id : currentParent.id;
+    }
     
     // Resolve importance level dynamically
     let importanceLevel = 2; // Default dynamic root level
@@ -175,8 +186,8 @@ export class Tracer {
       if (this.nodeTypeImportanceMapping[typeStr] !== undefined) {
         importanceLevel = this.nodeTypeImportanceMapping[typeStr]!;
       } else {
-        if (currentStore) {
-          importanceLevel = currentStore.importanceLevel + 1;
+        if (currentParent) {
+          importanceLevel = currentParent.importanceLevel + 1;
         }
       }
     }
@@ -233,15 +244,25 @@ export class Tracer {
       edgeEnds: [],
     });
 
+    if (currentStore && currentParent) {
+      currentStore.lastChildMap.set(currentParent.id, span);
+    }
+
     return span;
   }
 
   run<T>(span: Span, fn: () => T): T {
-    return this.storage.run(span, fn);
+    const parentContext = this.storage.getStore();
+    const newContext: FlowContext = {
+      activeSpan: span,
+      lastChildMap: parentContext ? new Map(parentContext.lastChildMap) : new Map()
+    };
+    return this.storage.run(newContext, fn);
   }
 
   extractContext(): { traceId?: string, spanId?: string } {
-    const span = this.storage.getStore();
+    const context = this.storage.getStore();
+    const span = context?.activeSpan;
     return span ? { traceId: span.traceId, spanId: span.id } : {};
   }
 
