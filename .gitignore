@@ -7,3 +7,8 @@ temp/
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Java Build artifacts
+target/
+.idea/
+*.class

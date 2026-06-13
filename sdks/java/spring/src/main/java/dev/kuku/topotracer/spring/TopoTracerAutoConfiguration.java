@@ -43,9 +43,9 @@ public class TopoTracerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public FilterRegistrationBean<TracingFilter> tracingFilterRegistration(Tracer tracer) {
+    public FilterRegistrationBean<TracingFilter> tracingFilterRegistration(Tracer tracer, TopoTracerProperties properties) {
         FilterRegistrationBean<TracingFilter> registration = new FilterRegistrationBean<>();
-        registration.setFilter(new TracingFilter(tracer));
+        registration.setFilter(new TracingFilter(tracer, properties));
         registration.addUrlPatterns("/*");
         registration.setName("topoTracerFilter");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
@@ -54,8 +54,8 @@ public class TopoTracerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public TracingClientHttpRequestInterceptor tracingClientHttpRequestInterceptor() {
-        return new TracingClientHttpRequestInterceptor();
+    public TracingClientHttpRequestInterceptor tracingClientHttpRequestInterceptor(Tracer tracer) {
+        return new TracingClientHttpRequestInterceptor(tracer);
     }
 
     @Bean
@@ -69,7 +69,7 @@ public class TopoTracerAutoConfiguration {
      * registered in Spring, enabling context propagation across @Async calls.
      */
     @Bean
-    public BeanPostProcessor tracingTaskExecutorPostProcessor() {
+    public static BeanPostProcessor tracingTaskExecutorPostProcessor() {
         return new BeanPostProcessor() {
             @Override
             public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {

@@ -48,7 +48,7 @@ public class TracerTest {
                 Span childSpan = TraceContext.getActive();
                 assertNotNull(childSpan);
                 assertEquals("child-node", childSpan.getStartMessage());
-                assertEquals(0, childSpan.getImportanceLevel()); // Inherits parent level by default
+                assertEquals(1, childSpan.getImportanceLevel()); // Dynamic by default under new rules
             });
         }, options);
 
@@ -91,39 +91,50 @@ public class TracerTest {
     }
 
     @Test
-    public void testDynamicImportanceScaling() throws Exception {
-        List<IngestBatch> batches = new ArrayList<>();
+    public void testNodeTypeImportanceMapping() throws Exception {
         Tracer tracer = new Tracer.Builder()
             .endpoint("http://invalid-endpoint-for-test-fallback")
             .apiKey("test-key")
             .maxRetries(1)
             .retryDelayMs(1)
             .flushIntervalMs(0)
-            .onDrop(batches::add)
             .build();
 
-        TraceOptions rootOptions = TraceOptions.builder()
-            .importanceLevel(1);
+        // 1. Controller gets 0
+        tracer.trace("controller-span", () -> {
+            Span active = TraceContext.getActive();
+            assertEquals(0, active.getImportanceLevel());
 
-        tracer.trace("root", () -> {
-            // Child 1: dynamic nesting disabled (default: false)
-            tracer.trace("static-child", () -> {
-                assertEquals(1, TraceContext.getActive().getImportanceLevel());
-            });
+            // 2. Service under controller (rest) gets dynamic: parent (0) + 1 = 1
+            tracer.trace("service-span", () -> {
+                Span activeService = TraceContext.getActive();
+                assertEquals(1, activeService.getImportanceLevel());
 
-            // Child 2: dynamic nesting enabled
-            TraceOptions opt2 = TraceOptions.builder().dynamicImportance(true);
-            tracer.trace("dynamic-child", () -> {
-                Span active = TraceContext.getActive();
-                assertEquals(2, active.getImportanceLevel()); // Inherits + 1
+                // 3. DB call under service gets 0
+                tracer.trace("db-span", () -> {
+                    Span activeDb = TraceContext.getActive();
+                    assertEquals(0, activeDb.getImportanceLevel());
+                }, TraceOptions.builder().nodeType("db-call"));
 
-                // Nested dynamic child
-                TraceOptions opt3 = TraceOptions.builder().dynamicImportance(true);
-                tracer.trace("dynamic-grandchild", () -> {
-                    assertEquals(3, TraceContext.getActive().getImportanceLevel()); // Grandparent + 2
-                }, opt3);
-            }, opt2);
-        }, rootOptions);
+                // 4. IO under service gets 1
+                tracer.trace("io-span", () -> {
+                    Span activeIo = TraceContext.getActive();
+                    assertEquals(1, activeIo.getImportanceLevel());
+                }, TraceOptions.builder().nodeType("io"));
+
+                // 5. Nested service (rest) gets dynamic: parent (1) + 1 = 2
+                tracer.trace("nested-service-span", () -> {
+                    Span activeNested = TraceContext.getActive();
+                    assertEquals(2, activeNested.getImportanceLevel());
+                }, TraceOptions.builder().nodeType("service"));
+            }, TraceOptions.builder().nodeType("service"));
+        }, TraceOptions.builder().nodeType("controller"));
+
+        // 6. Root dynamic (no parent) gets 2
+        tracer.trace("root-service", () -> {
+            Span activeRoot = TraceContext.getActive();
+            assertEquals(2, activeRoot.getImportanceLevel());
+        }, TraceOptions.builder().nodeType("service"));
     }
 
     @Test

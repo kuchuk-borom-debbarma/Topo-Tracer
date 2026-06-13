@@ -2,6 +2,9 @@ package dev.kuku.topotracer.spring;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @ConfigurationProperties(prefix = "topotracer")
 public class TopoTracerProperties {
     private String endpoint;
@@ -12,6 +15,8 @@ public class TopoTracerProperties {
     private int flushIntervalMs = 5000;
     private int maxRetries = 5;
     private int retryDelayMs = 1000;
+    private String defaultTraceName;
+    private Map<Integer, String> importanceLabels = new HashMap<>();
 
     public String getEndpoint() {
         return endpoint;
@@ -75,5 +80,21 @@ public class TopoTracerProperties {
 
     public void setRetryDelayMs(int retryDelayMs) {
         this.retryDelayMs = retryDelayMs;
+    }
+
+    public String getDefaultTraceName() {
+        return defaultTraceName;
+    }
+
+    public void setDefaultTraceName(String defaultTraceName) {
+        this.defaultTraceName = defaultTraceName;
+    }
+
+    public Map<Integer, String> getImportanceLabels() {
+        return importanceLabels;
+    }
+
+    public void setImportanceLabels(Map<Integer, String> importanceLabels) {
+        this.importanceLabels = importanceLabels;
     }
 }

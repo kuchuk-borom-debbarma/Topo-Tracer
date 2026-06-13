@@ -14,13 +14,15 @@ import java.io.IOException;
 
 /**
  * Servlet Filter to automatically trace incoming HTTP requests.
- * Extracts propagation headers (X-Trace-Id, X-Span-Id) if present.
+ * Extracts propagation headers (x-topo-trace-id, x-topo-parent-id) if present.
  */
 public class TracingFilter extends OncePerRequestFilter {
     private final Tracer tracer;
+    private final TopoTracerProperties properties;
 
-    public TracingFilter(Tracer tracer) {
+    public TracingFilter(Tracer tracer, TopoTracerProperties properties) {
         this.tracer = tracer;
+        this.properties = properties;
     }
 
     @Override
@@ -42,6 +44,15 @@ public class TracingFilter extends OncePerRequestFilter {
             .nodeType("http-request")
             .attribute("http.method", request.getMethod())
             .attribute("http.url", request.getRequestURI());
+
+        if (properties != null) {
+            if (properties.getDefaultTraceName() != null && !properties.getDefaultTraceName().isBlank()) {
+                options.traceName(properties.getDefaultTraceName());
+            }
+            if (properties.getImportanceLabels() != null && !properties.getImportanceLabels().isEmpty()) {
+                options.importanceLabels(properties.getImportanceLabels());
+            }
+        }
 
         if (traceId != null && !traceId.isBlank() && spanId != null && !spanId.isBlank()) {
             options.traceId(traceId).parentSpanId(spanId);

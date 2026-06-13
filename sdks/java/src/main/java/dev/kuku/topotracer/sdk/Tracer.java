@@ -224,14 +224,47 @@ public class Tracer {
             parentSpanId = currentParent.getId();
         }
 
-        int importance = 1;
+        int importance;
         if (opts.getImportanceLevel() != null) {
             importance = opts.getImportanceLevel();
-        } else if (currentParent != null) {
-            if (opts.isDynamicImportance()) {
-                importance = currentParent.getImportanceLevel() + 1;
-            } else {
-                importance = currentParent.getImportanceLevel();
+        } else {
+            String type = opts.getNodeType();
+            if (type == null) {
+                type = "default";
+            }
+            type = type.trim().toLowerCase();
+
+            switch (type) {
+                case "controller":
+                case "http-request":
+                case "request":
+                case "remote-call":
+                case "http-client":
+                case "outbound-http":
+                case "remote":
+                case "api-call":
+                case "client":
+                case "db-call":
+                case "db":
+                case "database":
+                case "db-query":
+                case "query":
+                case "repository":
+                    importance = 0;
+                    break;
+                case "io":
+                case "file":
+                case "network":
+                case "stream":
+                    importance = 1;
+                    break;
+                default:
+                    if (currentParent != null) {
+                        importance = currentParent.getImportanceLevel() + 1;
+                    } else {
+                        importance = 2;
+                    }
+                    break;
             }
         }
 
