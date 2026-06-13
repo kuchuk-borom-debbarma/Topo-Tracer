@@ -6183,7 +6183,8 @@ body {
   box-shadow: 0 4px 18px rgba(18, 31, 48, 0.09);
   color: var(--flow-ink);
   min-height: 88px;
-  padding: 12px 14px;
+  padding: 12px 14px 14px;
+  position: relative;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
   width: 268px;
 }
