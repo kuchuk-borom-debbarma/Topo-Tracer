@@ -37,6 +37,7 @@ const DEFAULT_NODE_TYPE_IMPORTANCE: Record<string, number> = {
   "file": 1,
   "network": 1,
   "stream": 1,
+  "log": 2,
 };
 
 function buildIngestUrl(endpoint: string): string {
@@ -145,6 +146,25 @@ export class Tracer {
         span.end();
       }
     });
+  }
+
+  /**
+   * Captures a log message within the current trace context.
+   * Logs are treated as nodes (spans) with type 'log', allowing them to participate
+   * in the topological flow of the trace graph.
+   *
+   * @param message - The log message (becomes the node name/label).
+   * @param data - Optional key/value metadata for the log.
+   * @param importanceLevel - Optional importance override.
+   */
+  log(message: string, data?: Record<string, string>, importanceLevel?: number | Importance): void {
+    const span = this.startNode({
+      name: message,
+      type: "log",
+      data,
+      importanceLevel,
+    });
+    span.end();
   }
 
   /**

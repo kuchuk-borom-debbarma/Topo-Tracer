@@ -42,6 +42,7 @@ public class PureJavaExample {
             tracer.trace("validate-payment", () -> {
                 System.out.println("Running validate-payment span... importance: " + TraceContext.getActive().getImportanceLevel());
                 TraceContext.getActive().setAttribute("payment.method", "credit-card");
+                tracer.log("Payment method validated", Map.of("card.type", "visa"));
                 sleep(50);
             }, TraceOptions.builder().nodeType("custom-validation"));
 

@@ -14,6 +14,7 @@ export async function runBasicExample(): Promise<void> {
         "load-cart-db",
         async (childSpan) => {
           childSpan.setAttribute("storage.kind", "cache");
+          tracer.log("Cart found in cache", { cartId: "cart_123" });
           await sleep(25);
         },
         { type: NodeType.DB_CALL },

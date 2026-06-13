@@ -164,6 +164,7 @@ public class Tracer {
         mappings.put("file", 1);
         mappings.put("network", 1);
         mappings.put("stream", 1);
+        mappings.put("log", 2);
 
         // Merge builder mappings (overrides defaults)
         for (Map.Entry<String, Integer> entry : builder.nodeTypeImportanceMapping.entrySet()) {
@@ -251,6 +252,34 @@ public class Tracer {
      */
     public Span createSpan(String name, TraceOptions options) {
         return startNode(name, options);
+    }
+
+    /**
+     * Captures a log message within the current trace context.
+     * Logs are treated as nodes (spans) with type 'log'.
+     */
+    public void log(String message) {
+        log(message, null, null);
+    }
+
+    /**
+     * Captures a log message with metadata within the current trace context.
+     */
+    public void log(String message, Map<String, String> data) {
+        log(message, data, null);
+    }
+
+    /**
+     * Captures a log message with metadata and importance level within the current trace context.
+     */
+    public void log(String message, Map<String, String> data, Integer importanceLevel) {
+        TraceOptions options = TraceOptions.builder()
+            .nodeType("log")
+            .data(data)
+            .importanceLevel(importanceLevel);
+
+        Span span = startNode(message, options);
+        span.end();
     }
 
     /**
