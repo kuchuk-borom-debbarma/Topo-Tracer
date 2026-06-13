@@ -1,27 +1,32 @@
-# Topo Tracer Docs
+# Topo-Tracer Documentation
 
-Topo Tracer is a primitive node-to-node trace graph. Current product shape:
+Topo-Tracer is a primitive node-to-node trace graph ingestion and projection backend built on Hono, Postgres, and ClickHouse.
 
-- SDK emits node/edge lifecycle events with stable event ids.
-- Backend appends raw events, publishes `trace.events.ingested`, and materializes
-  read models from that event stream.
-- Dev event bus is in-memory. Production bus contract is ready for Kafka later.
-- Frontend shows one clean graph workspace: trace rail, free-form graph canvas,
-  inspector.
-- Graph layout is importance-based. Lower importance number is more important.
+This directory serves as the master index for all project documentation. Following strict documentation rules, all manuals here accurately reflect the active architecture.
 
-Start here:
+## 1. System Architecture
+High-level overview of the application and its external API contracts.
+- [1.1. System Overview](./1.system_architecture/1.1.system_overview.md)
+- [1.2. API Contracts](./1.system_architecture/1.2.api_contracts.md)
 
-- [1. Trace Design](./1.trace_design.md): model, write path, graph projection, UI.
-- [2. Trace Flow At Code Level](./2.trace_flow_code_level.md): end-to-end write, materialize, read, importance projection, and frontend layout with example state snapshots.
-- [3. Backend Schema And Queries](./3.backend_schema_and_queries.md): tables, contracts, event bus, materializer, query shapes.
-- [4. Milestone v1 Technical Deep-Dive](./4.milestone_v1_technical_deep_dive.md): deep-dive into read model aggregation, checkpoint strategy, and contiguous ghost grouping.
-- [5. Development And Verification](./5.development_and_verification.md): local commands, setup, checks.
+## 2. Trace Pipeline
+The deep-dive into how trace data flows from HTTP to the UI.
+- [2.1. Ingestion & Outbox](./2.trace_pipeline/2.1.ingestion_and_outbox.md)
+- [2.2. Materialization Engine](./2.trace_pipeline/2.2.materialization_engine.md)
+- [2.3. Graph Projection](./2.trace_pipeline/2.3.graph_projection.md)
 
-### 6. Hono Server
-- [6.1. Codebase Architecture & Conventions](./6.hono_server/6.1.codebase.md): Hono server structure, layer dependencies, AI agent rules.
+## 3. Backend Infrastructure
+The storage and asynchronous message processing layers.
+- [3.1. Database Schemas](./3.backend_infrastructure/3.1.database_schemas.md)
+- [3.2. Event Bus & Idempotency](./3.backend_infrastructure/3.2.event_bus_and_idempotency.md)
 
-### 7. Node.js SDK
-- [7.1. Distributed Tracing](./7.node_js_sdk/7.1.distributed_tracing.md): Propagating context across microservices.
-- [7.2. Example Traces](./7.node_js_sdk/7.2.example_traces.md): How to read payload formats.
-- [7.3. Performance Tuning](./7.node_js_sdk/7.3.performance_tuning.md): Options for optimizing the SDK batching overhead.
+## 4. Development Guide
+Guidelines for developers working on the `hono-server` backend.
+- [4.1. Local Setup & Verification](./4.development_guide/4.1.local_setup_and_verification.md)
+- [4.2. Codebase Conventions](./4.development_guide/4.2.codebase_conventions.md)
+
+## 7. Node.js SDK
+Guides for consumers instrumenting their applications with the Topo-Tracer SDK.
+- [7.1. Distributed Tracing](./7.node_js_sdk/7.1.distributed_tracing.md)
+- [7.2. Example Traces](./7.node_js_sdk/7.2.example_traces.md)
+- [7.3. Performance Tuning](./7.node_js_sdk/7.3.performance_tuning.md)
