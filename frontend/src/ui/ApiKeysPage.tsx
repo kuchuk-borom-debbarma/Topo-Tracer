@@ -8,6 +8,8 @@ export function ApiKeysPage() {
   const [name, setName] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
+  const [copied, setCopied] = useState(false);
+
   const apiKeysQuery = useQuery({
     queryKey: ["api-keys"],
     queryFn: fetchApiKeys,
@@ -18,6 +20,7 @@ export function ApiKeysPage() {
     onSuccess: (result) => {
       setCreatedKey(result.apiKey.key);
       setName("");
+      setCopied(false);
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
   });
@@ -65,8 +68,16 @@ export function ApiKeysPage() {
           <div className="created-key-row">
             <span>New key</span>
             <code>{createdKey}</code>
-            <button className="button subtle" type="button" onClick={() => navigator.clipboard.writeText(createdKey)}>
-              Copy
+            <button
+              className="button subtle"
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(createdKey);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Copied!" : "Copy"}
             </button>
           </div>
         )}
