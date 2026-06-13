@@ -25,6 +25,24 @@ import type { ILogWriteRepo } from "../repo/ILogWriteRepo";
 import { ILogReadRepo } from "../repo/ILogReadRepo";
 import { LogServiceImpl } from "./LogServiceImpl";
 import { LogFlowProjector } from "../projection/LogFlowProjector";
+import { InternalTracer } from "../../../../infra/tracing/InternalTracer";
+
+const withTracing = async <T>(fn: () => Promise<T>): Promise<T> => {
+  return await InternalTracer.run(
+    {
+      traceId: "00000000000000000000000000000001",
+      spanId: "0000000000000001",
+      spansBuffer: {
+        traceStarts: [],
+        nodeStarts: [],
+        nodeEnds: [],
+        edgeStarts: [],
+        edgeEnds: [],
+      },
+    },
+    fn,
+  );
+};
 
 type IngestInput = Parameters<LogServiceImpl["ingestNodesNEdges"]>[0];
 
@@ -173,7 +191,7 @@ describe("LogServiceImpl edge endpoint validation", () => {
       toNodeId: "node-a",
     });
 
-    await service.ingestNodesNEdges(createIngestInput([edgeStart]));
+    await withTracing(() => service.ingestNodesNEdges(createIngestInput([edgeStart])));
 
     expect(writeRepo.calls).toHaveLength(0);
     expect(eventBus.published).toHaveLength(1);
@@ -192,11 +210,11 @@ describe("LogServiceImpl projection orchestration", () => {
   test("projectTraceFlow orchestrates bounded reads and projector", async () => {
     const { service, readRepo, capturedLogs } = createSubject();
 
-    const result = await service.projectTraceFlow({
+    const result = await withTracing(() => service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 2
-    });
+    }));
 
     expect(readRepo.loadBoundedProjectionNodesCalls).toHaveLength(1);
     expect(readRepo.loadBoundedProjectionNodesCalls[0]).toEqual({
@@ -291,11 +309,11 @@ describe("LogServiceImpl projection orchestration", () => {
   test("projectTraceFlow handles first page with default paging", async () => {
     const { service, readRepo } = createSubject();
 
-    const result = await service.projectTraceFlow({
+    const result = await withTracing(() => service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5
-    });
+    }));
 
     expect(result.metadata.paging).toMatchObject({
       hasBefore: false,
@@ -326,13 +344,13 @@ describe("LogServiceImpl projection orchestration", () => {
       nodeCount: 100
     };
 
-    const result = await service.projectTraceFlow({
+    const result = await withTracing(() => service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5,
       cursor,
       limit: 10
-    });
+    }));
 
     expect(readRepo.loadBoundedProjectionNodesCalls[0].paging).toEqual({ offset: 50, limit: 10 });
     expect(result.metadata.paging).toMatchObject({
@@ -348,23 +366,42 @@ describe("LogServiceImpl projection orchestration", () => {
     const { service } = createSubject();
     const staleCursor = Buffer.from("0:50").toString("base64"); // materializedAt 50, summary is 100
 
-    await expect(service.projectTraceFlow({
+    await expect(withTracing(() => service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5,
       cursor: staleCursor
-    })).rejects.toThrow("Cursor is stale");
+    }))).rejects.toThrow("Cursor is stale");
   });
 
   test("projectTraceFlow throws Error on malformed cursor", async () => {
     const { service } = createSubject();
 
-    await expect(service.projectTraceFlow({
+    await expect(withTracing(() => service.projectTraceFlow({
       userId: "u1",
       traceId: "trace-1",
       threshold: 5,
       cursor: "not-base64-at-all"
-    })).rejects.toThrow();
+    }))).rejects.toThrow();
+  });
+
+
+  test("getTraceSummary returns null if trace not found for userId", async () => {
+    const { service, readRepo } = createSubject();
+    
+    // Mock repo to return null when queried for (wrongUser, trace-1)
+    const originalLoadTraceSummary = readRepo.loadTraceSummary;
+    readRepo.loadTraceSummary = async (params) => {
+      if (params.userId === "wrongUser") return null;
+      return originalLoadTraceSummary.call(readRepo, params);
+    };
+
+    const result = await service.getTraceSummary({
+      userId: "wrongUser",
+      traceId: "trace-1"
+    });
+
+    expect(result).toBeNull();
   });
 });
 
@@ -372,11 +409,11 @@ describe("LogServiceImpl trace listing", () => {
   test("uses bounded pagination and returns page metadata", async () => {
     const { service, readRepo } = createSubject();
 
-    const result = await service.listTraces({
+    const result = await withTracing(() => service.listTraces({
       userId: "u1",
       page: 3,
       limit: 25,
-    });
+    }));
 
     expect(readRepo.loadTraceSummariesCalls).toEqual([
       {
@@ -397,11 +434,11 @@ describe("LogServiceImpl trace listing", () => {
   test("clamps trace list page size to the hard cap", async () => {
     const { service, readRepo } = createSubject();
 
-    await service.listTraces({
+    await withTracing(() => service.listTraces({
       userId: "u1",
       page: 1,
       limit: 5000,
-    });
+    }));
 
     expect(readRepo.loadTraceSummariesCalls[0].paging).toEqual({
       offset: 0,
