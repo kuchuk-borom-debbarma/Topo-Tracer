@@ -269,7 +269,19 @@ public class Tracer {
         String parentSpanId = opts.getParentSpanId();
         if (parentSpanId == null && currentParent != null) {
             Span prevSibling = TraceContext.getLastChild(currentParent.getId());
-            parentSpanId = prevSibling != null ? prevSibling.getId() : currentParent.getId();
+            if (prevSibling != null) {
+                Span lastDescendant = prevSibling;
+                while (true) {
+                    Span child = TraceContext.getLastChild(lastDescendant.getId());
+                    if (child == null) {
+                        break;
+                    }
+                    lastDescendant = child;
+                }
+                parentSpanId = lastDescendant.getId();
+            } else {
+                parentSpanId = currentParent.getId();
+            }
         }
 
         int importance;

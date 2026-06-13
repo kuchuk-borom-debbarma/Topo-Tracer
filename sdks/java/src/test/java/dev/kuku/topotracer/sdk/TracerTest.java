@@ -213,4 +213,74 @@ public class TracerTest {
             assertEquals(3, active.getImportanceLevel());
         }, TraceOptions.builder().nodeType("custom-type"));
     }
+
+    @Test
+    public void testSequentialSiblingChainingThroughDeepestDescendant() throws Exception {
+        List<IngestBatch> batches = new ArrayList<>();
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .flushIntervalMs(0)
+            .onDrop(batches::add)
+            .build();
+
+        tracer.trace("P", () -> {
+            tracer.trace("S1", () -> {
+                tracer.trace("S1.1", () -> {});
+                tracer.trace("S1.2", () -> {});
+            });
+            tracer.trace("S2", () -> {});
+        });
+
+        tracer.flush();
+
+        assertEquals(1, batches.size());
+        IngestBatch batch = batches.get(0);
+
+        IngestNodeStart s1 = batch.nodeStarts().stream()
+            .filter(n -> n.startMessage().equals("S1"))
+            .findFirst()
+            .orElse(null);
+        IngestNodeStart s1_1 = batch.nodeStarts().stream()
+            .filter(n -> n.startMessage().equals("S1.1"))
+            .findFirst()
+            .orElse(null);
+        IngestNodeStart s1_2 = batch.nodeStarts().stream()
+            .filter(n -> n.startMessage().equals("S1.2"))
+            .findFirst()
+            .orElse(null);
+        IngestNodeStart s2 = batch.nodeStarts().stream()
+            .filter(n -> n.startMessage().equals("S2"))
+            .findFirst()
+            .orElse(null);
+
+        assertNotNull(s1);
+        assertNotNull(s1_1);
+        assertNotNull(s1_2);
+        assertNotNull(s2);
+
+        // Verify s1 -> s1_1
+        var edge1 = batch.edgeStarts().stream()
+            .filter(e -> e.toNodeId().equals(s1_1.id()))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(edge1);
+        assertEquals(s1.id(), edge1.fromNodeId());
+
+        // Verify s1_1 -> s1_2
+        var edge2 = batch.edgeStarts().stream()
+            .filter(e -> e.toNodeId().equals(s1_2.id()))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(edge2);
+        assertEquals(s1_1.id(), edge2.fromNodeId());
+
+        // Verify s1_2 -> s2
+        var edge3 = batch.edgeStarts().stream()
+            .filter(e -> e.toNodeId().equals(s2.id()))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(edge3);
+        assertEquals(s1_2.id(), edge3.fromNodeId());
+    }
 }

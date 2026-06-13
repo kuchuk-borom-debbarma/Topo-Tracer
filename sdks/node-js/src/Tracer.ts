@@ -172,7 +172,19 @@ export class Tracer {
     let parentSpanId = options.parentSpanId;
     if (!parentSpanId && currentStore && currentParent) {
       const prevSibling = currentStore.lastChildMap.get(currentParent.id);
-      parentSpanId = prevSibling ? prevSibling.id : currentParent.id;
+      if (prevSibling) {
+        let lastDescendant = prevSibling;
+        while (true) {
+          const child = currentStore.lastChildMap.get(lastDescendant.id);
+          if (!child) {
+            break;
+          }
+          lastDescendant = child;
+        }
+        parentSpanId = lastDescendant.id;
+      } else {
+        parentSpanId = currentParent.id;
+      }
     }
     
     // Resolve importance level dynamically
@@ -255,7 +267,7 @@ export class Tracer {
     const parentContext = this.storage.getStore();
     const newContext: FlowContext = {
       activeSpan: span,
-      lastChildMap: parentContext ? new Map(parentContext.lastChildMap) : new Map()
+      lastChildMap: parentContext ? parentContext.lastChildMap : new Map()
     };
     return this.storage.run(newContext, fn);
   }

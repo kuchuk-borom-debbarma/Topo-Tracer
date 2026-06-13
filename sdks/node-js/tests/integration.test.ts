@@ -282,4 +282,48 @@ describe("SDK Integration", () => {
     const criticalCustomSpan = payload.nodeStarts.find((n: any) => n.startMessage === "Critical Custom Op");
     expect(criticalCustomSpan.importanceLevel).toBe(0); // Explicit Importance.CRITICAL override -> 0
   });
+
+  test("Should resolve sequential sibling chaining through deepest descendant", async () => {
+    const receivedPayloads: any[] = [];
+    
+    // @ts-ignore
+    global.fetch = async (url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      receivedPayloads.push(body);
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:6666",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+    });
+
+    await tracer.trace("P", async () => {
+      await tracer.trace("S1", async () => {
+        await tracer.trace("S1.1", async () => {});
+        await tracer.trace("S1.2", async () => {});
+      });
+      await tracer.trace("S2", async () => {});
+    });
+
+    await tracer.flush();
+
+    expect(receivedPayloads.length).toBe(1);
+    const payload = receivedPayloads[0];
+
+    const s1 = payload.nodeStarts.find((n: any) => n.startMessage === "S1");
+    const s1_1 = payload.nodeStarts.find((n: any) => n.startMessage === "S1.1");
+    const s1_2 = payload.nodeStarts.find((n: any) => n.startMessage === "S1.2");
+    const s2 = payload.nodeStarts.find((n: any) => n.startMessage === "S2");
+
+    const edge1 = payload.edgeStarts.find((e: any) => e.toNodeId === s1_1.id);
+    expect(edge1.fromNodeId).toBe(s1.id);
+
+    const edge2 = payload.edgeStarts.find((e: any) => e.toNodeId === s1_2.id);
+    expect(edge2.fromNodeId).toBe(s1_1.id);
+
+    const edge3 = payload.edgeStarts.find((e: any) => e.toNodeId === s2.id);
+    expect(edge3.fromNodeId).toBe(s1_2.id);
+  });
 });
