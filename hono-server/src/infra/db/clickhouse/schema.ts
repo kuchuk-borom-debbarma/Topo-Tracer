@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_NODE_EVENTS_TABLE}
   node_type Nullable(String) COMMENT 'Node type for start events; null for end events when not provided',
   data Map(String, String) COMMENT 'String key/value payload captured for node start events',
   message Nullable(String) COMMENT 'Start or end message associated with the event',
-  importance_level Nullable(Int32) COMMENT 'Node importance level for start events'
+  importance_level Nullable(Int32) COMMENT 'Node importance level for start events',
+  name Nullable(String) COMMENT 'Human-friendly code artifact name (e.g. ClassName.methodName(Args))'
 )
 ENGINE = MergeTree
 ORDER BY (user_id, trace_id, id, event_type);
@@ -75,7 +76,8 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_READ_NODES_TABLE}
   data Map(String, String) COMMENT 'Merged key/value payload from node lifecycle events',
   start_message Nullable(String) COMMENT 'Message captured at node start',
   end_message Nullable(String) COMMENT 'Message captured at node end',
-  materialized_at_ms UInt64 COMMENT 'Version field: materialization timestamp in milliseconds'
+  materialized_at_ms UInt64 COMMENT 'Version field: materialization timestamp in milliseconds',
+  name Nullable(String) COMMENT 'Human-friendly code artifact name propagated from node start event'
 )
 ENGINE = ReplacingMergeTree(materialized_at_ms)
 ORDER BY (user_id, trace_id, id);
@@ -212,46 +214,6 @@ FROM ${CLICKHOUSE_EDGE_EVENTS_TABLE}
 GROUP BY user_id, trace_id;
 `;
 
-export const CLICKHOUSE_MIGRATE_ADD_TRACE_EVENTS_TABLE = `
-  ${CLICKHOUSE_CREATE_TRACE_EVENTS_TABLE}
-`;
-
-export const CLICKHOUSE_MIGRATE_ADD_IMPORTANCE_LABELS_TO_SUMMARIES = `
-  ALTER TABLE ${CLICKHOUSE_TRACE_SUMMARIES_TABLE} ADD COLUMN IF NOT EXISTS importance_labels Map(Int32, String) AFTER name;
-`;
-
-export const CLICKHOUSE_MIGRATE_DROP_TRACE_NAME_FROM_NODE_EVENTS = `
-  ALTER TABLE ${CLICKHOUSE_NODE_EVENTS_TABLE} DROP COLUMN IF EXISTS trace_name;
-`;
-
-export const CLICKHOUSE_MIGRATE_DROP_NAME_FROM_READ_NODES = `
-  ALTER TABLE ${CLICKHOUSE_READ_NODES_TABLE} DROP COLUMN IF EXISTS name;
-`;
-
-export const CLICKHOUSE_MIGRATE_DROP_NAME_FROM_TRACE_SUMMARIES_REALTIME = `
-  ALTER TABLE ${CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE} DROP COLUMN IF EXISTS name;
-`;
-
-export const CLICKHOUSE_MIGRATE_ADD_NAME_TO_NODE_EVENTS = `
-  ALTER TABLE ${CLICKHOUSE_NODE_EVENTS_TABLE} ADD COLUMN IF NOT EXISTS name Nullable(String) COMMENT 'Human-friendly code artifact name (e.g. ClassName.methodName(Args))';
-`;
-
-export const CLICKHOUSE_MIGRATE_ADD_NAME_TO_READ_NODES = `
-  ALTER TABLE ${CLICKHOUSE_READ_NODES_TABLE} ADD COLUMN IF NOT EXISTS name Nullable(String) COMMENT 'Human-friendly code artifact name propagated from node start event';
-`;
-
-export const CLICKHOUSE_MIGRATE_DROP_NODE_EVENTS_SUMMARY_MV = `
-  DROP VIEW IF EXISTS ${CLICKHOUSE_NODE_EVENTS_SUMMARY_MV};
-`;
-
-export const CLICKHOUSE_MIGRATE_ADD_NAME_TO_TRACE_SUMMARIES = `
-  ALTER TABLE ${CLICKHOUSE_TRACE_SUMMARIES_TABLE} ADD COLUMN IF NOT EXISTS name Nullable(String) AFTER trace_id;
-`;
-
-export const CLICKHOUSE_MIGRATE_ADD_TRACE_PROGRESS_TO_CHECKPOINTS = `
-  ALTER TABLE ${CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE} ADD COLUMN IF NOT EXISTS trace_progress_timestamp UInt64 AFTER trace_id;
-`;
-
 export const CLICKHOUSE_SCHEMA_STATEMENTS = [
   CLICKHOUSE_CREATE_NODE_EVENTS_TABLE,
   CLICKHOUSE_CREATE_EDGE_EVENTS_TABLE,
@@ -263,15 +225,4 @@ export const CLICKHOUSE_SCHEMA_STATEMENTS = [
   CLICKHOUSE_CREATE_TRACE_SUMMARIES_REALTIME_TABLE,
   CLICKHOUSE_CREATE_NODE_EVENTS_SUMMARY_MV,
   CLICKHOUSE_CREATE_EDGE_EVENTS_SUMMARY_MV,
-  CLICKHOUSE_MIGRATE_ADD_TRACE_EVENTS_TABLE,
-  CLICKHOUSE_MIGRATE_ADD_NAME_TO_TRACE_SUMMARIES,
-  CLICKHOUSE_MIGRATE_ADD_IMPORTANCE_LABELS_TO_SUMMARIES,
-  CLICKHOUSE_MIGRATE_ADD_TRACE_PROGRESS_TO_CHECKPOINTS,
-  CLICKHOUSE_MIGRATE_DROP_TRACE_NAME_FROM_NODE_EVENTS,
-  CLICKHOUSE_MIGRATE_DROP_NAME_FROM_READ_NODES,
-  CLICKHOUSE_MIGRATE_DROP_NAME_FROM_TRACE_SUMMARIES_REALTIME,
-  CLICKHOUSE_MIGRATE_DROP_NODE_EVENTS_SUMMARY_MV,
-  CLICKHOUSE_CREATE_NODE_EVENTS_SUMMARY_MV, // Recreate after drop
-  CLICKHOUSE_MIGRATE_ADD_NAME_TO_NODE_EVENTS,
-  CLICKHOUSE_MIGRATE_ADD_NAME_TO_READ_NODES,
 ] as const;
