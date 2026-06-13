@@ -19,7 +19,7 @@ UI loading the entire trace graph.
 
 - **Backend scope**: Work only in `hono-server` — prevents divergence and avoids
   reviving the older backend.
-- **Architecture guide**: Read and follow `hono-server/src/code-base.md` before
+- **Architecture guide**: Read and follow `docs/6.hono_server/6.1.codebase.md` before
   planning or implementing Hono changes.
 - **Storage**: Use ClickHouse read-optimized tables — the system is append-heavy
   and trace reads need aggregation over large telemetry datasets.
@@ -40,7 +40,7 @@ UI loading the entire trace graph.
 - TypeScript 5.x/6.x - All application packages use TypeScript source files: `carno.js/src/index.ts`, `frontend/src/main.tsx`, `hono-server/src/index.ts`, `sdk/nodejs/src/index.ts`.
 - TSX/React JSX - Frontend UI components use React TSX in `frontend/src/ui/App.tsx`; Hono config enables JSX support through `hono/jsx` in `hono-server/tsconfig.json`.
 - JSON/JSONC - Package and runtime configuration lives in `carno.js/package.json`, `frontend/package.json`, `sdk/nodejs/package.json`, `hono-server/package.json`, and `hono-server/wrangler.jsonc`.
-- Markdown - Product and implementation docs live under `docs/`, including `docs/DEVELOPMENT_AND_VERIFICATION.md`, `docs/TRACE_DESIGN.md`, and `docs/BACKEND_SCHEMA_AND_QUERIES.md`.
+- Markdown - Product and implementation docs live under `docs/`, including `docs/5.development_and_verification.md`, `docs/1.trace_design.md`, and `docs/3.backend_schema_and_queries.md`.
 ## Runtime
 - Bun - Primary local backend runtime for `carno.js`; run with `bun run --watch src/index.ts` from `carno.js/package.json`.
 - Browser - Frontend runtime served by Vite from `frontend/vite.config.ts`; default dev server port is `5173`.
@@ -81,11 +81,11 @@ UI loading the entire trace graph.
 - `hono-server/tsconfig.json` targets `ESNext`, uses bundler resolution, and configures `jsxImportSource: "hono/jsx"`.
 - `hono-server/wrangler.jsonc` configures Cloudflare Workers entrypoint and compatibility date.
 ## Platform Requirements
-- Run ClickHouse locally at `http://localhost:8123`; documented in `docs/DEVELOPMENT_AND_VERIFICATION.md`.
+- Run ClickHouse locally at `http://localhost:8123`; documented in `docs/5.development_and_verification.md`.
 - Run active backend from `carno.js` with `bun run dev`; default port is `3999` in `carno.js/src/index.ts`.
 - Run frontend from `frontend` with `npm run dev`; default port is `5173` in `frontend/vite.config.ts`.
 - Run SDK examples with Bun from `sdk/nodejs/example`; examples call the backend via `TOPO_TRACER_URL` in `sdk/nodejs/example/_helpers.ts`.
-- Use `npm run build` in `frontend`, `npm run build` in `sdk/nodejs`, and `bun run check` in `carno.js` for build checks documented in `docs/DEVELOPMENT_AND_VERIFICATION.md`.
+- Use `npm run build` in `frontend`, `npm run build` in `sdk/nodejs`, and `bun run check` in `carno.js` for build checks documented in `docs/5.development_and_verification.md`.
 - `hono-server` is the package configured for Cloudflare Workers deployment through Wrangler in `hono-server/package.json` and `hono-server/wrangler.jsonc`.
 - `carno.js` is the active local telemetry backend with ClickHouse migrations and routes in `carno.js/src/infra/ClickHouseService.ts` and `carno.js/src/routes/LogController.ts`.
 - No root deployment manifest, CI workflow, container runtime config, or production frontend hosting config is detected.
@@ -227,7 +227,7 @@ UI loading the entire trace graph.
 - Examples: `sdk/nodejs/src/types.ts`, `carno.js/src/services/log/types.ts`, `carno.js/src/services/log/RawEventRepository.ts`
 - Pattern: Append-only event stream with stable event ids and retry collapse during replay.
 - Purpose: Represent causal links between nodes; no parent id or implicit nesting exists.
-- Examples: `sdk/nodejs/src/Tracer.ts`, `sdk/nodejs/src/Span.ts`, `docs/TRACE_DESIGN.md`
+- Examples: `sdk/nodejs/src/Tracer.ts`, `sdk/nodejs/src/Span.ts`, `docs/1.trace_design.md`
 - Pattern: Edge lifecycle events are separate entities with `fromNodeId`, `toNodeId`, and `label`.
 - Purpose: Rebuild a trace's latest read nodes, read edges, and summary from raw events.
 - Examples: `carno.js/src/services/log/contracts.ts`, `carno.js/src/services/log/TraceReadModelBuilder.ts`
@@ -258,7 +258,7 @@ UI loading the entire trace graph.
 - **Threading:** The runtime model is single-process JavaScript. The materializer uses timers, microtasks, and an `isProcessing` guard in `carno.js/src/services/log/worker/TraceReadModelWorker.ts`; there are no worker threads.
 - **Global state:** `Tracer.exporter` in `sdk/nodejs/src/Tracer.ts`, `ClickHouseService.clientInstance` in `carno.js/src/infra/ClickHouseService.ts`, event bus maps in `carno.js/src/infra/events/InMemoryEventBus.ts`, and worker queues/timers in `carno.js/src/services/log/worker/TraceReadModelWorker.ts` are process-local.
 - **Circular imports:** The SDK has a bidirectional module relationship between `sdk/nodejs/src/Tracer.ts` and `sdk/nodejs/src/Span.ts`; `Tracer` imports `TraceNode`, and `Span` imports `Tracer`. Keep constructor side effects and static access stable when editing either file.
-- **Graph model:** Do not add `parentId`, ancestry paths, or implicit nesting to node records. Edges are the only graph links, per `docs/TRACE_DESIGN.md` and `docs/TRACE_FLOW_CODE_LEVEL.md`.
+- **Graph model:** Do not add `parentId`, ancestry paths, or implicit nesting to node records. Edges are the only graph links, per `docs/1.trace_design.md` and `docs/2.trace_flow_code_level.md`.
 - **Read model freshness:** Read APIs depend on materialization. Ingestion returns after raw append and event publish; graph reads use the latest saved read model from `carno.js/src/services/log/ReadModelRepository.ts`.
 - **ClickHouse query style:** Latest read rows use grouped `argMax(..., materialized_at_ms)` queries instead of `FINAL`, as shown in `carno.js/src/services/log/ReadModelRepository.ts`.
 ## Anti-Patterns
