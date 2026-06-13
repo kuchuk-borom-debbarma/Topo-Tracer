@@ -437,11 +437,13 @@ function Inspector(props: {
           Hide
         </button>
       </div>
-      {props.selected.type === "node" ? (
-        <NodeInspector node={props.selected.value} importanceLabels={importanceLabels} />
-      ) : (
-        <EdgeInspector edge={props.selected.value} />
-      )}
+      <div className="inspector-body">
+        {props.selected.type === "node" ? (
+          <NodeInspector node={props.selected.value} importanceLabels={importanceLabels} />
+        ) : (
+          <EdgeInspector edge={props.selected.value} />
+        )}
+      </div>
     </aside>
   );
 }
@@ -453,7 +455,6 @@ function NodeInspector({ node, importanceLabels }: {
   if (node.kind === "ghost") {
     return (
       <>
-        <h3>Collapsed subflow</h3>
         <DetailRow label="Hidden nodes" value={String(node.hiddenNodeCount)} />
         <DetailRow label="Internal edges" value={String(node.hiddenEdgeCount)} />
         <DetailRow label="Flow range" value={`${node.flowOrderStart}-${node.flowOrderEnd}`} />
@@ -468,14 +469,13 @@ function NodeInspector({ node, importanceLabels }: {
 
   return (
     <>
-      <h3>{nodeLabel(node.nodeType, node.data, node.startMessage, node.name)}</h3>
-      {node.name && (
+      {node.name && node.name !== node.startMessage && (
         <DetailRow label="Name" value={node.name} />
       )}
       <DetailRow label="ID" value={node.id} />
       <DetailRow label="Type" value={node.nodeType} />
       <DetailRow label="Importance" value={formatImportance(node.importanceLevel, importanceLabels)} />
-      {node.startMessage && node.startMessage !== node.name && (
+      {node.startMessage && (
         <DetailRow label="Label" value={node.startMessage} />
       )}
       <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
@@ -488,7 +488,6 @@ function NodeInspector({ node, importanceLabels }: {
 function EdgeInspector({ edge }: { edge: ProjectedFlowEdge }) {
   return (
     <>
-      <h3>{edge.edgeType}</h3>
       <DetailRow label="From" value={shortId(edge.fromNodeId, 18)} />
       <DetailRow label="To" value={shortId(edge.toNodeId, 18)} />
       <DetailRow label="Count" value={String(edge.edgeCount)} />
