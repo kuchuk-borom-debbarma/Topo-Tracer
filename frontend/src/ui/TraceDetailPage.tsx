@@ -352,22 +352,25 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
   const node = props.data.value;
 
   if (node.kind === "ghost") {
-    const typeEntries = Object.entries(node.nodeTypeCounts);
-    const visibleTypes = typeEntries.slice(0, 5);
+    const typeEntries = Object.entries(node.nodeTypeCounts)
+      .sort((a, b) => b[1] - a[1]);
+    const MAX_TYPES = 5;
+    const visibleTypes = typeEntries.slice(0, MAX_TYPES);
     const hiddenTypeCount = typeEntries.length - visibleTypes.length;
+
     return (
       <div className={`trace-node-card ghost ${props.data.selected ? "selected" : ""}`}>
         <Handle type="target" position={Position.Left} />
         <div className="node-card-top">
           <span className="node-kind-icon ghost"><Icon name="layers" /></span>
-          <strong className="node-importance">{node.hiddenNodeCount} hidden</strong>
+          <strong className="node-ghost-title">{node.hiddenNodeCount} hidden</strong>
         </div>
         {visibleTypes.length > 0 && (
           <ul className="node-data-list">
             {visibleTypes.map(([type, count]) => (
               <li key={type} className="node-data-entry">
                 <span className="node-data-key">{type}</span>
-                <span className="node-data-val">{String(count)}</span>
+                <span className="node-data-val">{count}</span>
               </li>
             ))}
             {hiddenTypeCount > 0 && (
@@ -611,8 +614,6 @@ function buildFlow(
     },
     style: {
       width: NODE_WIDTH,
-      minHeight: NODE_HEIGHT,
-      overflow: "visible",
     },
   }));
 
