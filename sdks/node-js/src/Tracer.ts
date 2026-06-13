@@ -154,15 +154,38 @@ export class Tracer {
    * in the topological flow of the trace graph.
    *
    * @param message - The log message (becomes the node name/label).
+   * @param importanceLevel - Optional importance override.
+   */
+  log(message: string, importanceLevel?: number | Importance): void;
+  /**
+   * Captures a log message within the current trace context with metadata.
+   *
+   * @param message - The log message (becomes the node name/label).
    * @param data - Optional key/value metadata for the log.
    * @param importanceLevel - Optional importance override.
    */
-  log(message: string, data?: Record<string, string>, importanceLevel?: number | Importance): void {
+  log(message: string, data?: Record<string, string>, importanceLevel?: number | Importance): void;
+  log(
+    message: string,
+    dataOrImportance?: Record<string, string> | number | Importance,
+    importanceLevel?: number | Importance
+  ): void {
+    let finalData: Record<string, string> | undefined = undefined;
+    let finalImportance: number | Importance | undefined = importanceLevel;
+
+    if (dataOrImportance !== undefined && dataOrImportance !== null) {
+      if (typeof dataOrImportance === "number") {
+        finalImportance = dataOrImportance;
+      } else if (typeof dataOrImportance === "object") {
+        finalData = dataOrImportance as Record<string, string>;
+      }
+    }
+
     const span = this.startNode({
       name: message,
       type: "log",
-      data,
-      importanceLevel,
+      data: finalData,
+      importanceLevel: finalImportance,
     });
     span.end();
   }

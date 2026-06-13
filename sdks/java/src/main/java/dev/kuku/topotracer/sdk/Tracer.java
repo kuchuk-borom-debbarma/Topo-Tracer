@@ -270,6 +270,13 @@ public class Tracer {
     }
 
     /**
+     * Captures a log message with importance level within the current trace context.
+     */
+    public void log(String message, Integer importanceLevel) {
+        log(message, null, importanceLevel);
+    }
+
+    /**
      * Captures a log message with metadata and importance level within the current trace context.
      */
     public void log(String message, Map<String, String> data, Integer importanceLevel) {
