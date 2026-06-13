@@ -36,6 +36,7 @@ export class MockAuthRepo extends IAuthRepo {
     name: data.name,
     keyHash: data.keyHash,
     keyPrefix: data.keyPrefix,
+    keyVal: data.keyVal ?? null,
     createdAt: new Date(),
     lastUsedAt: null,
     revokedAt: null,

@@ -57,6 +57,7 @@ export abstract class IAuthRepo {
     name: string;
     keyHash: string;
     keyPrefix: string;
+    keyVal?: string;
   }): Promise<ApiKeyRow>;
 
   abstract listApiKeys(userId: string): Promise<ApiKeyRow[]>;

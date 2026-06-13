@@ -368,6 +368,7 @@ export class AuthServiceImpl extends IAuthService {
       name,
       keyHash,
       keyPrefix: key.slice(0, 10),
+      keyVal: key,
     });
 
     return {
@@ -389,7 +390,7 @@ export class AuthServiceImpl extends IAuthService {
     return crypto.createHash("sha256").update(apiKey).digest("hex");
   }
 
-  private mapApiKey(row: { id: string; name: string; keyPrefix: string; createdAt: Date; lastUsedAt: Date | null; revokedAt: Date | null }): ApiKey {
+  private mapApiKey(row: { id: string; name: string; keyPrefix: string; keyVal: string | null; createdAt: Date; lastUsedAt: Date | null; revokedAt: Date | null }): ApiKey {
     return {
       id: row.id,
       name: row.name,
@@ -397,6 +398,7 @@ export class AuthServiceImpl extends IAuthService {
       createdAt: row.createdAt,
       lastUsedAt: row.lastUsedAt,
       revokedAt: row.revokedAt,
+      key: row.keyVal ?? undefined,
     };
   }
 }

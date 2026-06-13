@@ -18,6 +18,7 @@ export type ApiKey = {
   createdAt: Date;
   lastUsedAt: Date | null;
   revokedAt: Date | null;
+  key?: string;
 };
 
 export type CreatedApiKey = ApiKey & {

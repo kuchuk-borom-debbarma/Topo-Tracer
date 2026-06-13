@@ -20,6 +20,7 @@ export type ApiKeyRow = {
   name: string;
   keyHash: string;
   keyPrefix: string;
+  keyVal: string | null;
   createdAt: Date;
   lastUsedAt: Date | null;
   revokedAt: Date | null;

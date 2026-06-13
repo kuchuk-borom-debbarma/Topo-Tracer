@@ -297,24 +297,25 @@ export class AuthRepoPg extends IAuthRepo {
     }
   }
 
-async insertApiKey(data: {
+  async insertApiKey(data: {
     userId: string;
     name: string;
     keyHash: string;
     keyPrefix: string;
+    keyVal?: string;
   }): Promise<ApiKeyRow> {
     const id = crypto.randomUUID();
     const rows = await this.sql<any[]>`
-      INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, created_at)
-      VALUES (${id}, ${data.userId}, ${data.name}, ${data.keyHash}, ${data.keyPrefix}, NOW())
-      RETURNING id, user_id, name, key_hash, key_prefix, created_at, last_used_at, revoked_at
+      INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, key_val, created_at)
+      VALUES (${id}, ${data.userId}, ${data.name}, ${data.keyHash}, ${data.keyPrefix}, ${data.keyVal ?? null}, NOW())
+      RETURNING id, user_id, name, key_hash, key_prefix, key_val, created_at, last_used_at, revoked_at
     `;
     return mapApiKeyRow(rows[0]);
   }
 
   async listApiKeys(userId: string): Promise<ApiKeyRow[]> {
     const rows = await this.sql<any[]>`
-      SELECT id, user_id, name, key_hash, key_prefix, created_at, last_used_at, revoked_at
+      SELECT id, user_id, name, key_hash, key_prefix, key_val, created_at, last_used_at, revoked_at
       FROM api_keys
       WHERE user_id = ${userId}
       ORDER BY created_at DESC
@@ -371,6 +372,7 @@ function mapApiKeyRow(row: any): ApiKeyRow {
     name: row.name,
     keyHash: row.key_hash,
     keyPrefix: row.key_prefix,
+    keyVal: row.key_val ?? null,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at ?? null,
     revokedAt: row.revoked_at ?? null,

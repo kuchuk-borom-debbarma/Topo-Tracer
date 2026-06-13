@@ -12,8 +12,8 @@ export function ApiKeysPage() {
   const [copied, setCopied] = useState(false);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
-  const handleCopyPrefix = (keyId: string, prefix: string) => {
-    navigator.clipboard.writeText(prefix);
+  const handleCopyKey = (keyId: string, fullKey: string | undefined, prefix: string) => {
+    navigator.clipboard.writeText(fullKey || prefix);
     setCopiedKeyId(keyId);
     setTimeout(() => setCopiedKeyId(null), 2000);
   };
@@ -113,8 +113,8 @@ export function ApiKeysPage() {
                 </code>
                 <button
                   type="button"
-                  title="Copy key prefix"
-                  onClick={() => handleCopyPrefix(apiKey.id, apiKey.keyPrefix)}
+                  title={apiKey.key ? "Copy API key" : "Copy key prefix"}
+                  onClick={() => handleCopyKey(apiKey.id, apiKey.key, apiKey.keyPrefix)}
                   style={{
                     background: "none",
                     border: "none",
