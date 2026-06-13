@@ -5,7 +5,6 @@ import dev.kuku.topotracer.sdk.TraceContext;
 import dev.kuku.topotracer.sdk.TraceOptions;
 import dev.kuku.topotracer.sdk.Tracer;
 import dev.kuku.topotracer.sdk.TopoImportance;
-import dev.kuku.topotracer.sdk.TopoNodeType;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -50,11 +49,7 @@ public class TracingAspect {
         // Determine node type from String or Enum
         String nodeType = traced.nodeType();
         if (nodeType.isEmpty()) {
-            if (traced.type() == TopoNodeType.METHOD) {
-                nodeType = signature.getDeclaringType().getSimpleName();
-            } else {
-                nodeType = traced.type().getValue();
-            }
+            nodeType = traced.type().getValue();
         }
 
         TraceOptions options = TraceOptions.builder()
