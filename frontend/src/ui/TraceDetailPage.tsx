@@ -368,7 +368,7 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
         <span className="node-kind-icon"><Icon name="activity" /></span>
         <strong>{formatImportance(node.importanceLevel, props.data.importanceLabels)}</strong>
       </div>
-      <h3>{nodeLabel(node.nodeType, node.data)}</h3>
+      <h3>{nodeLabel(node.nodeType, node.data, node.startMessage)}</h3>
       <p>{node.nodeType}</p>
       <small>{formatTime(node.startedAt)} · #{node.flowOrder}</small>
       <Handle type="source" position={Position.Right} />
@@ -392,7 +392,7 @@ function Inspector(props: {
   const subtitle = props.selected.type === "node"
     ? props.selected.value.kind === "ghost"
       ? `${props.selected.value.hiddenNodeCount} hidden nodes`
-      : nodeLabel(props.selected.value.nodeType, props.selected.value.data)
+      : nodeLabel(props.selected.value.nodeType, props.selected.value.data, props.selected.value.kind === "normal" ? props.selected.value.startMessage : undefined)
     : props.selected.value.edgeType;
 
   return (
@@ -438,7 +438,7 @@ function NodeInspector({ node, importanceLabels }: {
 
   return (
     <>
-      <h3>{nodeLabel(node.nodeType, node.data)}</h3>
+      <h3>{nodeLabel(node.nodeType, node.data, node.startMessage)}</h3>
       <DetailRow label="Type" value={node.nodeType} />
       <DetailRow label="Importance" value={formatImportance(node.importanceLevel, importanceLabels)} />
       <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />

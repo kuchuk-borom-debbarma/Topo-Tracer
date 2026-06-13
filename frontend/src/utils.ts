@@ -58,8 +58,8 @@ export function shortId(value: string, length = 12): string {
   return value.length <= length ? value : `${value.slice(0, length)}...`;
 }
 
-export function nodeLabel(nodeType: string, data: Record<string, string>): string {
-  return data.name || data.label || data.operation || data.title || nodeType;
+export function nodeLabel(nodeType: string, data: Record<string, string>, startMessage?: string | null): string {
+  return startMessage || data.name || data.label || data.operation || data.title || nodeType;
 }
 
 export function formatImportance(level: number, labels?: Record<number, string>): string {

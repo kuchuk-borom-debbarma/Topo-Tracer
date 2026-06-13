@@ -63,6 +63,7 @@ export type ProjectedNormalNode = {
   importanceLevel: number;
   flowOrder: number;
   materializedAt: number;
+  startMessage?: string | null;
 };
 
 export type ProjectedGhostNode = {

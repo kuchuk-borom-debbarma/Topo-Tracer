@@ -113,6 +113,7 @@ export class LogFlowProjector {
           importanceLevel: node.importanceLevel,
           flowOrder: node.flowOrder,
           materializedAt: node.materializedAt,
+          startMessage: node.startMessage,
         });
         nodeProjectionById.set(node.id, node.id);
       } else {
