@@ -1,0 +1,108 @@
+package dev.kuku.topotracer.sdk;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Options configuration builder for starting new traces or nested spans.
+ */
+public class TraceOptions {
+    private String traceName;
+    private final Map<Integer, String> importanceLabels = new HashMap<>();
+    private Integer importanceLevel;
+    private boolean dynamicImportance = false;
+    private String traceId;
+    private String parentSpanId;
+    private String nodeType;
+    private final Map<String, String> data = new HashMap<>();
+
+    public static TraceOptions builder() {
+        return new TraceOptions();
+    }
+
+    public TraceOptions traceName(String traceName) {
+        this.traceName = traceName;
+        return this;
+    }
+
+    public TraceOptions importanceLabels(Map<Integer, String> importanceLabels) {
+        if (importanceLabels != null) {
+            this.importanceLabels.putAll(importanceLabels);
+        }
+        return this;
+    }
+
+    public TraceOptions importanceLabel(int level, String label) {
+        this.importanceLabels.put(level, label);
+        return this;
+    }
+
+    public TraceOptions importanceLevel(Integer importanceLevel) {
+        this.importanceLevel = importanceLevel;
+        return this;
+    }
+
+    public TraceOptions dynamicImportance(boolean dynamicImportance) {
+        this.dynamicImportance = dynamicImportance;
+        return this;
+    }
+
+    public TraceOptions traceId(String traceId) {
+        this.traceId = traceId;
+        return this;
+    }
+
+    public TraceOptions parentSpanId(String parentSpanId) {
+        this.parentSpanId = parentSpanId;
+        return this;
+    }
+
+    public TraceOptions nodeType(String nodeType) {
+        this.nodeType = nodeType;
+        return this;
+    }
+
+    public TraceOptions data(Map<String, String> data) {
+        if (data != null) {
+            this.data.putAll(data);
+        }
+        return this;
+    }
+
+    public TraceOptions attribute(String key, String value) {
+        this.data.put(key, value);
+        return this;
+    }
+
+    public String getTraceName() {
+        return traceName;
+    }
+
+    public Map<Integer, String> getImportanceLabels() {
+        return importanceLabels;
+    }
+
+    public Integer getImportanceLevel() {
+        return importanceLevel;
+    }
+
+    public boolean isDynamicImportance() {
+        return dynamicImportance;
+    }
+
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public String getParentSpanId() {
+        return parentSpanId;
+    }
+
+    public String getNodeType() {
+        return nodeType;
+    }
+
+    public Map<String, String> getData() {
+        return data;
+    }
+}
