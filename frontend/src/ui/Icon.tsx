@@ -18,7 +18,9 @@ export type IconName =
   | "shield"
   | "spark"
   | "terminal"
-  | "x";
+  | "x"
+  | "copy"
+  | "check";
 
 export function Icon({
   name,
@@ -59,4 +61,6 @@ const paths: Record<IconName, React.ReactNode> = {
   spark: <><path d="m12 3 1.4 4.6L18 9l-4.6 1.4L12 15l-1.4-4.6L6 9l4.6-1.4Z" /><path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z" /></>,
   terminal: <><path d="m5 7 4 4-4 4" /><path d="M12 17h7" /></>,
   x: <><path d="m6 6 12 12M18 6 6 18" /></>,
+  copy: <><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>,
+  check: <><path d="M20 6 9 17l-5-5" /></>,
 };

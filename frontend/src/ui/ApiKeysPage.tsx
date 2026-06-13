@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { createApiKey, fetchApiKeys, revokeApiKey } from "../api";
 import { formatDate, relativeTime } from "../utils";
+import { Icon } from "./Icon";
 
 export function ApiKeysPage() {
   const queryClient = useQueryClient();
@@ -9,6 +10,13 @@ export function ApiKeysPage() {
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   const [copied, setCopied] = useState(false);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+
+  const handleCopyPrefix = (keyId: string, prefix: string) => {
+    navigator.clipboard.writeText(prefix);
+    setCopiedKeyId(keyId);
+    setTimeout(() => setCopiedKeyId(null), 2000);
+  };
 
   const apiKeysQuery = useQuery({
     queryKey: ["api-keys"],
@@ -99,8 +107,28 @@ export function ApiKeysPage() {
           <article className="settings-list-row" key={apiKey.id}>
             <div>
               <strong>{apiKey.name}</strong>
-              <small>
-                {apiKey.keyPrefix}... · Created {formatDate(Date.parse(apiKey.createdAt))}
+              <small style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                <code style={{ background: "rgba(0,0,0,0.04)", padding: "1px 4px", borderRadius: "3px", fontFamily: "monospace" }}>
+                  {apiKey.keyPrefix}...
+                </code>
+                <button
+                  type="button"
+                  title="Copy key prefix"
+                  onClick={() => handleCopyPrefix(apiKey.id, apiKey.keyPrefix)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "2px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    color: copiedKeyId === apiKey.id ? "#2ec4b6" : "#888",
+                    transition: "color 0.2s ease",
+                  }}
+                >
+                  <Icon name={copiedKeyId === apiKey.id ? "check" : "copy"} style={{ width: "12px", height: "12px" }} />
+                </button>
+                <span>· Created {formatDate(Date.parse(apiKey.createdAt))}</span>
                 {apiKey.lastUsedAt ? ` · Used ${relativeTime(Date.parse(apiKey.lastUsedAt))}` : ""}
               </small>
             </div>
