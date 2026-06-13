@@ -6100,29 +6100,74 @@ body {
 }
 
 .graph-importance-control {
-  background: #ffffff;
+  background: #f7f9fb;
   border: 1px solid rgba(24, 33, 47, 0.08);
   border-radius: 12px;
   align-items: center;
   display: grid !important;
   gap: 6px;
-  grid-template-columns: max-content minmax(260px, 1fr);
+  grid-template-columns: max-content minmax(180px, 1fr);
   min-width: 0;
-  padding: 8px 12px;
+  padding: 7px 12px;
 }
 
 .graph-importance-control span {
   align-items: center;
+  color: #2f3b4b;
   display: flex;
-  gap: 7px;
+  font-size: 0.67rem;
+  font-weight: 700;
+  gap: 6px;
+  letter-spacing: 0.07em;
   line-height: 1;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .graph-importance-control input[type="range"] {
-  accent-color: #14845f;
-  height: 22px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 20px;
   width: 100%;
+}
+
+.graph-importance-control input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, #14845f var(--pct, 50%), #d8e4ed var(--pct, 50%));
+  border-radius: 999px;
+  height: 5px;
+}
+
+.graph-importance-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  background: #14845f;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(20, 132, 95, 0.35);
+  height: 16px;
+  margin-top: -5.5px;
+  width: 16px;
+}
+
+.graph-importance-control input[type="range"]::-moz-range-track {
+  background: #d8e4ed;
+  border-radius: 999px;
+  height: 5px;
+}
+
+.graph-importance-control input[type="range"]::-moz-range-progress {
+  background: #14845f;
+  border-radius: 999px;
+  height: 5px;
+}
+
+.graph-importance-control input[type="range"]::-moz-range-thumb {
+  background: #14845f;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(20, 132, 95, 0.35);
+  height: 16px;
+  width: 16px;
 }
 
 .graph-toolbar-close {
@@ -6135,13 +6180,12 @@ body {
   background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
   border: 1px solid #d8e0ea;
   border-radius: 12px;
-  box-shadow: 0 16px 34px rgba(18, 31, 48, 0.12);
+  box-shadow: 0 4px 18px rgba(18, 31, 48, 0.09);
   color: var(--flow-ink);
   min-height: 88px;
-  overflow: hidden;
-  padding: 12px;
+  padding: 12px 14px;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-  width: 228px;
+  width: 268px;
 }
 
 .trace-node-card::after {
@@ -6200,10 +6244,14 @@ body {
 }
 
 .trace-node-card h3 {
-  color: var(--flow-ink);
-  font-size: 0.92rem;
-  line-height: 1.2;
-  margin: 10px 18px 3px 0;
+  color: #1a2e3b;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 6px 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trace-node-card p,
@@ -6211,6 +6259,146 @@ body {
   color: var(--flow-muted);
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+/* Node card new layout elements — light theme */
+
+.node-card-top {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.node-badge {
+  background: rgba(20, 132, 95, 0.10);
+  border: 1px solid rgba(20, 132, 95, 0.20);
+  border-radius: 6px;
+  color: #0e7a5a;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  max-width: 140px;
+  overflow: hidden;
+  padding: 2px 7px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Per node-type badge accent colors */
+.node-badge[data-type="controller"] { background: rgba(92, 124, 250, 0.10); border-color: rgba(92, 124, 250, 0.22); color: #3b56c9; }
+.node-badge[data-type="service"]    { background: rgba(20, 132, 95, 0.10);  border-color: rgba(20, 132, 95, 0.22);  color: #0e7a5a; }
+.node-badge[data-type="method"]     { background: rgba(126, 87, 194, 0.10); border-color: rgba(126, 87, 194, 0.22); color: #5e3d99; }
+.node-badge[data-type="db-call"]    { background: rgba(234, 88, 12, 0.10);  border-color: rgba(234, 88, 12, 0.22);  color: #c2490a; }
+.node-badge[data-type="remote-call"]{ background: rgba(2, 132, 199, 0.10);  border-color: rgba(2, 132, 199, 0.22);  color: #0369a1; }
+.node-badge[data-type="io"]         { background: rgba(217, 119, 6, 0.10);  border-color: rgba(217, 119, 6, 0.22);  color: #92600a; }
+
+.node-importance {
+  color: #6b7f93;
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.node-name {
+  color: #1a2e3b;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin: 6px 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-start-msg {
+  color: #6b7f93;
+  font-size: 0.72rem;
+  font-style: italic;
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Data entries on the node card — light theme */
+.node-data-list {
+  border-top: 1px solid #e8eef4;
+  list-style: none;
+  margin: 6px 0 4px;
+  padding: 5px 0 0;
+}
+
+.node-data-entry {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.node-data-key {
+  color: #8fa5b8;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.node-data-val {
+  color: #2f4459;
+  font-size: 9.5px;
+  font-weight: 500;
+  max-width: 150px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-data-more {
+  color: #14845f;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding-top: 2px;
+  text-align: right;
+}
+
+.node-card-footer {
+  align-items: center;
+  border-top: 1px solid #e8eef4;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 5px;
+}
+
+.node-id-pill {
+  background: #f0f4f8;
+  border: 1px solid #dce5ef;
+  border-radius: 5px;
+  color: #8fa5b8;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  font-size: 8.5px;
+  padding: 1px 6px;
+}
+
+.node-card-footer small {
+  color: #8fa5b8;
+  font-size: 9px;
 }
 
 .react-flow__edge-path {

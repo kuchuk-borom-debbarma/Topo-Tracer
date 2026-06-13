@@ -37,9 +37,9 @@ import {
 } from "../utils";
 import { Icon } from "./Icon";
 
-const NODE_WIDTH = 248;
+const NODE_WIDTH = 268;
 const NODE_HEIGHT = 96;
-const COLUMN_GAP = 300;
+const COLUMN_GAP = 320;
 const ROW_GAP = 130;
 
 type SelectedItem =
@@ -277,7 +277,12 @@ function GraphToolbar(props: {
           max={max}
           step={1}
           value={props.threshold}
-          onChange={(event) => props.onThresholdChange(Number(event.target.value))}
+          style={{ "--pct": `${((props.threshold - min) / Math.max(1, max - min)) * 100}%` } as React.CSSProperties}
+          onChange={(event) => {
+            const val = Number(event.target.value);
+            event.currentTarget.style.setProperty("--pct", `${((val - min) / Math.max(1, max - min)) * 100}%`);
+            props.onThresholdChange(val);
+          }}
         />
       </label>
       {props.hasSelection && (
@@ -371,7 +376,7 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
     <div className={`trace-node-card ${props.data.selected ? "selected" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="node-card-top">
-        <span className="node-badge">{node.nodeType}</span>
+        <span className="node-badge" data-type={node.nodeType.toLowerCase()}>{node.nodeType}</span>
         <span className="node-importance">{formatImportance(node.importanceLevel, props.data.importanceLabels)}</span>
       </div>
       <h3 className="node-name" title={displayName}>{displayName}</h3>
@@ -591,8 +596,6 @@ function buildFlow(
     style: {
       width: NODE_WIDTH,
       minHeight: NODE_HEIGHT,
-      backgroundColor: node.kind === "ghost" ? "#f8fafc" : "#ffffff",
-      borderColor: selected?.type === "node" && selected.value.id === node.id ? "#12845f" : "#d8e0ea",
     },
   }));
 
