@@ -256,42 +256,25 @@ export class LogServiceImpl extends ILogService {
     );
     const offset = (page - 1) * limit;
 
-    let result = await InternalTracer.trace(
+    // PERFORMANCE: Push 'excludeInternal' filtering down to SQL to avoid redundant roundtrips and over-fetching
+    const result = await InternalTracer.trace(
       "loadTraceSummaries",
-      () => this.readRepo.loadTraceSummaries({
-        userId: data.userId,
-        paging: { offset, limit },
-      }),
+      () =>
+        this.readRepo.loadTraceSummaries({
+          userId: data.userId,
+          paging: { offset, limit },
+          filter: { excludeInternal: true },
+        }),
       { type: "db", importanceLevel: 1 },
     );
 
-    const traces = result.items.filter((summary) => !this.isInternalTraceSummary(summary));
-    let nextOffset = offset + limit;
-    while (traces.length < limit && result.hasMore) {
-      result = await InternalTracer.trace(
-        "loadTraceSummaries",
-        () => this.readRepo.loadTraceSummaries({
-          userId: data.userId,
-          paging: { offset: nextOffset, limit },
-        }),
-        { type: "db", importanceLevel: 1 },
-      );
-      traces.push(...result.items.filter((summary) => !this.isInternalTraceSummary(summary)));
-      nextOffset += limit;
-    }
-
-    const pageItemCount = Math.min(traces.length, limit);
-    const visibleTotalCount = result.hasMore
-      ? Math.max(result.totalCount, offset + pageItemCount + 1)
-      : offset + pageItemCount;
-
-    const totalPages = visibleTotalCount === 0
-      ? 0
-      : Math.ceil(visibleTotalCount / limit);
+    const traces = result.items;
+    const totalCount = result.totalCount;
+    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / limit);
 
     return {
-      traces: traces.slice(0, limit),
-      totalCount: visibleTotalCount,
+      traces,
+      totalCount,
       page,
       limit,
       totalPages,

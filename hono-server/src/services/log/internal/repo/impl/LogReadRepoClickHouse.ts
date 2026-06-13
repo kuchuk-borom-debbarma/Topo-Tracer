@@ -654,10 +654,40 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
   async loadTraceSummaries(params: {
     userId: string;
     paging: PagingParams;
+    filter?: {
+      excludeInternal?: boolean;
+    };
   }): Promise<PagedResult<ReadTraceSummary>> {
     const limit = Math.min(Math.max(params.paging.limit, 1), 100);
     const offset = Math.max(params.paging.offset, 0);
     const client = this.getClient();
+
+    let filterClause = "WHERE s.user_id = {userId:String}";
+    const queryParams: any = {
+      userId: params.userId,
+      limit: limit + 1,
+      offset,
+    };
+
+    if (params.filter?.excludeInternal) {
+      // D-01: Performance fix: Push 'isInternalTrace' logic into SQL to avoid redundant roundtrips
+      // Criteria matches LogServiceImpl.isInternalTraceSummary but executed at the database layer.
+      filterClause += `
+        AND s.user_id != 'system-self-tracing'
+        AND NOT (
+          s.name LIKE 'GET /api/%' OR 
+          s.name LIKE 'POST /api/%' OR 
+          s.name LIKE 'PUT /api/%' OR 
+          s.name LIKE 'PATCH /api/%' OR 
+          s.name LIKE 'DELETE /api/%'
+        )
+        AND NOT hasAny(
+          arrayMap(x -> lower(x), mapValues(s.importance_labels)), 
+          ['api', 'cpu', 'db', 'eventbus', 'internal']
+        )
+      `;
+    }
+
     const result = await client.query({
       query: `
         SELECT *, count(*) OVER() as total_trace_count
@@ -683,7 +713,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(s.diagnostic_clock_skew_count, s.materialized_at_ms) as diagnostic_clock_skew_count,
             argMax(s.diagnostic_limit_exceeded_count, s.materialized_at_ms) as diagnostic_limit_exceeded_count
           FROM ${CLICKHOUSE_TRACE_SUMMARIES_TABLE} s
-          WHERE s.user_id = {userId:String}
+          ${filterClause}
           GROUP BY s.trace_id
         )
         ORDER BY materialized_at_ms DESC, trace_id ASC
@@ -691,11 +721,7 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         OFFSET {offset:UInt32}
       `,
       format: "JSON",
-      query_params: {
-        userId: params.userId,
-        limit: limit + 1,
-        offset,
-      },
+      query_params: queryParams,
     });
 
     const jsonRes = await result.json<any>();

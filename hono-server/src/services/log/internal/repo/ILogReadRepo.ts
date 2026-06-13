@@ -120,10 +120,13 @@ export abstract class ILogReadRepo {
   }): Promise<ReadTraceSummary | null>;
 
   /**
-   * Lists latest materialized summaries for a user within a bounded page.
+   * Filter criteria for trace summaries.
    */
   abstract loadTraceSummaries(params: {
     userId: string;
     paging: PagingParams;
+    filter?: {
+      excludeInternal?: boolean;
+    };
   }): Promise<PagedResult<ReadTraceSummary>>;
 }
