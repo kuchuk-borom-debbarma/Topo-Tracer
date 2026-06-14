@@ -38,7 +38,8 @@ public class TopoTracerAutoConfiguration {
             .maxRetries(properties.getMaxRetries())
             .retryDelayMs(properties.getRetryDelayMs())
             .nodeTypeImportanceMapping(properties.getNodeTypeImportanceMapping())
-            .ignoreFailures(properties.isIgnoreFailures());
+            .ignoreFailures(properties.isIgnoreFailures())
+            .importanceLabels(properties.getImportanceLabels());
 
         logHooksProvider.orderedStream().forEach(builder::addLogHook);
         traceHooksProvider.orderedStream().forEach(builder::addTraceHook);

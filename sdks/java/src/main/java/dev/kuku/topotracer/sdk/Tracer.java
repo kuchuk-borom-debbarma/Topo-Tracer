@@ -40,6 +40,7 @@ public class Tracer {
     private final List<LogHook> logHooks;
     private final List<TraceHook> traceHooks;
     private final boolean ignoreFailures;
+    private final Map<Integer, String> importanceLabels;
 
     private final List<IngestTraceStart> traceStartsBuffer = new ArrayList<>();
     private final List<IngestNodeStart> nodeStartsBuffer = new ArrayList<>();
@@ -66,6 +67,7 @@ public class Tracer {
         private boolean ignoreFailures = true;
         private final List<LogHook> logHooks = new ArrayList<>();
         private final List<TraceHook> traceHooks = new ArrayList<>();
+        private final Map<Integer, String> importanceLabels = new HashMap<>();
 
         public Builder endpoint(String endpoint) {
             this.endpoint = endpoint;
@@ -131,6 +133,27 @@ public class Tracer {
             return this;
         }
 
+        public Builder importanceLabels(Map<Integer, String> labels) {
+            if (labels != null) {
+                this.importanceLabels.putAll(labels);
+            }
+            return this;
+        }
+
+        public Builder importanceLabel(int level, String label) {
+            this.importanceLabels.put(level, label);
+            return this;
+        }
+
+        public Builder importance(Importance... importances) {
+            for (Importance imp : importances) {
+                if (imp != null && imp.getLabel() != null) {
+                    this.importanceLabels.put(imp.getLevel(), imp.getLabel());
+                }
+            }
+            return this;
+        }
+
         private final Map<String, Integer> nodeTypeImportanceMapping = new HashMap<>();
 
         public Builder nodeTypeImportanceMapping(Map<String, Integer> nodeTypeImportanceMapping) {
@@ -171,6 +194,7 @@ public class Tracer {
         this.ignoreFailures = builder.ignoreFailures;
         this.logHooks = Collections.unmodifiableList(new ArrayList<>(builder.logHooks));
         this.traceHooks = Collections.unmodifiableList(new ArrayList<>(builder.traceHooks));
+        this.importanceLabels = Collections.unmodifiableMap(new HashMap<>(builder.importanceLabels));
 
         Map<String, Integer> mappings = new ConcurrentHashMap<>();
         // Default mappings
@@ -294,21 +318,21 @@ public class Tracer {
      * Logs are treated as nodes (spans) with type 'log'.
      */
     public void log(String message) {
-        log(message, null, null);
+        log(message, (Map<String, String>) null, (Integer) null);
     }
 
     /**
      * Captures a log message with metadata within the current trace context.
      */
     public void log(String message, Map<String, String> data) {
-        log(message, data, null);
+        log(message, data, (Integer) null);
     }
 
     /**
      * Captures a log message with importance level within the current trace context.
      */
     public void log(String message, Integer importanceLevel) {
-        log(message, null, importanceLevel);
+        log(message, (Map<String, String>) null, importanceLevel);
     }
 
     /**
@@ -328,6 +352,36 @@ public class Tracer {
             .nodeType("log")
             .data(data)
             .importanceLevel(importanceLevel);
+
+        Span span = startNode(message, options);
+        span.end();
+    }
+
+    /**
+     * Captures a log message with typed Importance level within the current trace context.
+     */
+    public void log(String message, Importance importance) {
+        log(message, (Map<String, String>) null, importance);
+    }
+
+    /**
+     * Captures a log message with metadata and typed Importance level within the current trace context.
+     */
+    public void log(String message, Map<String, String> data, Importance importance) {
+        Map<String, String> finalData = data != null ? data : Collections.emptyMap();
+        Integer levelVal = importance != null ? importance.getLevel() : null;
+        for (LogHook hook : logHooks) {
+            try {
+                hook.onLog(message, finalData, levelVal);
+            } catch (Exception e) {
+                log.error("[Topo-Tracer SDK] Error in LogHook", e);
+            }
+        }
+
+        TraceOptions options = TraceOptions.builder()
+            .nodeType("log")
+            .data(data)
+            .importance(importance);
 
         Span span = startNode(message, options);
         span.end();
@@ -408,10 +462,17 @@ public class Tracer {
         List<IngestTraceStart> traceStarts = new ArrayList<>();
         // If starting a NEW trace (no traceId provided in options and no current active context)
         if (opts.getTraceId() == null && currentParent == null) {
+            Map<Integer, String> mergedLabels = new HashMap<>();
+            if (this.importanceLabels != null) {
+                mergedLabels.putAll(this.importanceLabels);
+            }
+            if (opts.getImportanceLabels() != null) {
+                mergedLabels.putAll(opts.getImportanceLabels());
+            }
             traceStarts.add(new IngestTraceStart(
                 traceId,
                 opts.getTraceName(),
-                opts.getImportanceLabels(),
+                mergedLabels,
                 System.currentTimeMillis()
             ));
         }

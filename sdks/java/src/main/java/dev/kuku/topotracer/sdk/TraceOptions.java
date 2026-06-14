@@ -43,14 +43,35 @@ public class TraceOptions {
         return this;
     }
 
-    public TraceOptions importance(TopoImportance importance) {
+    public TraceOptions importance(Importance importance) {
         if (importance != null) {
-            if (importance == TopoImportance.DYNAMIC) {
+            if (importance.getLevel() == -1) {
                 this.dynamicImportance = true;
                 this.importanceLevel = null;
             } else {
                 this.importanceLevel = importance.getLevel();
                 this.dynamicImportance = false;
+            }
+            if (importance.getLabel() != null) {
+                this.importanceLabels.put(importance.getLevel(), importance.getLabel());
+            }
+        }
+        return this;
+    }
+
+    @Deprecated
+    public TraceOptions importance(TopoImportance importance) {
+        if (importance != null) {
+            if (importance == TopoImportance.DYNAMIC) {
+                return importance(DefaultImportance.DYNAMIC);
+            } else if (importance == TopoImportance.CRITICAL) {
+                return importance(DefaultImportance.CRITICAL);
+            } else if (importance == TopoImportance.HIGH) {
+                return importance(DefaultImportance.HIGH);
+            } else if (importance == TopoImportance.MEDIUM) {
+                return importance(DefaultImportance.MEDIUM);
+            } else if (importance == TopoImportance.LOW) {
+                return importance(DefaultImportance.LOW);
             }
         }
         return this;

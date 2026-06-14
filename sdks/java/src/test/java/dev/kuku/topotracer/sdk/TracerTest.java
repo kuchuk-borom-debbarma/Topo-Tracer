@@ -356,4 +356,110 @@ public class TracerTest {
 
         tracer.shutdown();
     }
+
+    private enum CustomEnum {
+        FATAL, WARNING, DEBUG
+    }
+
+    private static class CustomImportance extends TypedImportance<CustomEnum> {
+        public static final CustomImportance FATAL = new CustomImportance(CustomEnum.FATAL, 10, "Fatal Alert");
+        public static final CustomImportance WARNING = new CustomImportance(CustomEnum.WARNING, 20, "Warning Alert");
+        public static final CustomImportance DEBUG = new CustomImportance(CustomEnum.DEBUG, 30, "Debug Detail");
+
+        private CustomImportance(CustomEnum value, int level, String label) {
+            super(value, level, label);
+        }
+    }
+
+    @Test
+    public void testCustomTypedImportanceSystem() throws Exception {
+        List<IngestBatch> batches = new ArrayList<>();
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .maxRetries(1)
+            .retryDelayMs(1)
+            .flushIntervalMs(0)
+            .importance(CustomImportance.FATAL, CustomImportance.WARNING, CustomImportance.DEBUG)
+            .onDrop(batches::add)
+            .build();
+
+        TraceOptions options = TraceOptions.builder()
+            .traceName("Custom Typed Trace")
+            .importance(CustomImportance.FATAL);
+
+        tracer.trace("root-custom", () -> {
+            Span root = TraceContext.getActive();
+            assertNotNull(root);
+            assertEquals(10, root.getImportanceLevel());
+
+            tracer.log("child-custom-log", CustomImportance.WARNING);
+        }, options);
+
+        tracer.shutdown();
+
+        assertEquals(1, batches.size());
+        IngestBatch batch = batches.get(0);
+
+        assertEquals(1, batch.traceStarts().size());
+        var traceStart = batch.traceStarts().get(0);
+        assertEquals("Custom Typed Trace", traceStart.name());
+        assertEquals("Fatal Alert", traceStart.importanceLabels().get(10));
+        assertEquals("Warning Alert", traceStart.importanceLabels().get(20));
+        assertEquals("Debug Detail", traceStart.importanceLabels().get(30));
+
+        var rootNode = batch.nodeStarts().stream()
+            .filter(n -> n.startMessage().equals("root-custom"))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(rootNode);
+        assertEquals(10, rootNode.importanceLevel());
+
+        var logNode = batch.nodeStarts().stream()
+            .filter(n -> n.startMessage().equals("child-custom-log"))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(logNode);
+        assertEquals(20, logNode.importanceLevel());
+    }
+
+    @Test
+    public void testDefaultImportanceCompatibility() throws Exception {
+        List<IngestBatch> batches = new ArrayList<>();
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .maxRetries(1)
+            .retryDelayMs(1)
+            .flushIntervalMs(0)
+            .importance(DefaultImportance.CRITICAL, DefaultImportance.HIGH, DefaultImportance.MEDIUM, DefaultImportance.LOW)
+            .onDrop(batches::add)
+            .build();
+
+        TraceOptions options = TraceOptions.builder()
+            .traceName("Default Typed Trace")
+            .importance(DefaultImportance.CRITICAL);
+
+        tracer.trace("root-default", () -> {
+            Span root = TraceContext.getActive();
+            assertNotNull(root);
+            assertEquals(0, root.getImportanceLevel());
+
+            tracer.trace("child-deprecated", () -> {
+                Span child = TraceContext.getActive();
+                assertNotNull(child);
+                assertEquals(1, child.getImportanceLevel());
+            }, TraceOptions.builder().importance(TopoImportance.HIGH));
+        }, options);
+
+        tracer.shutdown();
+
+        assertEquals(1, batches.size());
+        IngestBatch batch = batches.get(0);
+
+        assertEquals(1, batch.traceStarts().size());
+        var traceStart = batch.traceStarts().get(0);
+        assertEquals("Critical", traceStart.importanceLabels().get(0));
+        assertEquals("High", traceStart.importanceLabels().get(1));
+    }
 }
