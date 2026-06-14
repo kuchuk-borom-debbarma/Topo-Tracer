@@ -27,7 +27,8 @@ public class TopoTracerAutoConfiguration {
     @ConditionalOnMissingBean
     public Tracer topoTracer(TopoTracerProperties properties,
                               ObjectProvider<LogHook> logHooksProvider,
-                              ObjectProvider<TraceHook> traceHooksProvider) {
+                              ObjectProvider<TraceHook> traceHooksProvider,
+                              ObjectProvider<TracerBuilderCustomizer> customizers) {
         Tracer.Builder builder = new Tracer.Builder()
             .endpoint(properties.getEndpoint())
             .apiKey(properties.getApiKey())
@@ -43,9 +44,11 @@ public class TopoTracerAutoConfiguration {
 
         logHooksProvider.orderedStream().forEach(builder::addLogHook);
         traceHooksProvider.orderedStream().forEach(builder::addTraceHook);
+        customizers.orderedStream().forEach(c -> c.customize(builder));
 
         return builder.build();
     }
+
 
     @Bean
     @ConditionalOnMissingBean
