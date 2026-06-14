@@ -67,7 +67,6 @@ function countBatchEvents(batch: IngestBatch): number {
 
 interface FlowContext {
   activeSpan: Span;
-  lastChildMap: Map<string, Span>;
 }
 
 export class Tracer {
@@ -245,20 +244,7 @@ export class Tracer {
     
     let parentSpanId = options.parentSpanId;
     if (!parentSpanId && currentStore && currentParent) {
-      const prevSibling = currentStore.lastChildMap.get(currentParent.id);
-      if (prevSibling) {
-        let lastDescendant = prevSibling;
-        while (true) {
-          const child = currentStore.lastChildMap.get(lastDescendant.id);
-          if (!child) {
-            break;
-          }
-          lastDescendant = child;
-        }
-        parentSpanId = lastDescendant.id;
-      } else {
-        parentSpanId = currentParent.id;
-      }
+      parentSpanId = currentParent.id;
     }
     
     // Resolve importance level dynamically
@@ -351,18 +337,13 @@ export class Tracer {
       edgeEnds: [],
     });
 
-    if (currentStore && currentParent) {
-      currentStore.lastChildMap.set(currentParent.id, span);
-    }
-
     return span;
   }
 
   run<T>(span: Span, fn: () => T): T {
     const parentContext = this.storage.getStore();
     const newContext: FlowContext = {
-      activeSpan: span,
-      lastChildMap: parentContext ? parentContext.lastChildMap : new Map()
+      activeSpan: span
     };
     return this.storage.run(newContext, fn);
   }

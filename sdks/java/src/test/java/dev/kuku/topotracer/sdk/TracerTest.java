@@ -234,7 +234,7 @@ public class TracerTest {
     }
 
     @Test
-    public void testSequentialSiblingChainingThroughDeepestDescendant() throws Exception {
+    public void testSiblingSpansRetainTheirActualParent() throws Exception {
         List<IngestBatch> batches = new ArrayList<>();
         Tracer tracer = new Tracer.Builder()
             .endpoint("http://invalid-endpoint-for-test-fallback")
@@ -289,21 +289,26 @@ public class TracerTest {
         assertNotNull(edge1);
         assertEquals(s1.id(), edge1.fromNodeId());
 
-        // Verify s1_1 -> s1_2
+        // S1.1 and S1.2 are siblings under S1.
         var edge2 = batch.edgeStarts().stream()
             .filter(e -> e.toNodeId().equals(s1_2.id()))
             .findFirst()
             .orElse(null);
         assertNotNull(edge2);
-        assertEquals(s1_1.id(), edge2.fromNodeId());
+        assertEquals(s1.id(), edge2.fromNodeId());
 
-        // Verify s1_2 -> s2
+        // S1 and S2 are siblings under P.
         var edge3 = batch.edgeStarts().stream()
             .filter(e -> e.toNodeId().equals(s2.id()))
             .findFirst()
             .orElse(null);
         assertNotNull(edge3);
-        assertEquals(s1_2.id(), edge3.fromNodeId());
+        IngestNodeStart parent = batch.nodeStarts().stream()
+            .filter(n -> n.startMessage().equals("P"))
+            .findFirst()
+            .orElse(null);
+        assertNotNull(parent);
+        assertEquals(parent.id(), edge3.fromNodeId());
     }
 
     @Test

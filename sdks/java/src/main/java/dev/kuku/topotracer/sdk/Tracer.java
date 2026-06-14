@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Main coordinator of the Topo-Tracer SDK.
@@ -402,20 +403,7 @@ public class Tracer {
 
         String parentSpanId = opts.getParentSpanId();
         if (parentSpanId == null && currentParent != null) {
-            Span prevSibling = TraceContext.getLastChild(currentParent.getId());
-            if (prevSibling != null) {
-                Span lastDescendant = prevSibling;
-                while (true) {
-                    Span child = TraceContext.getLastChild(lastDescendant.getId());
-                    if (child == null) {
-                        break;
-                    }
-                    lastDescendant = child;
-                }
-                parentSpanId = lastDescendant.getId();
-            } else {
-                parentSpanId = currentParent.getId();
-            }
+            parentSpanId = currentParent.getId();
         }
 
         int importance;
@@ -526,10 +514,6 @@ public class Tracer {
             List.of()
         );
 
-        if (currentParent != null) {
-            TraceContext.setLastChild(currentParent.getId(), span);
-        }
-
         return span;
     }
 
@@ -561,6 +545,23 @@ public class Tracer {
                 return callable.call();
             } finally {
                 TraceContext.setActive(parent);
+            }
+        };
+    }
+
+    /**
+     * Propagator for CompletableFuture.supplyAsync and other Supplier-based APIs.
+     * Captures context when wrapped, restores the worker's prior context afterward.
+     */
+    public <T> Supplier<T> wrapSupplier(Supplier<T> supplier) {
+        Span activeSpan = TraceContext.getActive();
+        return () -> {
+            Span previous = TraceContext.getActive();
+            TraceContext.setActive(activeSpan);
+            try {
+                return supplier.get();
+            } finally {
+                TraceContext.setActive(previous);
             }
         };
     }

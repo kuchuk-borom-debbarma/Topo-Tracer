@@ -284,7 +284,7 @@ describe("SDK Integration", () => {
     expect(criticalCustomSpan.importanceLevel).toBe(0); // Explicit Importance.CRITICAL override -> 0
   });
 
-  test("Should resolve sequential sibling chaining through deepest descendant", async () => {
+  test("Should retain actual parent for sibling spans", async () => {
     const receivedPayloads: any[] = [];
     
     // @ts-ignore
@@ -314,6 +314,7 @@ describe("SDK Integration", () => {
     const payload = receivedPayloads[0];
 
     const s1 = payload.nodeStarts.find((n: any) => n.startMessage === "S1");
+    const parent = payload.nodeStarts.find((n: any) => n.startMessage === "P");
     const s1_1 = payload.nodeStarts.find((n: any) => n.startMessage === "S1.1");
     const s1_2 = payload.nodeStarts.find((n: any) => n.startMessage === "S1.2");
     const s2 = payload.nodeStarts.find((n: any) => n.startMessage === "S2");
@@ -322,10 +323,10 @@ describe("SDK Integration", () => {
     expect(edge1.fromNodeId).toBe(s1.id);
 
     const edge2 = payload.edgeStarts.find((e: any) => e.toNodeId === s1_2.id);
-    expect(edge2.fromNodeId).toBe(s1_1.id);
+    expect(edge2.fromNodeId).toBe(s1.id);
 
     const edge3 = payload.edgeStarts.find((e: any) => e.toNodeId === s2.id);
-    expect(edge3.fromNodeId).toBe(s1_2.id);
+    expect(edge3.fromNodeId).toBe(parent.id);
   });
 
   test("Should execute log and trace hooks synchronously", async () => {
