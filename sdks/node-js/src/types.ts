@@ -1,3 +1,5 @@
+import type { Span } from "./Span";
+
 export enum NodeType {
   CONTROLLER = "controller",
   DB_CALL = "db-call",
@@ -25,6 +27,12 @@ export interface TracerConfig {
   retryDelay?: number;
   onDrop?: (events: IngestBatch, reason: string) => void;
   nodeTypeImportanceMapping?: Record<string, number>;
+  ignoreFailures?: boolean;
+  logHooks?: ((message: string, data?: Record<string, string>, importanceLevel?: number) => void)[];
+  traceHooks?: {
+    onSpanStart?: (span: Span) => void;
+    onSpanEnd?: (span: Span) => void;
+  }[];
 }
 
 export interface IngestTraceStart {

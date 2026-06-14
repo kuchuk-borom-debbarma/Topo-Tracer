@@ -74,6 +74,8 @@ export class Tracer {
   private readonly storage = new AsyncLocalStorage<FlowContext>();
   private readonly config: TracerConfig;
   private readonly nodeTypeImportanceMapping: Record<string, number>;
+  private readonly logHooks: ((message: string, data?: Record<string, string>, importanceLevel?: number) => void)[] = [];
+  private readonly traceHooks: { onSpanStart?: (span: Span) => void; onSpanEnd?: (span: Span) => void }[] = [];
   private buffer: IngestBatch = createEmptyBatch();
   private flushTimer: any = null;
   private isFlushing = false;
@@ -86,8 +88,16 @@ export class Tracer {
       flushInterval: DEFAULT_FLUSH_INTERVAL,
       maxRetries: DEFAULT_MAX_RETRIES,
       retryDelay: DEFAULT_RETRY_DELAY,
+      ignoreFailures: true,
       ...config,
     };
+
+    if (config.logHooks) {
+      this.logHooks.push(...config.logHooks);
+    }
+    if (config.traceHooks) {
+      this.traceHooks.push(...config.traceHooks);
+    }
 
     // Initialize nodeType importance mapping
     const customMappings = config.nodeTypeImportanceMapping || {};
@@ -111,6 +121,18 @@ export class Tracer {
       process.on("SIGTERM", () => this.shutdown());
       process.on("SIGINT", () => this.shutdown());
       process.on("beforeExit", () => this.shutdown());
+    }
+  }
+
+  addLogHook(hook: (message: string, data?: Record<string, string>, importanceLevel?: number) => void): void {
+    if (hook) {
+      this.logHooks.push(hook);
+    }
+  }
+
+  addTraceHook(hook: { onSpanStart?: (span: Span) => void; onSpanEnd?: (span: Span) => void }): void {
+    if (hook) {
+      this.traceHooks.push(hook);
     }
   }
 
@@ -178,6 +200,14 @@ export class Tracer {
         finalImportance = dataOrImportance;
       } else if (typeof dataOrImportance === "object") {
         finalData = dataOrImportance as Record<string, string>;
+      }
+    }
+
+    for (const hook of this.logHooks) {
+      try {
+        hook(message, finalData, finalImportance);
+      } catch (error) {
+        console.error("[Topo-Tracer SDK] Error in log hook:", error);
       }
     }
 
@@ -271,6 +301,16 @@ export class Tracer {
     }
 
     const span = new Span(nodeStart, (endedSpan) => {
+      for (const hook of this.traceHooks) {
+        if (hook.onSpanEnd) {
+          try {
+            hook.onSpanEnd(endedSpan);
+          } catch (error) {
+            console.error("[Topo-Tracer SDK] Error in trace hook onSpanEnd:", error);
+          }
+        }
+      }
+
       this.addToBuffer({
         traceStarts: [],
         nodeStarts: [],
@@ -279,6 +319,16 @@ export class Tracer {
         edgeEnds: [],
       });
     });
+
+    for (const hook of this.traceHooks) {
+      if (hook.onSpanStart) {
+        try {
+          hook.onSpanStart(span);
+        } catch (error) {
+          console.error("[Topo-Tracer SDK] Error in trace hook onSpanStart:", error);
+        }
+      }
+    }
 
     const edgeStarts: IngestEdgeStart[] = [];
     if (parentSpanId) {
@@ -387,11 +437,21 @@ export class Tracer {
           await this.ingestWithRetry(batch, this.config.maxRetries || DEFAULT_MAX_RETRIES);
         } catch (error) {
           if (this.config.onDrop) {
-            this.config.onDrop(batch, `Failed to send batch after ${this.config.maxRetries} retries: ${(error as Error).message}`);
+            try {
+              this.config.onDrop(batch, `Failed to send batch after ${this.config.maxRetries} retries: ${(error as Error).message}`);
+            } catch (dropError) {
+              console.error(`[Topo-Tracer SDK] Error in onDrop callback:`, dropError);
+            }
           } else {
-            console.error(`[Topo-Tracer SDK] Ingestion failed after retries:`, error);
+            if (this.config.ignoreFailures !== false) {
+              console.warn(`[Topo-Tracer SDK] Ingestion failed after retries (failures ignored):`, error);
+            } else {
+              console.error(`[Topo-Tracer SDK] Ingestion failed after retries:`, error);
+            }
           }
-          throw error;
+          if (this.config.ignoreFailures === false) {
+            throw error;
+          }
         }
       } while (this.flushAgain || countBatchEvents(this.buffer) >= (this.config.batchSize || DEFAULT_BATCH_SIZE));
     } finally {

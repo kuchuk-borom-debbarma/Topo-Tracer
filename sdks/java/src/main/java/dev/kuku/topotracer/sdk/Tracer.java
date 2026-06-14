@@ -37,6 +37,9 @@ public class Tracer {
     private final int retryDelayMs;
     private final Consumer<IngestBatch> onDrop;
     private final Map<String, Integer> nodeTypeImportanceMapping;
+    private final List<LogHook> logHooks;
+    private final List<TraceHook> traceHooks;
+    private final boolean ignoreFailures;
 
     private final List<IngestTraceStart> traceStartsBuffer = new ArrayList<>();
     private final List<IngestNodeStart> nodeStartsBuffer = new ArrayList<>();
@@ -46,6 +49,7 @@ public class Tracer {
 
     private final Object bufferLock = new Object();
     private final ScheduledExecutorService flushScheduler;
+    private final ExecutorService ingestExecutor;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
@@ -59,6 +63,9 @@ public class Tracer {
         private int maxRetries = DEFAULT_MAX_RETRIES;
         private int retryDelayMs = DEFAULT_RETRY_DELAY;
         private Consumer<IngestBatch> onDrop;
+        private boolean ignoreFailures = true;
+        private final List<LogHook> logHooks = new ArrayList<>();
+        private final List<TraceHook> traceHooks = new ArrayList<>();
 
         public Builder endpoint(String endpoint) {
             this.endpoint = endpoint;
@@ -105,6 +112,25 @@ public class Tracer {
             return this;
         }
 
+        public Builder ignoreFailures(boolean ignoreFailures) {
+            this.ignoreFailures = ignoreFailures;
+            return this;
+        }
+
+        public Builder addLogHook(LogHook hook) {
+            if (hook != null) {
+                this.logHooks.add(hook);
+            }
+            return this;
+        }
+
+        public Builder addTraceHook(TraceHook hook) {
+            if (hook != null) {
+                this.traceHooks.add(hook);
+            }
+            return this;
+        }
+
         private final Map<String, Integer> nodeTypeImportanceMapping = new HashMap<>();
 
         public Builder nodeTypeImportanceMapping(Map<String, Integer> nodeTypeImportanceMapping) {
@@ -142,6 +168,9 @@ public class Tracer {
         this.maxRetries = builder.maxRetries;
         this.retryDelayMs = builder.retryDelayMs;
         this.onDrop = builder.onDrop;
+        this.ignoreFailures = builder.ignoreFailures;
+        this.logHooks = Collections.unmodifiableList(new ArrayList<>(builder.logHooks));
+        this.traceHooks = Collections.unmodifiableList(new ArrayList<>(builder.traceHooks));
 
         Map<String, Integer> mappings = new ConcurrentHashMap<>();
         // Default mappings
@@ -179,6 +208,12 @@ public class Tracer {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
         this.objectMapper = new ObjectMapper();
+
+        this.ingestExecutor = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "topo-tracer-ingest-executor");
+            thread.setDaemon(true);
+            return thread;
+        });
 
         if (this.flushIntervalMs > 0) {
             this.flushScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -280,6 +315,15 @@ public class Tracer {
      * Captures a log message with metadata and importance level within the current trace context.
      */
     public void log(String message, Map<String, String> data, Integer importanceLevel) {
+        Map<String, String> finalData = data != null ? data : Collections.emptyMap();
+        for (LogHook hook : logHooks) {
+            try {
+                hook.onLog(message, finalData, importanceLevel);
+            } catch (Exception e) {
+                log.error("[Topo-Tracer SDK] Error in LogHook", e);
+            }
+        }
+
         TraceOptions options = TraceOptions.builder()
             .nodeType("log")
             .data(data)
@@ -373,6 +417,13 @@ public class Tracer {
         }
 
         Span span = new Span(nodeStart, (endedSpan) -> {
+            for (TraceHook hook : traceHooks) {
+                try {
+                    hook.onSpanEnd(endedSpan);
+                } catch (Exception e) {
+                    log.error("[Topo-Tracer SDK] Error in TraceHook.onSpanEnd", e);
+                }
+            }
             addToBuffer(
                 List.of(),
                 List.of(),
@@ -381,6 +432,15 @@ public class Tracer {
                 List.of()
             );
         });
+
+        // Trigger trace hooks start event so they can enrich span attributes before they are serialized
+        for (TraceHook hook : traceHooks) {
+            try {
+                hook.onSpanStart(span);
+            } catch (Exception e) {
+                log.error("[Topo-Tracer SDK] Error in TraceHook.onSpanStart", e);
+            }
+        }
 
         List<IngestEdgeStart> edgeStarts = new ArrayList<>();
         if (parentSpanId != null) {
@@ -551,17 +611,25 @@ public class Tracer {
             edgeEndsBuffer.clear();
         }
 
-        try {
-            ingestWithRetry(batch);
-        } catch (Exception e) {
-            log.error("[Topo-Tracer SDK] Failed to ingest trace batch", e);
-            if (onDrop != null) {
+        if (ingestExecutor != null && !ingestExecutor.isShutdown()) {
+            ingestExecutor.submit(() -> {
                 try {
-                    onDrop.accept(batch);
-                } catch (Exception ex) {
-                    log.error("[Topo-Tracer SDK] Error in onDrop callback", ex);
+                    ingestWithRetry(batch);
+                } catch (Exception e) {
+                    if (ignoreFailures) {
+                        log.warn("[Topo-Tracer SDK] Failed to ingest trace batch (failures ignored)", e);
+                    } else {
+                        log.error("[Topo-Tracer SDK] Failed to ingest trace batch", e);
+                    }
+                    if (onDrop != null) {
+                        try {
+                            onDrop.accept(batch);
+                        } catch (Exception ex) {
+                            log.error("[Topo-Tracer SDK] Error in onDrop callback", ex);
+                        }
+                    }
                 }
-            }
+            });
         }
     }
 
@@ -636,6 +704,17 @@ public class Tracer {
             }
         }
         flush();
+        if (ingestExecutor != null) {
+            ingestExecutor.shutdown();
+            try {
+                if (!ingestExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    ingestExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                ingestExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     /**

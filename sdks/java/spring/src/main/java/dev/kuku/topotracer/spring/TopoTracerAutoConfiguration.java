@@ -1,6 +1,9 @@
 package dev.kuku.topotracer.spring;
 
 import dev.kuku.topotracer.sdk.Tracer;
+import dev.kuku.topotracer.sdk.LogHook;
+import dev.kuku.topotracer.sdk.TraceHook;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -22,8 +25,10 @@ public class TopoTracerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public Tracer topoTracer(TopoTracerProperties properties) {
-        return new Tracer.Builder()
+    public Tracer topoTracer(TopoTracerProperties properties,
+                              ObjectProvider<LogHook> logHooksProvider,
+                              ObjectProvider<TraceHook> traceHooksProvider) {
+        Tracer.Builder builder = new Tracer.Builder()
             .endpoint(properties.getEndpoint())
             .apiKey(properties.getApiKey())
             .userId(properties.getUserId())
@@ -33,7 +38,12 @@ public class TopoTracerAutoConfiguration {
             .maxRetries(properties.getMaxRetries())
             .retryDelayMs(properties.getRetryDelayMs())
             .nodeTypeImportanceMapping(properties.getNodeTypeImportanceMapping())
-            .build();
+            .ignoreFailures(properties.isIgnoreFailures());
+
+        logHooksProvider.orderedStream().forEach(builder::addLogHook);
+        traceHooksProvider.orderedStream().forEach(builder::addTraceHook);
+
+        return builder.build();
     }
 
     @Bean

@@ -326,4 +326,88 @@ describe("SDK Integration", () => {
     const edge3 = payload.edgeStarts.find((e: any) => e.toNodeId === s2.id);
     expect(edge3.fromNodeId).toBe(s1_2.id);
   });
+
+  test("Should execute log and trace hooks synchronously", async () => {
+    let logHookCount = 0;
+    let spanStartCount = 0;
+    let spanEndCount = 0;
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:3339",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+      logHooks: [
+        (msg, data, level) => {
+          logHookCount++;
+          expect(msg).toBe("test-log");
+          expect(data).toEqual({ key: "val" });
+          expect(level).toBe(1);
+        }
+      ],
+      traceHooks: [
+        {
+          onSpanStart: (span) => {
+            spanStartCount++;
+            if (span.toNodeStart().startMessage === "test-span") {
+              span.setAttribute("hook-key", "hook-val");
+            }
+          },
+          onSpanEnd: (span) => {
+            spanEndCount++;
+            if (span.toNodeStart().startMessage === "test-span") {
+              expect(span.toNodeStart().data["hook-key"]).toBe("hook-val");
+            }
+          }
+        }
+      ]
+    });
+
+    await tracer.trace("test-span", async () => {
+      tracer.log("test-log", { key: "val" }, 1);
+    });
+
+    expect(logHookCount).toBe(1);
+    expect(spanStartCount).toBe(2);
+    expect(spanEndCount).toBe(2);
+  });
+
+  test("Should handle network ingestion errors gracefully without crashing when ignoreFailures is true", async () => {
+    // @ts-ignore
+    global.fetch = async () => {
+      throw new Error("Network offline");
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:3340",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+      maxRetries: 1,
+      retryDelay: 1,
+      ignoreFailures: true,
+    });
+
+    tracer.startNode({ name: "fail-node" }).end();
+
+    await tracer.flush();
+  });
+
+  test("Should propagate network ingestion errors if ignoreFailures is false", async () => {
+    // @ts-ignore
+    global.fetch = async () => {
+      throw new Error("Network offline");
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:3341",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+      maxRetries: 1,
+      retryDelay: 1,
+      ignoreFailures: false,
+    });
+
+    tracer.startNode({ name: "fail-node" }).end();
+
+    await expect(tracer.flush()).rejects.toThrow("Network offline");
+  });
 });

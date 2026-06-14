@@ -52,8 +52,8 @@ public class TracerTest {
             });
         }, options);
 
-        // Trigger manual flush
-        tracer.flush();
+        // Trigger manual flush/shutdown to await background tasks
+        tracer.shutdown();
 
         // Verify that flush failed (as expected) and called onDrop, capturing the batch
         assertEquals(1, batches.size());
@@ -220,6 +220,8 @@ public class TracerTest {
         Tracer tracer = new Tracer.Builder()
             .endpoint("http://invalid-endpoint-for-test-fallback")
             .apiKey("test-key")
+            .maxRetries(1)
+            .retryDelayMs(1)
             .flushIntervalMs(0)
             .onDrop(batches::add)
             .build();
@@ -232,7 +234,8 @@ public class TracerTest {
             tracer.trace("S2", () -> {});
         });
 
-        tracer.flush();
+        // Trigger manual flush/shutdown to await background tasks
+        tracer.shutdown();
 
         assertEquals(1, batches.size());
         IngestBatch batch = batches.get(0);
@@ -282,5 +285,75 @@ public class TracerTest {
             .orElse(null);
         assertNotNull(edge3);
         assertEquals(s1_2.id(), edge3.fromNodeId());
+    }
+
+    @Test
+    public void testHooksExecution() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger logCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger spanStartCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger spanEndCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .flushIntervalMs(0)
+            .addLogHook((msg, data, level) -> {
+                logCount.incrementAndGet();
+                assertEquals("test-log-message", msg);
+                assertEquals("value", data.get("key"));
+                assertEquals(Integer.valueOf(1), level);
+            })
+            .addTraceHook(new TraceHook() {
+                @Override
+                public void onSpanStart(Span span) {
+                    spanStartCount.incrementAndGet();
+                    if ("test-span".equals(span.getStartMessage())) {
+                        span.setAttribute("hook-added-key", "hook-added-value");
+                    }
+                }
+
+                @Override
+                public void onSpanEnd(Span span) {
+                    spanEndCount.incrementAndGet();
+                    if ("test-span".equals(span.getStartMessage())) {
+                        assertEquals("hook-added-value", span.getData().get("hook-added-key"));
+                    }
+                }
+            })
+            .build();
+
+        tracer.trace("test-span", () -> {
+            tracer.log("test-log-message", Map.of("key", "value"), 1);
+        });
+
+        assertEquals(1, logCount.get());
+        assertEquals(2, spanStartCount.get());
+        assertEquals(2, spanEndCount.get());
+    }
+
+    @Test
+    public void testIgnoreFailuresAndNonBlocking() throws Exception {
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://127.0.0.1:65530")
+            .apiKey("test-key")
+            .maxRetries(2)
+            .retryDelayMs(1)
+            .flushIntervalMs(0)
+            .ignoreFailures(true)
+            .build();
+
+        long startTime = System.currentTimeMillis();
+
+        tracer.trace("non-blocking-test", () -> {
+            // Do nothing
+        });
+
+        tracer.flush();
+
+        long duration = System.currentTimeMillis() - startTime;
+
+        assertTrue(duration < 200, "Flush blocked the caller thread! Duration was " + duration + "ms");
+
+        tracer.shutdown();
     }
 }

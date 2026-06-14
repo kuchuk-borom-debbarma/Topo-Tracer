@@ -15,6 +15,7 @@ public class TopoTracerProperties {
     private int flushIntervalMs = 5000;
     private int maxRetries = 5;
     private int retryDelayMs = 1000;
+    private boolean ignoreFailures = true;
     private String defaultTraceName;
     private Map<Integer, String> importanceLabels = new HashMap<>();
 
@@ -80,6 +81,14 @@ public class TopoTracerProperties {
 
     public void setRetryDelayMs(int retryDelayMs) {
         this.retryDelayMs = retryDelayMs;
+    }
+
+    public boolean isIgnoreFailures() {
+        return ignoreFailures;
+    }
+
+    public void setIgnoreFailures(boolean ignoreFailures) {
+        this.ignoreFailures = ignoreFailures;
     }
 
     public String getDefaultTraceName() {
