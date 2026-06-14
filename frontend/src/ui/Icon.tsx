@@ -20,7 +20,8 @@ export type IconName =
   | "terminal"
   | "x"
   | "copy"
-  | "check";
+  | "check"
+  | "trash";
 
 export function Icon({
   name,
@@ -63,4 +64,5 @@ const paths: Record<IconName, React.ReactNode> = {
   x: <><path d="m6 6 12 12M18 6 6 18" /></>,
   copy: <><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>,
   check: <><path d="M20 6 9 17l-5-5" /></>,
+  trash: <><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 13h8l1-13" /><path d="M10 11v5M14 11v5" /></>,
 };

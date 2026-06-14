@@ -65,6 +65,8 @@ The main entry point for the SDK.
 #### `trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T>`
 
 Starts a new span and executes the provided function within the span context.
+For a new root trace, `name` also becomes the trace name. Pass
+`{ traceName: "..." }` to override it.
 
 #### `createSpan(name: string, options?: SpanOptions): Span`
 

@@ -16,7 +16,6 @@ public class TopoTracerProperties {
     private int maxRetries = 5;
     private int retryDelayMs = 1000;
     private boolean ignoreFailures = true;
-    private String defaultTraceName;
     private Map<Integer, String> importanceLabels = new HashMap<>();
 
     public String getEndpoint() {
@@ -89,14 +88,6 @@ public class TopoTracerProperties {
 
     public void setIgnoreFailures(boolean ignoreFailures) {
         this.ignoreFailures = ignoreFailures;
-    }
-
-    public String getDefaultTraceName() {
-        return defaultTraceName;
-    }
-
-    public void setDefaultTraceName(String defaultTraceName) {
-        this.defaultTraceName = defaultTraceName;
     }
 
     public Map<Integer, String> getImportanceLabels() {

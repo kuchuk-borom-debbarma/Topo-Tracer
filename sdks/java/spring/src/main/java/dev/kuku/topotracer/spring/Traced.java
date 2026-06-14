@@ -45,4 +45,17 @@ public @interface Traced {
      * scale to parentImportance + 1.
      */
     boolean dynamicImportance() default false;
+
+    /**
+     * Include bounded argument values in span data.
+     * Disabled by default because arguments may contain sensitive data.
+     */
+    boolean includeArguments() default false;
+
+    int maxArgumentLength() default 128;
+
+    /**
+     * Parameter names whose values are replaced with "[REDACTED]".
+     */
+    String[] redactArguments() default {};
 }

@@ -257,6 +257,22 @@ app.get("/api/v1/traces", jwtAuthMiddleware(), async (c) => {
   }
 });
 
+app.delete("/api/v1/traces/:traceId", jwtAuthMiddleware(), async (c) => {
+  const userId = c.get("userId")!;
+  const traceId = c.req.param("traceId");
+
+  try {
+    // ClickHouse mutations are submitted with mutations_sync=0, so heavy row
+    // removal runs asynchronously while this request only waits for acceptance.
+    await logService.deleteTrace({ userId, traceId });
+    return c.json({ accepted: true }, 202);
+  } catch (error: any) {
+    console.error("[TraceDeleteRoute] Failed to schedule trace deletion:", error);
+    const status = error.message === "Trace not found" ? 404 : (error.statusCode || 500);
+    return c.json({ error: error.message || "Internal Server Error" }, status);
+  }
+});
+
 app.get("/api/v1/traces/:traceId/flow", jwtAuthMiddleware(), async (c) => {
   const userId = c.get("userId")!;
   const traceId = c.req.param("traceId");

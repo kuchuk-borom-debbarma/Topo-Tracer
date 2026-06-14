@@ -46,9 +46,6 @@ public class TracingFilter extends OncePerRequestFilter {
             .attribute("http.url", request.getRequestURI());
 
         if (properties != null) {
-            if (properties.getDefaultTraceName() != null && !properties.getDefaultTraceName().isBlank()) {
-                options.traceName(properties.getDefaultTraceName());
-            }
             if (properties.getImportanceLabels() != null && !properties.getImportanceLabels().isEmpty()) {
                 options.importanceLabels(properties.getImportanceLabels());
             }

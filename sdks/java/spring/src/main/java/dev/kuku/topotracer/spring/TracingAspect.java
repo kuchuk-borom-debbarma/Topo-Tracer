@@ -11,8 +11,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 /**
  * Aspect to automatically wrap method executions annotated with @Traced in a Span.
@@ -40,11 +39,15 @@ public class TracingAspect {
             spanName = className + "." + methodName;
         }
 
-        // Auto-derive the name: always "ClassName.methodName(ParamType1, ParamType2)" for full fidelity
-        String paramTypes = Arrays.stream(method.getParameterTypes())
-            .map(Class::getSimpleName)
-            .collect(Collectors.joining(", "));
-        String autoName = className + "." + methodName + "(" + paramTypes + ")";
+        String autoName = className + "." + methodName;
+        TraceArgumentFormatter.FormattedArguments formattedArguments = null;
+        if (traced.includeArguments()) {
+            formattedArguments = TraceArgumentFormatter.format(
+                method,
+                joinPoint.getArgs(),
+                Set.of(traced.redactArguments()),
+                traced.maxArgumentLength());
+        }
 
         // Determine node type from String or Enum
         String nodeType = traced.nodeType();
@@ -56,6 +59,9 @@ public class TracingAspect {
             .nodeType(nodeType)
             .name(autoName)
             .dynamicImportance(traced.dynamicImportance());
+        if (formattedArguments != null) {
+            options.data(formattedArguments.attributes());
+        }
 
         // Determine importance from integer, enum, or dynamic config
         if (traced.importanceLevel() != -1) {

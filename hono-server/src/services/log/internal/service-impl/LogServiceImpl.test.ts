@@ -84,6 +84,7 @@ class FakeLogReadRepo extends ILogReadRepo {
     diagClockSkew: 0,
     diagLimitExceeded: 0,
   };
+  deleteTraceCalls: Array<{ userId: string; traceId: string }> = [];
   loadBoundedProjectionNodesResult: PagedResult<ReadNode> | null = null;
 
   async loadCheckpoint(): Promise<ReadCheckpoint | null> { return null; }
@@ -132,6 +133,10 @@ class FakeLogReadRepo extends ILogReadRepo {
       totalCount: this.loadTraceSummaryResult ? 1 : 0,
       hasMore: false,
     };
+  }
+
+  async deleteTrace(params: { userId: string; traceId: string }): Promise<void> {
+    this.deleteTraceCalls.push(params);
   }
 }
 
@@ -203,6 +208,28 @@ describe("LogServiceImpl edge endpoint validation", () => {
         edgeStarts: [edgeStart],
       },
     });
+  });
+});
+
+describe("LogServiceImpl trace deletion", () => {
+  test("deletes only an existing user-owned trace", async () => {
+    const { service, readRepo } = createSubject();
+
+    await service.deleteTrace({ userId: "u1", traceId: "trace-1" });
+
+    expect(readRepo.deleteTraceCalls).toEqual([
+      { userId: "u1", traceId: "trace-1" },
+    ]);
+  });
+
+  test("rejects a missing trace before scheduling deletion", async () => {
+    const { service, readRepo } = createSubject();
+    readRepo.loadTraceSummaryResult = null;
+
+    await expect(
+      service.deleteTrace({ userId: "u1", traceId: "missing" }),
+    ).rejects.toThrow("Trace not found");
+    expect(readRepo.deleteTraceCalls).toHaveLength(0);
   });
 });
 
@@ -408,6 +435,14 @@ describe("LogServiceImpl projection orchestration", () => {
 describe("LogServiceImpl trace listing", () => {
   test("uses bounded pagination and returns page metadata", async () => {
     const { service, readRepo } = createSubject();
+    readRepo.loadTraceSummaries = async (params: any) => {
+      readRepo.loadTraceSummariesCalls.push(params);
+      return {
+        items: readRepo.loadTraceSummaryResult ? [readRepo.loadTraceSummaryResult] : [],
+        totalCount: 51,
+        hasMore: false,
+      };
+    };
 
     const result = await withTracing(() => service.listTraces({
       userId: "u1",
@@ -419,6 +454,7 @@ describe("LogServiceImpl trace listing", () => {
       {
         userId: "u1",
         paging: { offset: 50, limit: 25 },
+        filter: { excludeInternal: true },
       },
     ]);
     expect(result).toMatchObject({

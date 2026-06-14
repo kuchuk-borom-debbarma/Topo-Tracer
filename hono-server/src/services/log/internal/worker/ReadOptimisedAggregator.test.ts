@@ -29,6 +29,8 @@ class StatefulFakeReadRepo extends ILogReadRepo {
   saveReadModelCalls = 0;
   saveCheckpointCalls = 0;
 
+  async deleteTrace(): Promise<void> {}
+
   constructor(
     private readonly initialNodeEvents: NodeEventRow[],
     private readonly initialEdgeEvents: EdgeEventRow[],

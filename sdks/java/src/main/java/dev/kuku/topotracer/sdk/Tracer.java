@@ -471,7 +471,9 @@ public class Tracer {
             }
             traceStarts.add(new IngestTraceStart(
                 traceId,
-                opts.getTraceName(),
+                opts.getTraceName() != null && !opts.getTraceName().isBlank()
+                    ? opts.getTraceName()
+                    : name,
                 mergedLabels,
                 System.currentTimeMillis()
             ));

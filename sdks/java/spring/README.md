@@ -2,6 +2,10 @@
 
 A lightweight Spring Boot starter that integrates the Topo-Tracer SDK into a Spring Boot application. Provides automatic HTTP request tracing, RestTemplate/RestClient context propagation, AOP method tracing via `@Traced`, and thread-safe `@Async` context propagation.
 
+Trace names are flow-specific. Incoming requests use names such as
+`HTTP POST /api/orders`; root `@Traced` methods use their annotation value or
+derived class/method name. No application-wide trace name is required.
+
 ## Installation
 
 Add the following dependency to your `pom.xml` (requires compiling and installing both `topo-tracer-java-sdk` and `topo-tracer-spring-sdk` first via `mvn clean install`):

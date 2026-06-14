@@ -70,4 +70,12 @@ export abstract class ILogService {
     userId: string;
     traceId: string;
   }): Promise<ReadTraceSummary | null>;
+
+  /**
+   * Permanently removes one user-owned trace from raw and materialized storage.
+   */
+  abstract deleteTrace(data: {
+    userId: string;
+    traceId: string;
+  }): Promise<void>;
 }

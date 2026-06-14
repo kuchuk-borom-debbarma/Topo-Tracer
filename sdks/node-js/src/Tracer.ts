@@ -294,7 +294,7 @@ export class Tracer {
     if (!options.traceId && !currentStore) {
       traceStarts.push({
         traceId,
-        name: options.traceName,
+        name: options.traceName?.trim() || options.name,
         importanceLabels: options.importanceLabels,
         timestamp: Date.now(),
       });

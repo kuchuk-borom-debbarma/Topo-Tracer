@@ -207,6 +207,7 @@ describe("SDK Integration", () => {
     const payload = receivedPayloads[0];
     expect(payload.nodeStarts[0].startMessage).toBe("Old Style");
     expect(payload.nodeStarts[0].traceName).toBeUndefined();
+    expect(payload.traceStarts[0].name).toBe("Old Style");
   });
 
   test("Should allow API-key-only ingestion without X-User-Id header", async () => {

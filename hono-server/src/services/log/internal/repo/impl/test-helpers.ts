@@ -17,6 +17,10 @@ export type QueryOptions = {
 export type ClickHouseClientProvider = () => {
   insert(options: InsertOptions): Promise<void>;
   query(options: QueryOptions): Promise<{ json<T>(): Promise<T[]> }>;
+  command(options: {
+    query: string;
+    query_params?: Record<string, string | number | string[]>;
+  }): Promise<void>;
 };
 
 // Use type casting for testing with a fake provider
@@ -29,6 +33,10 @@ export class FakeClickHouseClient {
   inserts: InsertOptions[] = [];
   queries: QueryOptions[] = [];
   queryResults: Record<string, unknown[]> = {};
+  commands: Array<{
+    query: string;
+    query_params?: Record<string, string | number | string[]>;
+  }> = [];
 
   async insert(options: InsertOptions): Promise<void> {
     this.inserts.push(options);
@@ -64,6 +72,13 @@ export class FakeClickHouseClient {
     return {
       json: async <T>() => result as T[],
     };
+  }
+
+  async command(options: {
+    query: string;
+    query_params?: Record<string, string | number | string[]>;
+  }): Promise<void> {
+    this.commands.push(options);
   }
 }
 

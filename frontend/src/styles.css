@@ -815,6 +815,29 @@ h3,
   color: var(--primary);
 }
 
+.trace-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.row-action.danger {
+  border: 0;
+  background: transparent;
+  color: #9f3a38;
+  cursor: pointer;
+}
+
+.row-action.danger:hover {
+  background: #fff0ef;
+  color: #7f1d1d;
+}
+
+.row-action.danger:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
 .row-action svg {
   height: 14px;
   width: 14px;
@@ -2616,9 +2639,7 @@ body {
 .trace-table th:nth-child(2),
 .trace-table td:nth-child(2),
 .trace-table th:nth-child(4),
-.trace-table td:nth-child(4),
-.trace-table th:nth-child(6),
-.trace-table td:nth-child(6) {
+.trace-table td:nth-child(4) {
   display: none;
 }
 

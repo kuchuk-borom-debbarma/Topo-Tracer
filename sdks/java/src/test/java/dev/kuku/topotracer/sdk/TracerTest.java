@@ -91,6 +91,25 @@ public class TracerTest {
     }
 
     @Test
+    public void testRootTraceDefaultsNameToRootSpan() throws Exception {
+        List<IngestBatch> batches = new ArrayList<>();
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .maxRetries(1)
+            .retryDelayMs(1)
+            .flushIntervalMs(0)
+            .onDrop(batches::add)
+            .build();
+
+        tracer.trace("OrderController.createOrder", () -> {});
+        tracer.shutdown();
+
+        assertEquals(1, batches.size());
+        assertEquals("OrderController.createOrder", batches.get(0).traceStarts().get(0).name());
+    }
+
+    @Test
     public void testNodeTypeImportanceMapping() throws Exception {
         Tracer tracer = new Tracer.Builder()
             .endpoint("http://invalid-endpoint-for-test-fallback")

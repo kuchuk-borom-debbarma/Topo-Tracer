@@ -88,6 +88,12 @@ export async function fetchTraceSummary(traceId: string): Promise<TraceSummary> 
   return request(`/api/v1/traces/${encodeURIComponent(traceId)}/summary`);
 }
 
+export async function deleteTrace(traceId: string): Promise<{ accepted: boolean }> {
+  return request(`/api/v1/traces/${encodeURIComponent(traceId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchTraceFlow(input: {
   traceId: string;
   threshold: number;

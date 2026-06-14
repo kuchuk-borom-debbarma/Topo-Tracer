@@ -6,6 +6,8 @@ import {
   CLICKHOUSE_TRACE_SUMMARIES_TABLE,
   CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
   CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE, CLICKHOUSE_TRACE_EVENTS_TABLE,
+  CLICKHOUSE_NODE_EVENTS_TABLE,
+  CLICKHOUSE_EDGE_EVENTS_TABLE,
   getInitializedClickHouseClient,
 } from "../../../../../infra/db/clickhouse";
 import {
@@ -30,11 +32,12 @@ import { ReadNodeRow, ReadEdgeRow, TraceSummaryRow, ReadCheckpointRow, NodeEvent
  */
 export class LogReadRepoClickHouse extends ILogReadRepo {
   readonly logger: Logger<unknown>;
-  private readonly getClient: () => Pick<ClickHouseClient, "insert" | "query">;
+  private readonly getClient: () => Pick<ClickHouseClient, "insert" | "query" | "command">;
 
   constructor(
     parentLogger: Logger<unknown>,
-    getClient: () => Pick<ClickHouseClient, "insert" | "query"> = getInitializedClickHouseClient,
+    getClient: () => Pick<ClickHouseClient, "insert" | "query" | "command"> =
+      getInitializedClickHouseClient,
   ) {
     super();
     this.logger = parentLogger.getSubLogger({
@@ -737,6 +740,34 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       totalCount,
       hasMore,
     };
+  }
+
+  async deleteTrace(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<void> {
+    const client = this.getClient();
+    const tables = [
+      CLICKHOUSE_TRACE_EVENTS_TABLE,
+      CLICKHOUSE_NODE_EVENTS_TABLE,
+      CLICKHOUSE_EDGE_EVENTS_TABLE,
+      CLICKHOUSE_READ_NODES_TABLE,
+      CLICKHOUSE_READ_EDGES_TABLE,
+      CLICKHOUSE_TRACE_SUMMARIES_TABLE,
+      CLICKHOUSE_MATERIALIZATION_CHECKPOINTS_TABLE,
+      CLICKHOUSE_TRACE_SUMMARIES_REALTIME_TABLE,
+    ];
+
+    await Promise.all(tables.map((table) =>
+      client.command({
+        query: `
+          ALTER TABLE ${table}
+          DELETE WHERE user_id = {userId:String} AND trace_id = {traceId:String}
+          SETTINGS mutations_sync = 0
+        `,
+        query_params: params,
+      }),
+    ));
   }
 
   /**

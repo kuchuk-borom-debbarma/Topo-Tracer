@@ -129,4 +129,12 @@ export abstract class ILogReadRepo {
       excludeInternal?: boolean;
     };
   }): Promise<PagedResult<ReadTraceSummary>>;
+
+  /**
+   * Schedules deletion of all raw and materialized rows for one trace.
+   */
+  abstract deleteTrace(params: {
+    userId: string;
+    traceId: string;
+  }): Promise<void>;
 }

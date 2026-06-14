@@ -14,6 +14,25 @@ import { LogReadRepoClickHouse } from "./LogReadRepoClickHouse";
 import { DEFAULT_PROJECTION_NODE_CAP, DEFAULT_PROJECTION_EDGE_CAP } from "../ILogReadRepo";
 import { FakeClickHouseClient, createRepoWithFakeClient, createTestNode, createTestEdge, createTestSummary } from "./test-helpers";
 
+describe("LogReadRepoClickHouse trace deletion", () => {
+  test("submits asynchronous mutations for every trace table", async () => {
+    const fakeClient = new FakeClickHouseClient();
+    const repo = createRepoWithFakeClient(fakeClient);
+
+    await repo.deleteTrace({ userId: "user-1", traceId: "trace-1" });
+
+    expect(fakeClient.commands).toHaveLength(8);
+    for (const command of fakeClient.commands) {
+      expect(command.query).toContain("DELETE WHERE user_id = {userId:String}");
+      expect(command.query).toContain("SETTINGS mutations_sync = 0");
+      expect(command.query_params).toEqual({
+        userId: "user-1",
+        traceId: "trace-1",
+      });
+    }
+  });
+});
+
 describe("LogReadRepoClickHouse row mapping", () => {
   test("saveReadModel inserts nodes, edges, and summary with correct snake_case mapping", async () => {
     const fakeClient = new FakeClickHouseClient();

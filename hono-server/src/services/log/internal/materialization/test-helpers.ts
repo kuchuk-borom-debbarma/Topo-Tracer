@@ -15,6 +15,7 @@ export class FakeReadRepo extends ILogReadRepo {
   loadBoundedProjectionNodes = mock(async () => ({ items: [], totalCount: 0, hasMore: false })) as any;
   loadTraceSummary = mock(async () => null) as any;
   loadTraceSummaries = mock(async () => ({ items: [], totalCount: 0, hasMore: false })) as any;
+  deleteTrace = mock(async () => {}) as any;
 }
 
 export const mockLogger = {

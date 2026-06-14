@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { fetchTraces } from "../api";
+import { deleteTrace, fetchTraces } from "../api";
+import type { TraceListResult } from "../types";
 import {
   diagnosticCount,
   formatCompactNumber,
@@ -37,6 +38,7 @@ const FEATURE_CARDS = [
 
 export function TraceListPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const search = useSearch({ strict: false }) as { page?: number };
   const page = search.page ?? 1;
   const [filter, setFilter] = useState("");
@@ -45,6 +47,30 @@ export function TraceListPage() {
     queryKey: ["traces", page, PAGE_SIZE],
     queryFn: () => fetchTraces({ page, limit: PAGE_SIZE }),
     placeholderData: (previous) => previous,
+  });
+  const deleteMutation = useMutation({
+    mutationFn: deleteTrace,
+    onMutate: async (traceId) => {
+      await queryClient.cancelQueries({ queryKey: ["traces"] });
+      const previous = queryClient.getQueriesData<TraceListResult>({ queryKey: ["traces"] });
+      queryClient.setQueriesData<TraceListResult>({ queryKey: ["traces"] }, (current) => {
+        if (!current) return current;
+        const traces = current.traces.filter((trace) => trace.traceId !== traceId);
+        if (traces.length === current.traces.length) return current;
+        return {
+          ...current,
+          traces,
+          totalCount: Math.max(0, current.totalCount - 1),
+        };
+      });
+      return { previous };
+    },
+    onError: (_error, _traceId, context) => {
+      for (const [key, value] of context?.previous ?? []) {
+        queryClient.setQueryData(key, value);
+      }
+      window.alert("Trace deletion failed. Please try again.");
+    },
   });
 
   const result = tracesQuery.data;
@@ -191,7 +217,7 @@ export function TraceListPage() {
                     <th>Graph size</th>
                     <th>Health</th>
                     <th>Updated</th>
-                    <th aria-label="Open trace" />
+                    <th aria-label="Trace actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -262,16 +288,32 @@ export function TraceListPage() {
                             <small>{formatDate(updatedAt)}</small>
                         </td>
                         <td>
-                          <Link
-                            to="/traces/$traceId"
-                            params={{ traceId: trace.traceId }}
-                            search={{ threshold: trace.minImportanceLevel, cursor: undefined }}
-                            className="row-action"
-                            aria-label={`Open trace ${trace.name || trace.traceId}`}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <Icon name="arrow-right" />
-                          </Link>
+                          <div className="trace-row-actions">
+                            <button
+                              type="button"
+                              className="row-action danger"
+                              aria-label={`Delete trace ${trace.name || trace.traceId}`}
+                              disabled={deleteMutation.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                const label = trace.name || trace.traceId;
+                                if (!window.confirm(`Delete "${label}" permanently?`)) return;
+                                deleteMutation.mutate(trace.traceId);
+                              }}
+                            >
+                              <Icon name="trash" />
+                            </button>
+                            <Link
+                              to="/traces/$traceId"
+                              params={{ traceId: trace.traceId }}
+                              search={{ threshold: trace.minImportanceLevel, cursor: undefined }}
+                              className="row-action"
+                              aria-label={`Open trace ${trace.name || trace.traceId}`}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Icon name="arrow-right" />
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );

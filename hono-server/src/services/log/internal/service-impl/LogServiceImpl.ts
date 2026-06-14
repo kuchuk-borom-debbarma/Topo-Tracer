@@ -296,6 +296,18 @@ export class LogServiceImpl extends ILogService {
     return summary;
   }
 
+  async deleteTrace(data: {
+    userId: string;
+    traceId: string;
+  }): Promise<void> {
+    const summary = await this.readRepo.loadTraceSummary(data);
+    if (!summary || this.isInternalTraceSummary(summary)) {
+      throw new Error("Trace not found");
+    }
+
+    await this.readRepo.deleteTrace(data);
+  }
+
   private isInternalTraceSummary(summary: ReadTraceSummary): boolean {
     if (summary.userId === SYSTEM_SELF_TRACING_USER_ID) return true;
     if (INTERNAL_TRACE_NAME_PREFIXES.some((prefix) => summary.name.startsWith(prefix))) return true;
