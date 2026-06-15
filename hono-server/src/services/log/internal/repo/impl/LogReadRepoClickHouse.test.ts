@@ -302,13 +302,14 @@ describe("LogReadRepoClickHouse row loading", () => {
     const checkpoint = {
       userId: "u1",
       traceId: "t1",
-      lastTraceEventTime: 0, lastNodeEventTime: 1000,
+      lastTraceEventTime: 0,
+      lastNodeEventTime: 20000,
       lastNodeEventId: "n1",
       lastNodeEventType: 0,
-      lastEdgeEventTime: 1100,
+      lastEdgeEventTime: 25000,
       lastEdgeEventId: "e1",
       lastEdgeEventType: 1,
-      checkpointedAt: 2000,
+      checkpointedAt: 30000,
     };
 
     await repo.loadRawEventsAfterCheckpoint({ userId: "u1", traceId: "t1", checkpoint });
@@ -320,14 +321,14 @@ describe("LogReadRepoClickHouse row loading", () => {
     expect(nodeQuery?.query).toContain("started_at_ms");
     expect(nodeQuery?.query).toContain("ORDER BY");
     expect(nodeQuery?.query_params).toMatchObject({
-      lastNodeEventTime: 1000,
-      lastNodeEventId: "n1",
+      lastNodeEventTime: 10000,
+      lastNodeEventId: "",
       lastNodeEventType: 0,
     });
     expect(edgeQuery?.query_params).toMatchObject({
-      lastEdgeEventTime: 1100,
-      lastEdgeEventId: "e1",
-      lastEdgeEventType: 1,
+      lastEdgeEventTime: 15000,
+      lastEdgeEventId: "",
+      lastEdgeEventType: 0,
     });
   });
 

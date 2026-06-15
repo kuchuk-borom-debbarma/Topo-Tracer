@@ -163,6 +163,53 @@ describe("ReadOptimisedAggregator", () => {
     expect(materializeTrace.mock.calls[1][0]).toEqual({ userId: "u2", traceId: "t2" });
   });
 
+  it("serializes rebuilds for the same trace across concurrent batches", async () => {
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+    let active = 0;
+    let maxActive = 0;
+    let calls = 0;
+
+    const materializeTrace = mock(async () => {
+      calls++;
+      active++;
+      maxActive = Math.max(maxActive, active);
+      if (calls === 1) {
+        markFirstStarted();
+        await firstGate;
+      }
+      active--;
+    });
+    const aggregator = new ReadOptimisedAggregator(
+      {} as any,
+      { materializeTrace },
+    );
+    const event = (id: string): EventBusPublishedEvent => ({
+      topic: "log.trace.ingested",
+      idempotencyId: id,
+      data: { userId: "u1", traceId: "t1" },
+      publishedAt: 1,
+    });
+
+    const firstRun = aggregator.run([event("1")]);
+    await firstStarted;
+    const secondRun = aggregator.run([event("2")]);
+    await Promise.resolve();
+
+    expect(materializeTrace).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    await Promise.all([firstRun, secondRun]);
+
+    expect(materializeTrace).toHaveBeenCalledTimes(2);
+    expect(maxActive).toBe(1);
+  });
+
   it("duplicate delivery stays idempotent while event bus ordering remains bus-owned", async () => {
     const repo = new StatefulFakeReadRepo(
       [

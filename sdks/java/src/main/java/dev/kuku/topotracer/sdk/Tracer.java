@@ -401,9 +401,26 @@ public class Tracer {
             traceId = currentParent != null ? currentParent.getTraceId() : UUID.randomUUID().toString();
         }
 
-        String parentSpanId = opts.getParentSpanId();
-        if (parentSpanId == null && currentParent != null) {
-            parentSpanId = currentParent.getId();
+        List<String> parentSpanIds = new ArrayList<>();
+        if (opts.getParentSpanId() != null) {
+            parentSpanIds.add(opts.getParentSpanId());
+        } else {
+            List<Span> joinedParents = TraceContext.consumePendingParents();
+            for (Span joinedParent : joinedParents) {
+                parentSpanIds.add(joinedParent.getId());
+            }
+        }
+        if (parentSpanIds.isEmpty() && currentParent != null) {
+            Span previous = TraceContext.getLastChild(currentParent.getId());
+            if (previous != null) {
+                Span tail = previous;
+                while (TraceContext.getLastChild(tail.getId()) != null) {
+                    tail = TraceContext.getLastChild(tail.getId());
+                }
+                parentSpanIds.add(tail.getId());
+            } else {
+                parentSpanIds.add(currentParent.getId());
+            }
         }
 
         int importance;
@@ -494,7 +511,7 @@ public class Tracer {
         }
 
         List<IngestEdgeStart> edgeStarts = new ArrayList<>();
-        if (parentSpanId != null) {
+        for (String parentSpanId : new LinkedHashSet<>(parentSpanIds)) {
             edgeStarts.add(new IngestEdgeStart(
                 UUID.randomUUID().toString(),
                 traceId,
@@ -514,6 +531,10 @@ public class Tracer {
             List.of()
         );
 
+        if (currentParent != null) {
+            TraceContext.setLastChild(currentParent.getId(), span);
+        }
+
         return span;
     }
 
@@ -521,14 +542,14 @@ public class Tracer {
      * Propagator: wraps a Runnable so the current thread context is carried into execution.
      */
     public Runnable wrap(Runnable runnable) {
-        Span activeSpan = TraceContext.getActive();
+        TraceContext.Snapshot captured = TraceContext.capture();
         return () -> {
-            Span parent = TraceContext.getActive();
-            TraceContext.setActive(activeSpan);
+            TraceContext.Snapshot previous = TraceContext.capture();
+            TraceContext.restore(captured);
             try {
                 runnable.run();
             } finally {
-                TraceContext.setActive(parent);
+                TraceContext.restore(previous);
             }
         };
     }
@@ -537,14 +558,14 @@ public class Tracer {
      * Propagator: wraps a Callable so the current thread context is carried into execution.
      */
     public <T> Callable<T> wrap(Callable<T> callable) {
-        Span activeSpan = TraceContext.getActive();
+        TraceContext.Snapshot captured = TraceContext.capture();
         return () -> {
-            Span parent = TraceContext.getActive();
-            TraceContext.setActive(activeSpan);
+            TraceContext.Snapshot previous = TraceContext.capture();
+            TraceContext.restore(captured);
             try {
                 return callable.call();
             } finally {
-                TraceContext.setActive(parent);
+                TraceContext.restore(previous);
             }
         };
     }
@@ -554,16 +575,56 @@ public class Tracer {
      * Captures context when wrapped, restores the worker's prior context afterward.
      */
     public <T> Supplier<T> wrapSupplier(Supplier<T> supplier) {
-        Span activeSpan = TraceContext.getActive();
+        TraceContext.Snapshot captured = TraceContext.capture();
         return () -> {
-            Span previous = TraceContext.getActive();
-            TraceContext.setActive(activeSpan);
+            TraceContext.Snapshot previous = TraceContext.capture();
+            TraceContext.restore(captured);
             try {
                 return supplier.get();
             } finally {
-                TraceContext.setActive(previous);
+                TraceContext.restore(previous);
             }
         };
+    }
+
+    /**
+     * Creates an explicit fork/join scope for parallel work.
+     */
+    public ParallelScope parallel() {
+        return new ParallelScope(TraceContext.capture());
+    }
+
+    public final class ParallelScope {
+        private final TraceContext.Snapshot forkPoint;
+        private final Set<Span> branchTails = ConcurrentHashMap.newKeySet();
+
+        private ParallelScope(TraceContext.Snapshot forkPoint) {
+            this.forkPoint = forkPoint;
+        }
+
+        public <T> Supplier<T> wrapSupplier(Supplier<T> supplier) {
+            return () -> {
+                TraceContext.Snapshot previous = TraceContext.capture();
+                TraceContext.restore(forkPoint);
+                try {
+                    return supplier.get();
+                } finally {
+                    Span tail = TraceContext.getTail(forkPoint.activeSpan());
+                    if (tail != null) {
+                        branchTails.add(tail);
+                    }
+                    TraceContext.restore(previous);
+                }
+            };
+        }
+
+        /**
+         * Joins completed branch tails into the next node created on this thread.
+         * Call after all parallel tasks complete.
+         */
+        public void join() {
+            TraceContext.setPendingParents(new ArrayList<>(branchTails));
+        }
     }
 
     /**

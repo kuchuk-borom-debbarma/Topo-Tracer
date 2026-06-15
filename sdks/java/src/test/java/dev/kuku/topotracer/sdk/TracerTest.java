@@ -7,7 +7,9 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -192,6 +194,48 @@ public class TracerTest {
     }
 
     @Test
+    public void testCompletableFutureBranchesDoNotCrossLink() throws Exception {
+        List<IngestBatch> batches = new ArrayList<>();
+        Tracer tracer = new Tracer.Builder()
+            .endpoint("http://invalid-endpoint-for-test-fallback")
+            .apiKey("test-key")
+            .maxRetries(1)
+            .retryDelayMs(1)
+            .flushIntervalMs(0)
+            .onDrop(batches::add)
+            .build();
+
+        tracer.trace("service", () -> {
+            tracer.log("before-fork");
+            var parallel = tracer.parallel();
+            var first = CompletableFuture.supplyAsync(parallel.wrapSupplier(() -> {
+                tracer.trace("context-load", () -> {});
+                return "context";
+            }));
+            var second = CompletableFuture.supplyAsync(parallel.wrapSupplier(() -> {
+                tracer.trace("graph-load", () -> {});
+                return "graph";
+            }));
+            CompletableFuture.allOf(first, second).join();
+            parallel.join();
+            tracer.log("continue");
+        });
+        tracer.shutdown();
+
+        IngestBatch batch = batches.get(0);
+        IngestNodeStart beforeFork = node(batch, "before-fork");
+        IngestNodeStart contextLoad = node(batch, "context-load");
+        IngestNodeStart graphLoad = node(batch, "graph-load");
+        IngestNodeStart continuation = node(batch, "continue");
+
+        assertEquals(beforeFork.id(), parentId(batch, contextLoad.id()));
+        assertEquals(beforeFork.id(), parentId(batch, graphLoad.id()));
+        assertEquals(
+            Set.of(contextLoad.id(), graphLoad.id()),
+            parentIds(batch, continuation.id()));
+    }
+
+    @Test
     public void testNodeTypeEnumAndImportanceEnum() throws Exception {
         Tracer tracer = new Tracer.Builder()
             .endpoint("http://invalid-endpoint-for-test-fallback")
@@ -234,7 +278,7 @@ public class TracerTest {
     }
 
     @Test
-    public void testSiblingSpansRetainTheirActualParent() throws Exception {
+    public void testSequentialFlowChainsThroughDeepestDescendant() throws Exception {
         List<IngestBatch> batches = new ArrayList<>();
         Tracer tracer = new Tracer.Builder()
             .endpoint("http://invalid-endpoint-for-test-fallback")
@@ -289,26 +333,21 @@ public class TracerTest {
         assertNotNull(edge1);
         assertEquals(s1.id(), edge1.fromNodeId());
 
-        // S1.1 and S1.2 are siblings under S1.
+        // Sequential calls continue from the previous emitted node.
         var edge2 = batch.edgeStarts().stream()
             .filter(e -> e.toNodeId().equals(s1_2.id()))
             .findFirst()
             .orElse(null);
         assertNotNull(edge2);
-        assertEquals(s1.id(), edge2.fromNodeId());
+        assertEquals(s1_1.id(), edge2.fromNodeId());
 
-        // S1 and S2 are siblings under P.
+        // Continuation resumes from the deepest sequential descendant.
         var edge3 = batch.edgeStarts().stream()
             .filter(e -> e.toNodeId().equals(s2.id()))
             .findFirst()
             .orElse(null);
         assertNotNull(edge3);
-        IngestNodeStart parent = batch.nodeStarts().stream()
-            .filter(n -> n.startMessage().equals("P"))
-            .findFirst()
-            .orElse(null);
-        assertNotNull(parent);
-        assertEquals(parent.id(), edge3.fromNodeId());
+        assertEquals(s1_2.id(), edge3.fromNodeId());
     }
 
     @Test
@@ -383,6 +422,28 @@ public class TracerTest {
 
     private enum CustomEnum {
         FATAL, WARNING, DEBUG
+    }
+
+    private static IngestNodeStart node(IngestBatch batch, String message) {
+        return batch.nodeStarts().stream()
+            .filter(node -> node.startMessage().equals(message))
+            .findFirst()
+            .orElseThrow();
+    }
+
+    private static String parentId(IngestBatch batch, String childId) {
+        return batch.edgeStarts().stream()
+            .filter(edge -> edge.toNodeId().equals(childId))
+            .findFirst()
+            .orElseThrow()
+            .fromNodeId();
+    }
+
+    private static Set<String> parentIds(IngestBatch batch, String childId) {
+        return batch.edgeStarts().stream()
+            .filter(edge -> edge.toNodeId().equals(childId))
+            .map(edge -> edge.fromNodeId())
+            .collect(java.util.stream.Collectors.toSet());
     }
 
     private static class CustomImportance extends TypedImportance<CustomEnum> {

@@ -244,12 +244,21 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
     edgeEvents: EdgeEventRow[];
   }> {
     const client = this.getClient();
-    const nodeCheckpoint = params.checkpoint || {
+    const lookbackMs = 10000; // 10s lookback window to prevent same-timestamp and late-arriving event skip bugs
+    const nodeCheckpoint = params.checkpoint ? {
+      lastNodeEventTime: Math.max(0, params.checkpoint.lastNodeEventTime - lookbackMs),
+      lastNodeEventId: "",
+      lastNodeEventType: 0,
+    } : {
       lastNodeEventTime: 0,
       lastNodeEventId: "",
       lastNodeEventType: 0,
     };
-    const edgeCheckpoint = params.checkpoint || {
+    const edgeCheckpoint = params.checkpoint ? {
+      lastEdgeEventTime: Math.max(0, params.checkpoint.lastEdgeEventTime - lookbackMs),
+      lastEdgeEventId: "",
+      lastEdgeEventType: 0,
+    } : {
       lastEdgeEventTime: 0,
       lastEdgeEventId: "",
       lastEdgeEventType: 0,

@@ -29,6 +29,7 @@ export class ReadOptimisedAggregator {
   // PERFORMANCE: Bound concurrent materializations per worker instance to prevent
   // resource exhaustion (ClickHouse connection pool, memory).
   private readonly limit = pLimit(10);
+  private readonly inFlightByTrace = new Map<string, Promise<void>>();
 
   constructor(
     private readonly eventBus: IEventBus,
@@ -74,7 +75,7 @@ export class ReadOptimisedAggregator {
     // and arrive at the same partition/consumer, while different traces can be
     // processed concurrently.
     const tasks = Array.from(traces.values()).map((trace) =>
-      this.limit(() => this.rebuildTrace(trace))
+      this.enqueueTrace(trace)
     );
 
     await Promise.all(tasks);
@@ -113,5 +114,24 @@ export class ReadOptimisedAggregator {
       traceId: data.traceId,
     });
   }
-}
 
+  /**
+   * Serializes rebuilds for one trace across independently delivered batches.
+   * Without this queue, concurrent rebuilds can load the same checkpoint and
+   * overwrite the read model with different partial snapshots.
+   */
+  private enqueueTrace(data: TraceIngestedPayload): Promise<void> {
+    const key = `${data.userId}:${data.traceId}`;
+    const previous = this.inFlightByTrace.get(key) ?? Promise.resolve();
+    const queued = previous
+      .catch(() => undefined)
+      .then(() => this.limit(() => this.rebuildTrace(data)));
+
+    this.inFlightByTrace.set(key, queued);
+    return queued.finally(() => {
+      if (this.inFlightByTrace.get(key) === queued) {
+        this.inFlightByTrace.delete(key);
+      }
+    });
+  }
+}
