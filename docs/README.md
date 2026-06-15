@@ -34,3 +34,8 @@ Guides for consumers instrumenting their applications with the Topo-Tracer SDK.
 ## 8. Java & Spring SDK
 Documentation for the Java client and its Spring Boot auto-configuration.
 - [8.1. Java & Spring Integration](./8.java_sdk/8.1.java_and_spring.md)
+
+## 9. Development Journal
+Chronological records of key engineering decisions, diagnostics, and implementations.
+- [9.1. ClickHouse Checkpoint Lookback Journal](./9.development_journal/9.1.clickhouse_checkpoint_lookback.md)
+
