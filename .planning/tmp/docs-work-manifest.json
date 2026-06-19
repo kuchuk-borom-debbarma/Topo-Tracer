@@ -1,0 +1,111 @@
+{
+  "canonical_queue": [
+    {
+      "type": "readme",
+      "resolved_path": "README.md",
+      "mode": "create",
+      "preservation_mode": "regenerate",
+      "wave": 1,
+      "status": "verified"
+    },
+    {
+      "type": "readme",
+      "resolved_path": "hono-server/README.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 1,
+      "status": "verified"
+    },
+    {
+      "type": "architecture",
+      "resolved_path": "docs/1.system_architecture/1.1.system_overview.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 1,
+      "status": "verified"
+    },
+    {
+      "type": "api",
+      "resolved_path": "docs/1.system_architecture/1.2.api_contracts.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 1,
+      "status": "verified"
+    },
+    {
+      "type": "trace_pipeline",
+      "resolved_path": "docs/2.trace_pipeline/2.1.ingestion_and_outbox.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "trace_pipeline",
+      "resolved_path": "docs/2.trace_pipeline/2.2.materialization_engine.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "trace_pipeline",
+      "resolved_path": "docs/2.trace_pipeline/2.3.graph_projection.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "backend_infrastructure",
+      "resolved_path": "docs/3.backend_infrastructure/3.1.database_schemas.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "backend_infrastructure",
+      "resolved_path": "docs/3.backend_infrastructure/3.2.event_bus_and_idempotency.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "hono_server",
+      "resolved_path": "docs/6.hono_server/6.1.codebase.md",
+      "mode": "create",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "docs_index",
+      "resolved_path": "docs/README.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "sdk_readme",
+      "resolved_path": "sdks/node-js/README.md",
+      "mode": "update",
+      "preservation_mode": "regenerate",
+      "wave": 2,
+      "status": "verified"
+    },
+    {
+      "type": "java_sdk",
+      "resolved_path": "docs/8.java_sdk/8.1.java_and_spring.md",
+      "mode": "update",
+      "preservation_mode": "supplement",
+      "wave": 2,
+      "status": "verified"
+    }
+  ],
+  "review_queue": [],
+  "gap_queue": [],
+  "created_at": "2026-06-19T00:00:00.000Z"
+}

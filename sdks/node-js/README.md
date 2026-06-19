@@ -1,115 +1,94 @@
 # @topo-tracer/node-sdk
 
-A lightweight, high-performance Node.js SDK for Topo-Tracer, focused on graph-based telemetry and distributed tracing.
+Node.js instrumentation SDK for Topo-Tracer.
+
+The SDK emits graph telemetry: nodes are units of work and edges are explicit links between them. It batches those lifecycle events and sends them to the Hono backend at `/api/v1/ingest`.
 
 ## Features
 
-- **Fluent API:** Intuitive span and edge creation.
-- **Automatic Context Tracking:** Uses `AsyncLocalStorage` to manage trace context across asynchronous boundaries.
-- **Distributed Tracing:** Seamless context propagation between services via HTTP headers.
-- **Efficient Ingestion:** Batching and compressed payloads for minimal overhead.
-- **Resilient:** Built-in retry logic with exponential backoff and jitter.
-- **Lightweight:** Zero dependencies (except for optional framework integrations).
-
-## Installation
-
-```bash
-bun add @topo-tracer/node-sdk
-# or
-npm install @topo-tracer/node-sdk
-```
+- `AsyncLocalStorage` context tracking for nested spans.
+- Explicit node start/end and edge start events.
+- Logs as graph nodes through `tracer.log`.
+- Importance levels for backend threshold projection.
+- Trace-level names and importance labels.
+- HTTP batching with flush interval and manual `flush`.
+- Retry with exponential backoff and jitter.
+- `onDrop` hook for permanent send failures.
+- API-key authentication through `X-API-Key`.
 
 ## Quick Start
 
-```typescript
-import { Tracer } from '@topo-tracer/node-sdk';
+```ts
+import { Tracer, NodeType, Importance } from "@topo-tracer/node-sdk";
 
 const tracer = new Tracer({
-  endpoint: 'http://localhost:3000',
-  apiKey: 'your-api-key',
-  serviceName: 'my-service'
+  endpoint: "http://localhost:8787",
+  apiKey: "tt_your_api_key",
+  serviceName: "checkout-api",
+  batchSize: 100,
+  flushInterval: 5000,
 });
 
-async function main() {
-  await tracer.trace('process-order', async (span) => {
-    span.setAttribute('orderId', '12345');
-    
-    await tracer.trace('validate-payment', async (paymentSpan) => {
-      // payment logic...
-      paymentSpan.setAttribute('status', 'success');
-    });
-  });
+await tracer.trace(
+  "checkout-request",
+  async (span) => {
+    span.setAttribute("customer.id", "cust_demo_001");
 
-  // Ensure all spans are sent before exiting
-  await tracer.flush();
-}
+    await tracer.trace(
+      "load-cart-db",
+      async (dbSpan) => {
+        dbSpan.setAttribute("storage.kind", "cache");
+        tracer.log("Cart found in cache", { cartId: "cart_123" }, Importance.HIGH);
+      },
+      { type: NodeType.DB_CALL },
+    );
+  },
+  {
+    type: NodeType.CONTROLLER,
+    traceName: "Checkout Flow Demo",
+    importanceLabels: {
+      0: "request",
+      1: "work",
+      2: "detail",
+    },
+  },
+);
 
-main();
+await tracer.flush();
 ```
-
-## API Reference
-
-### `Tracer`
-
-The main entry point for the SDK.
-
-#### `constructor(config: TracerConfig)`
-
-- `endpoint`: The Topo-Tracer ingestion endpoint.
-- `apiKey`: Your API key for authentication.
-- `serviceName`: Name of the service being traced.
-- `batchSize`: (Optional) Number of spans to batch before sending (default: 100).
-- `flushInterval`: (Optional) Interval in ms to flush the batch (default: 5000).
-- `retries`: (Optional) Number of retry attempts for failed requests (default: 3).
-
-#### `trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T>`
-
-Starts a new span and executes the provided function within the span context.
-For a new root trace, `name` also becomes the trace name. Pass
-`{ traceName: "..." }` to override it.
-
-#### `createSpan(name: string, options?: SpanOptions): Span`
-
-Creates a span manually. Requires manual ending with `span.end()`.
-
-#### `extractContext(headers: Record<string, string | string[] | undefined>): TraceContext | null`
-
-Extracts trace context from incoming HTTP headers.
-
-#### `injectContext(headers: Record<string, string | string[] | undefined>): void`
-
-Injects current trace context into outgoing HTTP headers.
-
-#### `flush(): Promise<void>`
-
-Immediately sends all buffered spans to the server.
-
-### `Span`
-
-Represents a single unit of work in a trace.
-
-#### `setAttribute(key: string, value: any): this`
-
-Adds an attribute to the span.
-
-#### `end(): void`
-
-Ends the span and adds it to the batch.
 
 ## Configuration
 
-The SDK can be configured via the `TracerConfig` object passed to the constructor.
-
-| Option | Type | Default | Description |
+| Option | Required | Default | Notes |
 | --- | --- | --- | --- |
-| `endpoint` | `string` | **Required** | Ingestion server URL |
-| `apiKey` | `string` | **Required** | API Key for auth |
-| `serviceName` | `string` | **Required** | Name of your service |
-| `batchSize` | `number` | `100` | Max spans per batch |
-| `flushInterval`| `number` | `5000` | Flush interval in ms |
-| `maxRetries` | `number` | `3` | Max retry attempts |
-| `onDrop` | `Function`| `undefined` | Hook called when spans are dropped |
+| `endpoint` | yes | none | Base backend URL or full `/api/v1/ingest` URL. |
+| `apiKey` | yes | none | Sent as `X-API-Key`. |
+| `userId` | no | none | Sent as `X-User-Id` when supplied. |
+| `serviceName` | no | none | Stored in config for integrations. |
+| `batchSize` | no | `100` | Flush when buffered event count reaches this size. |
+| `flushInterval` | no | `5000` | Periodic flush in milliseconds. Set `0` to disable timer. |
+| `maxRetries` | no | `5` | Retry attempts for failed ingestion. |
+| `retryDelay` | no | `1000` | Base retry delay in milliseconds. |
+| `ignoreFailures` | no | `true` | When false, permanent ingestion failure throws from flush. |
+| `onDrop` | no | none | Called after retries are exhausted. |
+| `nodeTypeImportanceMapping` | no | built in | Override default importance by node type. |
+| `logHooks` | no | none | Called when `tracer.log` runs. |
+| `traceHooks` | no | none | Called on span start/end. |
 
-## License
+## Scripts
 
-MIT
+```sh
+bun test
+bun run build
+bun run demo:e2e
+bun run demo:stress
+bun run bench
+```
+
+The demos use `TOPO_TRACER_URL` and prompt for `TOPO_TRACER_API_KEY`.
+
+## Context Helpers
+
+`extractContext()` returns the active `{ traceId, spanId }` from AsyncLocalStorage.
+
+`injectContext({ traceId, spanId })` returns a synthetic external span for the supplied context. It does not currently write HTTP headers by itself.
