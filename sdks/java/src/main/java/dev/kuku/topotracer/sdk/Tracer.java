@@ -461,7 +461,11 @@ public class Tracer {
             name,
             System.currentTimeMillis(),
             importance,
-            opts.getName()
+            opts.getName(),
+            opts.isGroupParentExplicit()
+                ? opts.getGroupParentId()
+                : (currentParent != null ? currentParent.getId() : null),
+            opts.getLayer()
         );
 
         List<IngestTraceStart> traceStarts = new ArrayList<>();
@@ -670,6 +674,8 @@ public class Tracer {
             "external",
             System.currentTimeMillis(),
             0,
+            null,
+            null,
             null
         );
         return new Span(nodeStart, null);

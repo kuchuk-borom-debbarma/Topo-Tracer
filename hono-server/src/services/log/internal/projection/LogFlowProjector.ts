@@ -5,6 +5,8 @@ import {
   ProjectedFlowResult,
   ProjectedNormalNode,
   ProjectedGhostNode,
+  ProjectedCollapsedGroupNode,
+  ProjectedCollapsedLayerNode,
   ProjectedFlowNode,
   ProjectedFlowEdge
 } from "../../api/types";
@@ -35,8 +37,19 @@ export class LogFlowProjector {
     edges: ReadEdge[];
     nodeCap: ProjectionReadCap;
     edgeCap: ProjectionReadCap;
+    collapsedGroups?: string[];
+    collapsedLayers?: string[];
   }): ProjectedFlowResult {
-    const { traceId, threshold, nodes, edges, nodeCap, edgeCap } = params;
+    const {
+      traceId,
+      threshold,
+      nodes,
+      edges,
+      nodeCap,
+      edgeCap,
+      collapsedGroups = [],
+      collapsedLayers = [],
+    } = params;
 
     // 1. Sort nodes by flowOrder ASC, id ASC
     const sortedNodes = [...nodes].sort((a, b) => {
@@ -47,6 +60,12 @@ export class LogFlowProjector {
     const projectedNodes: ProjectedFlowNode[] = [];
     const nodeProjectionById = new Map<string, string>(); // original id -> projected id (normal or ghost)
     const ghostNodesById = new Map<string, ProjectedGhostNode>();
+    const groupNodesById = new Map<string, ProjectedCollapsedGroupNode>();
+    const layerNodesById = new Map<string, ProjectedCollapsedLayerNode>();
+    const nodeById = new Map(sortedNodes.map((node) => [node.id, node]));
+    const childGroupCountById = this.buildChildGroupCounts(sortedNodes);
+    const collapsedGroupSet = new Set(collapsedGroups);
+    const collapsedLayerSet = new Set(collapsedLayers);
 
     let currentHiddenRun: ReadNode[] = [];
 
@@ -99,6 +118,68 @@ export class LogFlowProjector {
 
     // Construct projected nodes (normals vs ghosts)
     for (const node of sortedNodes) {
+      const collapsedLayerKey = node.layer && collapsedLayerSet.has(node.layer.key)
+        ? node.layer.key
+        : null;
+      const collapsedGroupId = collapsedLayerKey
+        ? null
+        : this.findCollapsedGroupId(node, nodeById, collapsedGroupSet);
+
+      if (collapsedLayerKey && node.layer) {
+        finalizeHiddenRun();
+        const layerId = `layer:${traceId}:${node.layer.key}`;
+        nodeProjectionById.set(node.id, layerId);
+        const projectedLayer = layerNodesById.get(layerId);
+        if (projectedLayer) {
+          this.addNodeToCollapsed(projectedLayer, node);
+        } else {
+          const nextLayer: ProjectedCollapsedLayerNode = {
+            kind: "layer",
+            id: layerId,
+            layer: node.layer,
+            hiddenNodeCount: 1,
+            hiddenEdgeCount: 0,
+            childGroupCount: childGroupCountById.get(node.id) ?? 0,
+            startedAt: node.startedAt,
+            endedAt: node.endedAt,
+            flowOrderStart: node.flowOrder,
+            flowOrderEnd: node.flowOrder,
+          };
+          projectedNodes.push(nextLayer);
+          layerNodesById.set(layerId, nextLayer);
+        }
+        continue;
+      }
+
+      if (collapsedGroupId) {
+        finalizeHiddenRun();
+        const groupId = `group:${traceId}:${collapsedGroupId}`;
+        nodeProjectionById.set(node.id, groupId);
+        const projectedGroup = groupNodesById.get(groupId);
+        if (projectedGroup) {
+          this.addNodeToCollapsed(projectedGroup, node);
+        } else {
+          const groupNode = nodeById.get(collapsedGroupId) ?? node;
+          const nextGroup: ProjectedCollapsedGroupNode = {
+            kind: "group",
+            id: groupId,
+            groupId: collapsedGroupId,
+            label: groupNode.name || groupNode.startMessage || groupNode.nodeType,
+            layer: groupNode.layer ?? null,
+            hiddenNodeCount: 1,
+            hiddenEdgeCount: 0,
+            childGroupCount: childGroupCountById.get(collapsedGroupId) ?? 0,
+            startedAt: node.startedAt,
+            endedAt: node.endedAt,
+            flowOrderStart: node.flowOrder,
+            flowOrderEnd: node.flowOrder,
+          };
+          projectedNodes.push(nextGroup);
+          groupNodesById.set(groupId, nextGroup);
+        }
+        continue;
+      }
+
       if (node.importanceLevel <= threshold) {
         finalizeHiddenRun();
         projectedNodes.push({
@@ -115,6 +196,9 @@ export class LogFlowProjector {
           flowOrder: node.flowOrder,
           materializedAt: node.materializedAt,
           startMessage: node.startMessage,
+          groupParentId: node.groupParentId ?? null,
+          layer: node.layer ?? null,
+          childGroupCount: childGroupCountById.get(node.id) ?? 0,
         });
         nodeProjectionById.set(node.id, node.id);
       } else {
@@ -137,10 +221,18 @@ export class LogFlowProjector {
         continue;
       }
 
-      // Edge is fully contained within a single collapsed ghost node
-      if (projectedFromId === projectedToId && ghostNodesById.has(projectedFromId)) {
-        const ghost = ghostNodesById.get(projectedFromId)!;
-        ghost.hiddenEdgeCount++;
+      // Edge is fully contained within one collapsed placeholder.
+      if (projectedFromId === projectedToId) {
+        const collapsed = ghostNodesById.get(projectedFromId)
+          ?? groupNodesById.get(projectedFromId)
+          ?? layerNodesById.get(projectedFromId);
+        if (collapsed) {
+          collapsed.hiddenEdgeCount++;
+          continue;
+        }
+      }
+
+      if (projectedFromId === projectedToId) {
         continue;
       }
 
@@ -183,6 +275,8 @@ export class LogFlowProjector {
 
     const visibleNodeCount = projectedNodes.filter(n => n.kind === "normal").length;
     const ghostNodeCount = projectedNodes.filter(n => n.kind === "ghost").length;
+    const collapsedGroupCount = projectedNodes.filter(n => n.kind === "group").length;
+    const collapsedLayerCount = projectedNodes.filter(n => n.kind === "layer").length;
 
     return {
       nodes: projectedNodes,
@@ -193,6 +287,8 @@ export class LogFlowProjector {
         returnedEdgeCount: projectedEdges.length,
         visibleNodeCount,
         ghostNodeCount,
+        collapsedGroupCount,
+        collapsedLayerCount,
         materializedAt: maxMaterializedAt,
         nodeCap,
         edgeCap,
@@ -209,5 +305,41 @@ export class LogFlowProjector {
       },
     };
   }
-}
 
+  private buildChildGroupCounts(nodes: ReadNode[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const node of nodes) {
+      if (!node.groupParentId) continue;
+      counts.set(node.groupParentId, (counts.get(node.groupParentId) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private findCollapsedGroupId(
+    node: ReadNode,
+    nodeById: Map<string, ReadNode>,
+    collapsedGroupSet: Set<string>,
+  ): string | null {
+    let current: ReadNode | undefined = node;
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      if (collapsedGroupSet.has(current.id)) return current.id;
+      current = current.groupParentId ? nodeById.get(current.groupParentId) : undefined;
+    }
+    return null;
+  }
+
+  private addNodeToCollapsed(
+    collapsed: ProjectedCollapsedGroupNode | ProjectedCollapsedLayerNode,
+    node: ReadNode,
+  ): void {
+    collapsed.hiddenNodeCount++;
+    collapsed.startedAt = Math.min(collapsed.startedAt, node.startedAt);
+    collapsed.flowOrderStart = Math.min(collapsed.flowOrderStart, node.flowOrder);
+    collapsed.flowOrderEnd = Math.max(collapsed.flowOrderEnd, node.flowOrder);
+    if (node.endedAt !== null) {
+      collapsed.endedAt = Math.max(collapsed.endedAt ?? -Infinity, node.endedAt);
+    }
+  }
+}

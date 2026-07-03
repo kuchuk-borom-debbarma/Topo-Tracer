@@ -281,6 +281,8 @@ app.get("/api/v1/traces/:traceId/flow", jwtAuthMiddleware(), async (c) => {
   const thresholdRaw = c.req.query("threshold") || "0";
   const limitRaw = c.req.query("limit") || "1000";
   const cursor = c.req.query("cursor");
+  const collapsedGroups = parseCsvQuery(c.req.query("collapsedGroups"));
+  const collapsedLayers = parseCsvQuery(c.req.query("collapsedLayers"));
 
   const threshold = parseInt(thresholdRaw, 10);
   if (isNaN(threshold) || threshold < 0) {
@@ -299,6 +301,8 @@ app.get("/api/v1/traces/:traceId/flow", jwtAuthMiddleware(), async (c) => {
       threshold,
       cursor,
       limit,
+      collapsedGroups,
+      collapsedLayers,
     });
     return c.json(flow);
   } catch (error: any) {
@@ -307,5 +311,13 @@ app.get("/api/v1/traces/:traceId/flow", jwtAuthMiddleware(), async (c) => {
     return c.json({ error: error.message || "Internal Server Error" }, status);
   }
 });
+
+function parseCsvQuery(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 export default app;

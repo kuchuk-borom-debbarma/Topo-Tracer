@@ -150,6 +150,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(n.end_message, n.materialized_at_ms) as end_message,
             argMax(n.importance_level, n.materialized_at_ms) as importance_level,
             argMax(n.flow_order, n.materialized_at_ms) as flow_order,
+            argMax(n.group_parent_id, n.materialized_at_ms) as group_parent_id,
+            argMax(n.layer_key, n.materialized_at_ms) as layer_key,
+            argMax(n.layer_label, n.materialized_at_ms) as layer_label,
+            argMax(n.layer_order, n.materialized_at_ms) as layer_order,
             max(n.materialized_at_ms) as materialized_at_ms
           FROM ${CLICKHOUSE_READ_NODES_TABLE} as n
           WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}
@@ -210,6 +214,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
         importanceLevel: row.importance_level,
         flowOrder: row.flow_order,
         materializedAt: row.materialized_at_ms,
+        groupParentId: row.group_parent_id ?? null,
+        layer: this.mapLayer(row),
       })),
       edges: edgeRows.map(row => ({
         id: row.id,
@@ -347,6 +353,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
               argMax(n.end_message, n.materialized_at_ms) as end_message,
               argMax(n.importance_level, n.materialized_at_ms) as importance_level,
               argMax(n.flow_order, n.materialized_at_ms) as flow_order,
+              argMax(n.group_parent_id, n.materialized_at_ms) as group_parent_id,
+              argMax(n.layer_key, n.materialized_at_ms) as layer_key,
+              argMax(n.layer_label, n.materialized_at_ms) as layer_label,
+              argMax(n.layer_order, n.materialized_at_ms) as layer_order,
               max(n.materialized_at_ms) as materialized_at_ms
             FROM ${CLICKHOUSE_READ_NODES_TABLE} as n
             WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}
@@ -390,6 +400,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       importanceLevel: row.importance_level,
       flowOrder: row.flow_order,
       materializedAt: row.materialized_at_ms,
+      groupParentId: row.group_parent_id ?? null,
+      layer: this.mapLayer(row),
     }));
 
     return {
@@ -519,6 +531,10 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
             argMax(n.end_message, n.materialized_at_ms) as end_message,
             argMax(n.importance_level, n.materialized_at_ms) as importance_level,
             argMax(n.flow_order, n.materialized_at_ms) as flow_order,
+            argMax(n.group_parent_id, n.materialized_at_ms) as group_parent_id,
+            argMax(n.layer_key, n.materialized_at_ms) as layer_key,
+            argMax(n.layer_label, n.materialized_at_ms) as layer_label,
+            argMax(n.layer_order, n.materialized_at_ms) as layer_order,
             max(n.materialized_at_ms) as materialized_at_ms
           FROM ${CLICKHOUSE_READ_NODES_TABLE} as n
           WHERE n.user_id = {userId:String} AND n.trace_id = {traceId:String}
@@ -559,6 +575,8 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       importanceLevel: row.importance_level,
       flowOrder: row.flow_order,
       materializedAt: row.materialized_at_ms,
+      groupParentId: row.group_parent_id ?? null,
+      layer: this.mapLayer(row),
     }));
 
     return {
@@ -874,7 +892,20 @@ export class LogReadRepoClickHouse extends ILogReadRepo {
       importance_level: node.importanceLevel,
       flow_order: node.flowOrder,
       materialized_at_ms: node.materializedAt,
+      group_parent_id: node.groupParentId ?? null,
+      layer_key: node.layer?.key ?? null,
+      layer_label: node.layer?.label ?? null,
+      layer_order: node.layer?.order ?? null,
     }));
+  }
+
+  private mapLayer(row: ReadNodeRow): ReadNode["layer"] {
+    if (!row.layer_key || !row.layer_label || row.layer_order === null || row.layer_order === undefined) return null;
+    return {
+      key: row.layer_key,
+      label: row.layer_label,
+      order: row.layer_order,
+    };
   }
 
   private buildReadEdgeRows(edges: ReadEdge[]): ReadEdgeRow[] {

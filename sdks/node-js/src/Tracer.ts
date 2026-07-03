@@ -6,7 +6,8 @@ import {
   IngestNodeEnd, 
   IngestEdgeEnd,
   IngestBatch, IngestTraceStart,
-  NodeType, Importance
+  NodeType, Importance,
+  GroupLayerInput,
 } from "./types";
 import { Span } from "./Span";
 import { randomUUID } from "crypto";
@@ -145,7 +146,9 @@ export class Tracer {
       type?: string | NodeType, 
       importanceLevel?: number | Importance, 
       traceName?: string, 
-      importanceLabels?: Record<number, string> 
+      importanceLabels?: Record<number, string>,
+      groupParentId?: string | null,
+      layer?: GroupLayerInput,
     }
   ): Promise<T> {
     const span = this.startNode({ 
@@ -153,7 +156,9 @@ export class Tracer {
       type: options?.type, 
       importanceLevel: options?.importanceLevel, 
       traceName: options?.traceName, 
-      importanceLabels: options?.importanceLabels 
+      importanceLabels: options?.importanceLabels,
+      groupParentId: options?.groupParentId,
+      layer: options?.layer,
     });
     return this.run(span, async () => {
       try {
@@ -236,6 +241,8 @@ export class Tracer {
     traceName?: string,
     importanceLabels?: Record<number, string>,
     nodeName?: string, // Human-friendly code artifact identifier (e.g. "AuthController.login")
+    groupParentId?: string | null,
+    layer?: GroupLayerInput,
   }): Span {
     const currentStore = this.storage.getStore();
     const currentParent = currentStore?.activeSpan;
@@ -273,6 +280,16 @@ export class Tracer {
       startedAt: Date.now(),
       importanceLevel,
       name: options.nodeName,
+      groupParentId: options.groupParentId !== undefined
+        ? options.groupParentId
+        : (currentParent?.id ?? null),
+      layer: options.layer
+        ? {
+            key: options.layer.key,
+            label: options.layer.label ?? options.layer.key,
+            order: options.layer.order,
+          }
+        : null,
     };
 
     const traceStarts: IngestTraceStart[] = [];

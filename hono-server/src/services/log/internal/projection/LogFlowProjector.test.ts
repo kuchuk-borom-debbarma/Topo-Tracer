@@ -24,6 +24,8 @@ describe("LogFlowProjector", () => {
     importanceLevel: importance,
     flowOrder,
     materializedAt: Date.now(),
+    groupParentId: null,
+    layer: null,
   });
 
   const createEdge = (id: string, fromId: string, toId: string, fromFlow: number, toFlow: number, type = "child"): ReadEdge => ({
@@ -282,6 +284,63 @@ describe("LogFlowProjector", () => {
 
     expect(result.edges).toHaveLength(0);
     expect(result.metadata.omittedEdgeCount).toBe(1);
+  });
+
+  it("collapsed group: snaps descendants into one group node", () => {
+    const root = createNode("root", 1, 1);
+    const child = { ...createNode("child", 1, 2), groupParentId: "root" };
+    const edges = [createEdge("e1", "root", "child", 1, 2)];
+
+    const result = projector.project({
+      userId,
+      traceId,
+      threshold: 3,
+      nodes: [root, child],
+      edges,
+      nodeCap,
+      edgeCap,
+      collapsedGroups: ["root"],
+    });
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0]).toMatchObject({
+      kind: "group",
+      groupId: "root",
+      hiddenNodeCount: 2,
+      hiddenEdgeCount: 1,
+    });
+    expect(result.edges).toHaveLength(0);
+  });
+
+  it("collapsed layer: groups same-layer peers and keeps incoming edge", () => {
+    const caller = createNode("caller", 1, 1);
+    const service = {
+      ...createNode("service", 1, 2),
+      groupParentId: null,
+      layer: { key: "external-services", label: "External Services", order: 3 },
+    };
+    const edges = [createEdge("e1", "caller", "service", 1, 2)];
+
+    const result = projector.project({
+      userId,
+      traceId,
+      threshold: 3,
+      nodes: [caller, service],
+      edges,
+      nodeCap,
+      edgeCap,
+      collapsedLayers: ["external-services"],
+    });
+
+    expect(result.nodes.find((node) => node.kind === "layer")).toMatchObject({
+      kind: "layer",
+      hiddenNodeCount: 1,
+      layer: { key: "external-services" },
+    });
+    expect(result.edges).toContainEqual(expect.objectContaining({
+      fromNodeId: "caller",
+      toNodeId: `layer:${traceId}:external-services`,
+    }));
   });
 
   it("cap metadata propagation: includes cap info in metadata", () => {

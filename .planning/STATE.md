@@ -52,3 +52,4 @@ The Topo-Tracer Node.js SDK is now production-ready, featuring a high-quality fl
 | 2026-06-11 | Build routed Hono trace explorer frontend | Complete |
 | 2026-06-13 | Fix Node SDK buffer overflow | Complete |
 | 2026-06-13 | Redesign trace flow view | Complete |
+| 2026-07-03 | Implement group layer collapse | Complete |

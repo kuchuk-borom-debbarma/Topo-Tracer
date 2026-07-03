@@ -1347,6 +1347,12 @@ h3,
   border-style: dashed;
 }
 
+.trace-node-card.collapsed-group,
+.trace-node-card.collapsed-layer {
+  background: #f8fbff;
+  border-left-color: #12845f;
+}
+
 .node-card-top {
   align-items: center;
   color: #7c8798;
@@ -1387,6 +1393,47 @@ h3,
   font-size: 8px;
   margin-left: auto;
   padding: 3px 5px;
+}
+
+.node-collapse-button {
+  align-items: center;
+  background: #eef6f3;
+  border: 1px solid #cfe3dc;
+  border-radius: 5px;
+  color: #12845f;
+  display: inline-flex;
+  height: 20px;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+  width: 20px;
+}
+
+.node-collapse-button svg {
+  height: 12px;
+  width: 12px;
+}
+
+.layer-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.layer-toggle {
+  background: #f8fafc;
+  border: 1px solid #d8e0ea;
+  border-radius: 6px;
+  color: #526070;
+  font-size: 11px;
+  height: 28px;
+  padding: 0 9px;
+}
+
+.layer-toggle.active {
+  background: #e9f7f2;
+  border-color: #9bd0bd;
+  color: #12845f;
 }
 
 .trace-node-card h3 {

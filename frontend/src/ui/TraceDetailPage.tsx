@@ -21,8 +21,7 @@ import type {
   ProjectedFlowEdge,
   ProjectedFlowNode,
   ProjectedFlowResult,
-  ProjectedGhostNode,
-  ProjectedNormalNode,
+  GroupLayer,
   TraceSummary,
 } from "../types";
 import {
@@ -50,6 +49,8 @@ type FlowNodeData = {
   value: ProjectedFlowNode;
   importanceLabels?: Record<number, string>;
   selected: boolean;
+  onToggleGroup: (groupId: string) => void;
+  onToggleLayer: (layerKey: string) => void;
 };
 
 type TraceFlowNode = Node<FlowNodeData, "trace-node">;
@@ -61,6 +62,8 @@ export function TraceDetailPage() {
   const search = useSearch({ strict: false }) as { threshold?: number; cursor?: string };
   const traceId = params.traceId;
   const [selected, setSelected] = useState<SelectedItem | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
+  const [collapsedLayers, setCollapsedLayers] = useState<string[]>([]);
 
   const summaryQuery = useQuery({
     queryKey: ["trace-summary", traceId],
@@ -76,15 +79,35 @@ export function TraceDetailPage() {
   );
 
   const flowQuery = useQuery({
-    queryKey: ["trace-flow", traceId, threshold, search.cursor],
-    queryFn: () => fetchTraceFlow({ traceId, threshold, cursor: search.cursor, limit: 180 }),
+    queryKey: ["trace-flow", traceId, threshold, search.cursor, collapsedGroups, collapsedLayers],
+    queryFn: () => fetchTraceFlow({
+      traceId,
+      threshold,
+      cursor: search.cursor,
+      limit: 180,
+      collapsedGroups,
+      collapsedLayers,
+    }),
     enabled: Boolean(traceId) && !summaryQuery.isError,
     retry: false,
   });
 
   useEffect(() => {
     setSelected(null);
-  }, [traceId, threshold, search.cursor]);
+  }, [traceId, threshold, search.cursor, collapsedGroups, collapsedLayers]);
+
+  useEffect(() => {
+    setCollapsedGroups([]);
+    setCollapsedLayers([]);
+  }, [traceId]);
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((current) => toggleValue(current, groupId));
+  };
+
+  const toggleLayer = (layerKey: string) => {
+    setCollapsedLayers((current) => toggleValue(current, layerKey));
+  };
 
   const updateSearch = (next: { threshold?: number; cursor?: string }) => {
     navigate({
@@ -153,8 +176,10 @@ export function TraceDetailPage() {
             flow={flowQuery.data}
             threshold={threshold}
             hasSelection={Boolean(selected)}
+            collapsedLayers={collapsedLayers}
             onThresholdChange={(value) => updateSearch({ threshold: value })}
             onCloseDetails={() => setSelected(null)}
+            onToggleLayer={toggleLayer}
           />
 
           <div className="graph-frame trace-graph-frame">
@@ -187,6 +212,8 @@ export function TraceDetailPage() {
                 flow={flowQuery.data}
                 summary={summary}
                 selected={selected}
+                onToggleGroup={toggleGroup}
+                onToggleLayer={toggleLayer}
                 onSelect={setSelected}
               />
             )}
@@ -250,11 +277,14 @@ function GraphToolbar(props: {
   flow?: ProjectedFlowResult;
   threshold: number;
   hasSelection: boolean;
+  collapsedLayers: string[];
   onThresholdChange: (value: number) => void;
   onCloseDetails: () => void;
+  onToggleLayer: (layerKey: string) => void;
 }) {
   const min = props.summary?.minImportanceLevel ?? 0;
   const max = Math.max(min, props.summary?.maxImportanceLevel ?? 9);
+  const layers = collectLayers(props.flow?.nodes ?? []);
 
   return (
     <div className="graph-toolbar trace-toolbar graph-toolbar-elevated">
@@ -264,8 +294,23 @@ function GraphToolbar(props: {
       </div>
       <div className="toolbar-stat">
         <span>Collapsed</span>
-        <strong>{props.flow?.metadata.ghostNodeCount ?? 0}</strong>
+        <strong>{(props.flow?.metadata.ghostNodeCount ?? 0) + (props.flow?.metadata.collapsedGroupCount ?? 0) + (props.flow?.metadata.collapsedLayerCount ?? 0)}</strong>
       </div>
+      {layers.length > 0 && (
+        <div className="layer-toggle-row">
+          {layers.map((layer) => (
+            <button
+              key={layer.key}
+              type="button"
+              className={`layer-toggle ${props.collapsedLayers.includes(layer.key) ? "active" : ""}`}
+              onClick={() => props.onToggleLayer(layer.key)}
+              title={props.collapsedLayers.includes(layer.key) ? "Expand layer" : "Collapse layer"}
+            >
+              {layer.label}
+            </button>
+          ))}
+        </div>
+      )}
       <label className="importance-control compact graph-importance-control">
         <span>
           <Icon name="filter" />
@@ -298,11 +343,13 @@ function TraceCanvas(props: {
   flow: ProjectedFlowResult;
   summary?: TraceSummary;
   selected: SelectedItem | null;
+  onToggleGroup: (groupId: string) => void;
+  onToggleLayer: (layerKey: string) => void;
   onSelect: (selected: SelectedItem | null) => void;
 }) {
   const graph = useMemo(
-    () => buildFlow(props.flow, props.summary, props.selected),
-    [props.flow, props.summary, props.selected],
+    () => buildFlow(props.flow, props.summary, props.selected, props.onToggleGroup, props.onToggleLayer),
+    [props.flow, props.summary, props.selected, props.onToggleGroup, props.onToggleLayer],
   );
 
   if (props.flow.nodes.length === 0) {
@@ -351,6 +398,66 @@ function TraceCanvas(props: {
 const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode>) {
   const node = props.data.value;
 
+  if (node.kind === "group") {
+    return (
+      <div className={`trace-node-card collapsed-group ${props.data.selected ? "selected" : ""}`}>
+        <Handle type="target" position={Position.Left} />
+        <div className="node-card-top">
+          <span className="node-kind-icon ghost"><Icon name="layers" /></span>
+          <button
+            type="button"
+            className="node-collapse-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              props.data.onToggleGroup(node.groupId);
+            }}
+            aria-label="Expand group"
+            title="Expand group"
+          >
+            <Icon name="chevron-right" />
+          </button>
+        </div>
+        <h3 className="node-name" title={node.label}>{node.label}</h3>
+        <p className="node-start-msg">{node.hiddenNodeCount} grouped nodes</p>
+        <div className="node-card-footer">
+          <small>Flow {node.flowOrderStart}-{node.flowOrderEnd}</small>
+          <small>{node.childGroupCount} children</small>
+        </div>
+        <Handle type="source" position={Position.Right} />
+      </div>
+    );
+  }
+
+  if (node.kind === "layer") {
+    return (
+      <div className={`trace-node-card collapsed-layer ${props.data.selected ? "selected" : ""}`}>
+        <Handle type="target" position={Position.Left} />
+        <div className="node-card-top">
+          <span className="node-badge" data-type="layer">{node.layer.label}</span>
+          <button
+            type="button"
+            className="node-collapse-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              props.data.onToggleLayer(node.layer.key);
+            }}
+            aria-label="Expand layer"
+            title="Expand layer"
+          >
+            <Icon name="chevron-right" />
+          </button>
+        </div>
+        <h3 className="node-name" title={node.layer.label}>{node.layer.label}</h3>
+        <p className="node-start-msg">{node.hiddenNodeCount} layer nodes</p>
+        <div className="node-card-footer">
+          <small>Order {node.layer.order}</small>
+          <small>Flow {node.flowOrderStart}-{node.flowOrderEnd}</small>
+        </div>
+        <Handle type="source" position={Position.Right} />
+      </div>
+    );
+  }
+
   if (node.kind === "ghost") {
     const typeEntries = Object.entries(node.nodeTypeCounts)
       .sort((a, b) => b[1] - a[1]);
@@ -398,6 +505,20 @@ const TraceNodeCard = memo(function TraceNodeCard(props: NodeProps<TraceFlowNode
       <div className="node-card-top">
         <span className="node-badge" data-type={node.nodeType.toLowerCase()}>{node.nodeType}</span>
         <span className="node-importance">{formatImportance(node.importanceLevel, props.data.importanceLabels)}</span>
+        {node.childGroupCount > 0 && (
+          <button
+            type="button"
+            className="node-collapse-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              props.data.onToggleGroup(node.id);
+            }}
+            aria-label="Collapse group"
+            title="Collapse group"
+          >
+            <Icon name="chevron-down" />
+          </button>
+        )}
       </div>
       <h3 className="node-name" title={displayName}>{displayName}</h3>
       {node.name && node.startMessage && node.name !== node.startMessage && (
@@ -440,9 +561,7 @@ function Inspector(props: {
   const importanceLabels = props.summary?.importanceLabels;
   const title = props.selected.type === "node" ? "Node details" : "Edge details";
   const subtitle = props.selected.type === "node"
-    ? props.selected.value.kind === "ghost"
-      ? `${props.selected.value.hiddenNodeCount} hidden nodes`
-      : nodeLabel(props.selected.value.nodeType, props.selected.value.data, props.selected.value.kind === "normal" ? props.selected.value.startMessage : undefined, props.selected.value.kind === "normal" ? props.selected.value.name : undefined)
+    ? nodeInspectorSubtitle(props.selected.value)
     : props.selected.value.edgeType;
 
   return (
@@ -487,6 +606,32 @@ function NodeInspector({ node, importanceLabels }: {
     );
   }
 
+  if (node.kind === "group") {
+    return (
+      <>
+        <DetailRow label="Group" value={node.label} />
+        <DetailRow label="Grouped nodes" value={String(node.hiddenNodeCount)} />
+        <DetailRow label="Internal edges" value={String(node.hiddenEdgeCount)} />
+        <DetailRow label="Child groups" value={String(node.childGroupCount)} />
+        <DetailRow label="Flow range" value={`${node.flowOrderStart}-${node.flowOrderEnd}`} />
+        <DetailRow label="Duration" value={formatDuration(node.startedAt, node.endedAt)} />
+      </>
+    );
+  }
+
+  if (node.kind === "layer") {
+    return (
+      <>
+        <DetailRow label="Layer" value={node.layer.label} />
+        <DetailRow label="Layer key" value={node.layer.key} />
+        <DetailRow label="Layer order" value={String(node.layer.order)} />
+        <DetailRow label="Grouped nodes" value={String(node.hiddenNodeCount)} />
+        <DetailRow label="Internal edges" value={String(node.hiddenEdgeCount)} />
+        <DetailRow label="Flow range" value={`${node.flowOrderStart}-${node.flowOrderEnd}`} />
+      </>
+    );
+  }
+
   return (
     <>
       {node.name && node.name !== node.startMessage && (
@@ -503,6 +648,13 @@ function NodeInspector({ node, importanceLabels }: {
       <DataBlock data={node.data} title="Attributes" />
     </>
   );
+}
+
+function nodeInspectorSubtitle(node: ProjectedFlowNode): string {
+  if (node.kind === "ghost") return `${node.hiddenNodeCount} hidden nodes`;
+  if (node.kind === "group") return `${node.hiddenNodeCount} grouped nodes`;
+  if (node.kind === "layer") return node.layer.label;
+  return nodeLabel(node.nodeType, node.data, node.startMessage, node.name);
 }
 
 function EdgeInspector({ edge }: { edge: ProjectedFlowEdge }) {
@@ -592,6 +744,8 @@ function buildFlow(
   flow: ProjectedFlowResult,
   summary: TraceSummary | undefined,
   selected: SelectedItem | null,
+  onToggleGroup: (groupId: string) => void,
+  onToggleLayer: (layerKey: string) => void,
 ): {
   nodes: TraceFlowNode[];
   edges: TraceFlowEdge[];
@@ -611,6 +765,8 @@ function buildFlow(
       value: node,
       importanceLabels: summary?.importanceLabels,
       selected: selected?.type === "node" && selected.value.id === node.id,
+      onToggleGroup,
+      onToggleLayer,
     },
     style: {
       width: NODE_WIDTH,
@@ -678,7 +834,7 @@ function layoutGraph(nodes: ProjectedFlowNode[], edges: ProjectedFlowEdge[]): Ma
 
   const columns = new Map<number, ProjectedFlowNode[]>();
   for (const node of nodes) {
-    const column = rank.get(node.id) ?? 0;
+    const column = nodeLayer(node)?.order ?? rank.get(node.id) ?? 0;
     columns.set(column, [...(columns.get(column) ?? []), node]);
   }
 
@@ -698,16 +854,28 @@ function layoutGraph(nodes: ProjectedFlowNode[], edges: ProjectedFlowEdge[]): Ma
 }
 
 function nodeFlowStart(node: ProjectedFlowNode): number {
-  return node.kind === "ghost" ? node.flowOrderStart : node.flowOrder;
+  return node.kind === "normal" ? node.flowOrder : node.flowOrderStart;
 }
 
-function summarizeTypes(counts: Record<string, number>): string {
-  const entries = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
+function nodeLayer(node: ProjectedFlowNode): GroupLayer | null {
+  if (node.kind === "normal" || node.kind === "group") return node.layer;
+  if (node.kind === "layer") return node.layer;
+  return null;
+}
 
-  if (entries.length === 0) return "Mixed hidden nodes";
-  return entries.map(([type, count]) => `${type} ${count}`).join(", ");
+function collectLayers(nodes: ProjectedFlowNode[]): GroupLayer[] {
+  const layers = new Map<string, GroupLayer>();
+  for (const node of nodes) {
+    const layer = nodeLayer(node);
+    if (layer) layers.set(layer.key, layer);
+  }
+  return Array.from(layers.values()).sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+}
+
+function toggleValue(values: string[], value: string): string[] {
+  return values.includes(value)
+    ? values.filter((item) => item !== value)
+    : [...values, value];
 }
 
 function normalizeThreshold(value: number | undefined, min: number, max: number): number {

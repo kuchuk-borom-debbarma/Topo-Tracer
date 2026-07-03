@@ -99,12 +99,16 @@ export async function fetchTraceFlow(input: {
   threshold: number;
   cursor?: string;
   limit?: number;
+  collapsedGroups?: string[];
+  collapsedLayers?: string[];
 }): Promise<ProjectedFlowResult> {
   const params = new URLSearchParams({
     threshold: String(input.threshold),
     limit: String(input.limit ?? 160),
   });
   if (input.cursor) params.set("cursor", input.cursor);
+  if (input.collapsedGroups?.length) params.set("collapsedGroups", input.collapsedGroups.join(","));
+  if (input.collapsedLayers?.length) params.set("collapsedLayers", input.collapsedLayers.join(","));
   return request(
     `/api/v1/traces/${encodeURIComponent(input.traceId)}/flow?${params.toString()}`,
   );

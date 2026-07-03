@@ -69,6 +69,10 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         message: node.startMessage ?? null,
         name: node.name ?? null,
         importance_level: node.importanceLevel,
+        group_parent_id: node.groupParentId ?? null,
+        layer_key: node.layer?.key ?? null,
+        layer_label: node.layer?.label ?? null,
+        layer_order: node.layer?.order ?? null,
       })),
       ...data.nodeEnds.map((node): NodeEventRow => ({
         id: node.id,
@@ -82,6 +86,10 @@ export class LogWriteRepoClickHouse extends ILogWriteRepo {
         message: node.endMessage ?? null,
         name: null,
         importance_level: null,
+        group_parent_id: null,
+        layer_key: null,
+        layer_label: null,
+        layer_order: null,
       })),
     ];
   }

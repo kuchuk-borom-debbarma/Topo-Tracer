@@ -10,5 +10,7 @@ public record IngestNodeStart(
     String startMessage,
     long startedAt,
     int importanceLevel,
-    String name
+    String name,
+    String groupParentId,
+    GroupLayer layer
 ) {}

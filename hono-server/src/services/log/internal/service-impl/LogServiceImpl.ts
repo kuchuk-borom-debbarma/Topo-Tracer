@@ -85,6 +85,7 @@ export class LogServiceImpl extends ILogService {
     });
 
     try {
+      this.validateNodeStarts(data.nodeStarts);
       this.validateEdgeStarts(data.edgeStarts);
       
     const totalEvents =
@@ -142,8 +143,18 @@ export class LogServiceImpl extends ILogService {
     threshold: number;
     cursor?: string;
     limit?: number;
+    collapsedGroups?: string[];
+    collapsedLayers?: string[];
   }): Promise<ProjectedFlowResult> {
-    const { userId, traceId, threshold, cursor, limit: providedLimit } = data;
+    const {
+      userId,
+      traceId,
+      threshold,
+      cursor,
+      limit: providedLimit,
+      collapsedGroups = [],
+      collapsedLayers = [],
+    } = data;
 
     const limit = Math.min(providedLimit ?? DEFAULT_PROJECTION_NODE_CAP, MAX_PROJECTION_NODE_CAP);
 
@@ -203,6 +214,8 @@ export class LogServiceImpl extends ILogService {
           capHit: boundedNodes.hasMore,
         },
         edgeCap: boundedEdges.cap,
+        collapsedGroups,
+        collapsedLayers,
       }),
       { type: "cpu", importanceLevel: 2 }
     );
@@ -225,6 +238,8 @@ export class LogServiceImpl extends ILogService {
       userId,
       traceId,
       threshold,
+      collapsedGroups: collapsedGroups.length,
+      collapsedLayers: collapsedLayers.length,
       offset,
       limit,
       returnedNodeCount: result.metadata.returnedNodeCount,
@@ -327,6 +342,27 @@ export class LogServiceImpl extends ILogService {
         !this.isNonEmptyString(edge.toNodeId)
       ) {
         throw new Error("Edge start requires fromNodeId and toNodeId.");
+      }
+    }
+  }
+
+  private validateNodeStarts(nodeStarts: IngestNodeStart[]): void {
+    for (const node of nodeStarts) {
+      if (
+        node.groupParentId !== undefined &&
+        node.groupParentId !== null &&
+        !this.isNonEmptyString(node.groupParentId)
+      ) {
+        throw new Error("Node groupParentId must be null or a non-empty string.");
+      }
+
+      if (!node.layer) continue;
+      if (
+        !this.isNonEmptyString(node.layer.key) ||
+        !this.isNonEmptyString(node.layer.label) ||
+        !Number.isInteger(node.layer.order)
+      ) {
+        throw new Error("Node layer requires key, label, and integer order.");
       }
     }
   }

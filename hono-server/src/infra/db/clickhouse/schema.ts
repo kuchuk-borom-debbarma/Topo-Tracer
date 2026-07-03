@@ -19,7 +19,11 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_NODE_EVENTS_TABLE}
   data Map(String, String) COMMENT 'String key/value payload captured for node start events',
   message Nullable(String) COMMENT 'Start or end message associated with the event',
   importance_level Nullable(Int32) COMMENT 'Node importance level for start events',
-  name Nullable(String) COMMENT 'Human-friendly code artifact name (e.g. ClassName.methodName(Args))'
+  name Nullable(String) COMMENT 'Human-friendly code artifact name (e.g. ClassName.methodName(Args))',
+  group_parent_id Nullable(String) COMMENT 'Optional visual containment parent node id',
+  layer_key Nullable(String) COMMENT 'Optional visual layer key',
+  layer_label Nullable(String) COMMENT 'Optional visual layer label',
+  layer_order Nullable(Int32) COMMENT 'Optional visual layer ordering'
 )
 ENGINE = MergeTree
 ORDER BY (user_id, trace_id, id, event_type);
@@ -77,10 +81,30 @@ CREATE TABLE IF NOT EXISTS ${CLICKHOUSE_READ_NODES_TABLE}
   start_message Nullable(String) COMMENT 'Message captured at node start',
   end_message Nullable(String) COMMENT 'Message captured at node end',
   materialized_at_ms UInt64 COMMENT 'Version field: materialization timestamp in milliseconds',
-  name Nullable(String) COMMENT 'Human-friendly code artifact name propagated from node start event'
+  name Nullable(String) COMMENT 'Human-friendly code artifact name propagated from node start event',
+  group_parent_id Nullable(String) COMMENT 'Optional visual containment parent node id',
+  layer_key Nullable(String) COMMENT 'Optional visual layer key',
+  layer_label Nullable(String) COMMENT 'Optional visual layer label',
+  layer_order Nullable(Int32) COMMENT 'Optional visual layer ordering'
 )
 ENGINE = ReplacingMergeTree(materialized_at_ms)
 ORDER BY (user_id, trace_id, id);
+`;
+
+export const CLICKHOUSE_ALTER_NODE_EVENTS_GROUP_COLUMNS = `
+ALTER TABLE ${CLICKHOUSE_NODE_EVENTS_TABLE}
+  ADD COLUMN IF NOT EXISTS group_parent_id Nullable(String) COMMENT 'Optional visual containment parent node id',
+  ADD COLUMN IF NOT EXISTS layer_key Nullable(String) COMMENT 'Optional visual layer key',
+  ADD COLUMN IF NOT EXISTS layer_label Nullable(String) COMMENT 'Optional visual layer label',
+  ADD COLUMN IF NOT EXISTS layer_order Nullable(Int32) COMMENT 'Optional visual layer ordering';
+`;
+
+export const CLICKHOUSE_ALTER_READ_NODES_GROUP_COLUMNS = `
+ALTER TABLE ${CLICKHOUSE_READ_NODES_TABLE}
+  ADD COLUMN IF NOT EXISTS group_parent_id Nullable(String) COMMENT 'Optional visual containment parent node id',
+  ADD COLUMN IF NOT EXISTS layer_key Nullable(String) COMMENT 'Optional visual layer key',
+  ADD COLUMN IF NOT EXISTS layer_label Nullable(String) COMMENT 'Optional visual layer label',
+  ADD COLUMN IF NOT EXISTS layer_order Nullable(Int32) COMMENT 'Optional visual layer ordering';
 `;
 
 /**
@@ -220,6 +244,8 @@ export const CLICKHOUSE_SCHEMA_STATEMENTS = [
   CLICKHOUSE_CREATE_TRACE_EVENTS_TABLE,
   CLICKHOUSE_CREATE_READ_NODES_TABLE,
   CLICKHOUSE_CREATE_READ_EDGES_TABLE,
+  CLICKHOUSE_ALTER_NODE_EVENTS_GROUP_COLUMNS,
+  CLICKHOUSE_ALTER_READ_NODES_GROUP_COLUMNS,
   CLICKHOUSE_CREATE_TRACE_SUMMARIES_TABLE,
   CLICKHOUSE_CREATE_MATERIALIZATION_CHECKPOINTS_TABLE,
   CLICKHOUSE_CREATE_TRACE_SUMMARIES_REALTIME_TABLE,

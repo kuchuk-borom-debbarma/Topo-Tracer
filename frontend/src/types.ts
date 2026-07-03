@@ -52,6 +52,12 @@ export type TraceListResult = {
   hasNextPage: boolean;
 };
 
+export type GroupLayer = {
+  key: string;
+  label: string;
+  order: number;
+};
+
 export type ProjectedNormalNode = {
   kind: "normal";
   id: string;
@@ -66,6 +72,9 @@ export type ProjectedNormalNode = {
   flowOrder: number;
   materializedAt: number;
   startMessage?: string | null;
+  groupParentId: string | null;
+  layer: GroupLayer | null;
+  childGroupCount: number;
 };
 
 export type ProjectedGhostNode = {
@@ -82,7 +91,39 @@ export type ProjectedGhostNode = {
   flowOrderEnd: number;
 };
 
-export type ProjectedFlowNode = ProjectedNormalNode | ProjectedGhostNode;
+export type ProjectedCollapsedGroupNode = {
+  kind: "group";
+  id: string;
+  groupId: string;
+  label: string;
+  layer: GroupLayer | null;
+  hiddenNodeCount: number;
+  hiddenEdgeCount: number;
+  childGroupCount: number;
+  startedAt: number;
+  endedAt: number | null;
+  flowOrderStart: number;
+  flowOrderEnd: number;
+};
+
+export type ProjectedCollapsedLayerNode = {
+  kind: "layer";
+  id: string;
+  layer: GroupLayer;
+  hiddenNodeCount: number;
+  hiddenEdgeCount: number;
+  childGroupCount: number;
+  startedAt: number;
+  endedAt: number | null;
+  flowOrderStart: number;
+  flowOrderEnd: number;
+};
+
+export type ProjectedFlowNode =
+  | ProjectedNormalNode
+  | ProjectedGhostNode
+  | ProjectedCollapsedGroupNode
+  | ProjectedCollapsedLayerNode;
 
 export type ProjectedFlowEdge = {
   id: string;
@@ -111,6 +152,8 @@ export type ProjectedFlowResult = {
     returnedEdgeCount: number;
     visibleNodeCount: number;
     ghostNodeCount: number;
+    collapsedGroupCount: number;
+    collapsedLayerCount: number;
     materializedAt: number;
     nodeCap: ProjectionReadCap;
     edgeCap: ProjectionReadCap;

@@ -11,6 +11,7 @@ The SDK emits graph telemetry: nodes are units of work and edges are explicit li
 - Logs as graph nodes through `tracer.log`.
 - Importance levels for backend threshold projection.
 - Trace-level names and importance labels.
+- Optional group/layer metadata for collapsible trace views.
 - HTTP batching with flush interval and manual `flush`.
 - Retry with exponential backoff and jitter.
 - `onDrop` hook for permanent send failures.
@@ -56,6 +57,32 @@ await tracer.trace(
 
 await tracer.flush();
 ```
+
+## Grouping and Layers
+
+Nested `trace()` calls default to `groupParentId` equal to the active span id. Set `groupParentId: null` when a span should stay linked by edges but render outside the current visual container.
+
+```ts
+await tracer.trace("charge-user", async () => {
+  await tracer.trace(
+    "payments-api",
+    async () => {
+      await fetch("https://payments.example/charge");
+    },
+    {
+      type: NodeType.REMOTE_CALL,
+      groupParentId: null,
+      layer: {
+        key: "external-services",
+        label: "External Services",
+        order: 3,
+      },
+    },
+  );
+});
+```
+
+There is no dedicated service-call API. Service-style grouping is normal tracing plus `groupParentId` and `layer`.
 
 ## Configuration
 

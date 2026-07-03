@@ -59,6 +59,15 @@ public class TracingAspect {
             .nodeType(nodeType)
             .name(autoName)
             .dynamicImportance(traced.dynamicImportance());
+        if (!traced.groupParentId().isEmpty()) {
+            options.groupParentId(traced.groupParentId());
+        }
+        if (!traced.layerKey().isEmpty()) {
+            options.layer(
+                traced.layerKey(),
+                traced.layerLabel().isEmpty() ? traced.layerKey() : traced.layerLabel(),
+                traced.layerOrder());
+        }
         if (formattedArguments != null) {
             options.data(formattedArguments.attributes());
         }

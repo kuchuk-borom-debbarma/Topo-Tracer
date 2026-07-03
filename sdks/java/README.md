@@ -8,6 +8,7 @@ A lightweight, zero-dependency (excluding JSON serialization and logging) Java S
 - **Thread-safe Context Propagation:** Manages tracing context in multithreaded environments.
 - **Thread Switch wrappers:** Custom wrappers for executors and tasks to automatically propagate tracing context.
 - **Slf4j MDC Sync:** Automatically injects the active `traceId` and `spanId` into your logs.
+- **Grouping Metadata:** Optional visual `groupParentId` and `layer` metadata for collapsible trace views.
 - **Robust Ingestion:** Batch buffer system, exponential backoff retries, and background execution using standard Java libraries.
 
 ## Installation
@@ -66,6 +67,21 @@ tracer.trace("place-order", () -> {
 
 // Ensure all buffered spans are exported before application exit
 tracer.shutdown();
+```
+
+### Grouping and Layers
+
+Nested spans default to the active span as their visual group parent. Use `groupParentId(null)` with a shared layer when a service-style call should render as a peer bucket while keeping the normal graph edge.
+
+```java
+tracer.trace("charge-user", () -> {
+    tracer.trace("payments-api", () -> {
+        // external call...
+    }, TraceOptions.builder()
+        .nodeType("remote-call")
+        .groupParentId(null)
+        .layer("external-services", "External Services", 3));
+});
 ```
 
 ### 3. Dynamic Importance Level Nesting

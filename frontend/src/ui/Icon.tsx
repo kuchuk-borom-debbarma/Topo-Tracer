@@ -5,6 +5,7 @@ export type IconName =
   | "arrow-left"
   | "arrow-right"
   | "chevron-down"
+  | "chevron-right"
   | "clock"
   | "database"
   | "external"
@@ -48,6 +49,7 @@ const paths: Record<IconName, React.ReactNode> = {
   "arrow-left": <><path d="m15 18-6-6 6-6" /></>,
   "arrow-right": <><path d="m9 18 6-6-6-6" /></>,
   "chevron-down": <><path d="m6 9 6 6 6-6" /></>,
+  "chevron-right": <><path d="m9 6 6 6-6 6" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   database: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></>,
   external: <><path d="M14 4h6v6" /><path d="m10 14 10-10" /><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" /></>,

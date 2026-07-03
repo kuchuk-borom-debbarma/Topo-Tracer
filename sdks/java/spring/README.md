@@ -67,6 +67,17 @@ public class OrderService {
     public void dbWrite(String orderId) {
         // Database query operations...
     }
+
+    @Traced(
+        value = "payments-api",
+        nodeType = "remote-call",
+        layerKey = "external-services",
+        layerLabel = "External Services",
+        layerOrder = 3
+    )
+    public void callPaymentsApi() {
+        // Service-style peer grouping without a special service API.
+    }
 }
 ```
 

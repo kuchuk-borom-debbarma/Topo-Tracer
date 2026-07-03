@@ -29,6 +29,10 @@ export type NodeEventRow = {
   message: string | null;
   name: string | null;
   importance_level: number | null;
+  group_parent_id?: string | null;
+  layer_key?: string | null;
+  layer_label?: string | null;
+  layer_order?: number | null;
 };
 
 /**
@@ -66,6 +70,10 @@ export type ReadNodeRow = {
   importance_level: number;
   flow_order: number;
   materialized_at_ms: number;
+  group_parent_id?: string | null;
+  layer_key?: string | null;
+  layer_label?: string | null;
+  layer_order?: number | null;
 };
 
 /**

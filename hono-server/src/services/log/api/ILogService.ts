@@ -52,6 +52,8 @@ export abstract class ILogService {
     threshold: number;
     cursor?: string;
     limit?: number;
+    collapsedGroups?: string[];
+    collapsedLayers?: string[];
   }): Promise<ProjectedFlowResult>;
 
   /**

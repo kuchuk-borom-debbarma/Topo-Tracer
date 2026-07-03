@@ -81,6 +81,49 @@ describe("SDK Integration", () => {
     expect(payload.edgeStarts[0].toNodeId).toBe(payload.nodeStarts[0].id);
   });
 
+  test("Should serialize group parent defaults and layer overrides", async () => {
+    const receivedPayloads: any[] = [];
+
+    // @ts-ignore
+    global.fetch = async (_url: string, init: any) => {
+      receivedPayloads.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    };
+
+    const tracer = new Tracer({
+      endpoint: "http://localhost:3334",
+      apiKey: "test-api-key",
+      userId: "test-user-id",
+      flushInterval: 0,
+    });
+
+    await tracer.trace("controller", async (root) => {
+      await tracer.trace("child", async () => {});
+      await tracer.trace("payments-api", async () => {}, {
+        type: NodeType.REMOTE_CALL,
+        groupParentId: null,
+        layer: { key: "external-services", label: "External Services", order: 3 },
+      });
+      expect(root.id).toBeTruthy();
+    });
+
+    await tracer.flush();
+
+    const starts = receivedPayloads[0].nodeStarts;
+    const root = starts.find((node: any) => node.startMessage === "controller");
+    const child = starts.find((node: any) => node.startMessage === "child");
+    const service = starts.find((node: any) => node.startMessage === "payments-api");
+
+    expect(root.groupParentId).toBeNull();
+    expect(child.groupParentId).toBe(root.id);
+    expect(service.groupParentId).toBeNull();
+    expect(service.layer).toEqual({
+      key: "external-services",
+      label: "External Services",
+      order: 3,
+    });
+  });
+
   test("Should support context extraction and injection", async () => {
     const tracer = new Tracer({
       endpoint: "http://localhost:3335",

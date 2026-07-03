@@ -2,6 +2,7 @@ package dev.kuku.topotracer.sdk;
 
 import dev.kuku.topotracer.sdk.models.IngestNodeEnd;
 import dev.kuku.topotracer.sdk.models.IngestNodeStart;
+import dev.kuku.topotracer.sdk.models.GroupLayer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -18,6 +19,8 @@ public class Span {
     private final String name;
     private final long startedAt;
     private final int importanceLevel;
+    private final String groupParentId;
+    private final GroupLayer layer;
     private final Map<String, String> data; // Shared mutable map reference
     private final Consumer<Span> onEnd;
     
@@ -32,6 +35,8 @@ public class Span {
         this.name = nodeStart.name();
         this.startedAt = nodeStart.startedAt();
         this.importanceLevel = nodeStart.importanceLevel();
+        this.groupParentId = nodeStart.groupParentId();
+        this.layer = nodeStart.layer();
         this.data = nodeStart.data(); // Share reference to dynamic attribute map
         this.onEnd = onEnd;
     }
@@ -95,6 +100,14 @@ public class Span {
         return importanceLevel;
     }
 
+    public String getGroupParentId() {
+        return groupParentId;
+    }
+
+    public GroupLayer getLayer() {
+        return layer;
+    }
+
     public synchronized Map<String, String> getData() {
         return new HashMap<>(data);
     }
@@ -116,7 +129,9 @@ public class Span {
             startMessage,
             startedAt,
             importanceLevel,
-            name
+            name,
+            groupParentId,
+            layer
         );
     }
 

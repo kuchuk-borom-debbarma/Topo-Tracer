@@ -20,6 +20,25 @@ export async function runBasicExample(): Promise<void> {
         { type: NodeType.DB_CALL },
       );
 
+      await tracer.trace(
+        "payments-api",
+        async (serviceSpan) => {
+          serviceSpan.setAttribute("http.method", "POST");
+          serviceSpan.setAttribute("http.route", "/charge");
+          tracer.log("Payment service accepted charge", { status: "202" }, Importance.HIGH);
+          await sleep(20);
+        },
+        {
+          type: NodeType.REMOTE_CALL,
+          groupParentId: null,
+          layer: {
+            key: "external-services",
+            label: "External Services",
+            order: 3,
+          },
+        },
+      );
+
       const manualSpan = tracer.createSpan("manual-discount-check", {
         type: NodeType.METHOD,
         importanceLevel: Importance.MEDIUM,

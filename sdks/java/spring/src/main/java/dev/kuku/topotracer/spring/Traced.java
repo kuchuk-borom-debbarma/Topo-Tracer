@@ -47,6 +47,20 @@ public @interface Traced {
     boolean dynamicImportance() default false;
 
     /**
+     * Optional visual group parent id. Empty means use the active span as parent.
+     */
+    String groupParentId() default "";
+
+    /**
+     * Optional visual layer metadata.
+     */
+    String layerKey() default "";
+
+    String layerLabel() default "";
+
+    int layerOrder() default 0;
+
+    /**
      * Include bounded argument values in span data.
      * Disabled by default because arguments may contain sensitive data.
      */

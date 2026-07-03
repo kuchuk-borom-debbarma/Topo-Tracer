@@ -344,6 +344,14 @@ export class TraceReadModelMaterializer {
       endMessage: existing?.endMessage ?? null,
       flowOrder: existing?.flowOrder ?? 0,
       materializedAt: this.now(),
+      groupParentId: event.group_parent_id ?? existing?.groupParentId ?? null,
+      layer: event.layer_key && event.layer_label && event.layer_order !== null && event.layer_order !== undefined
+        ? {
+            key: event.layer_key,
+            label: event.layer_label,
+            order: event.layer_order,
+          }
+        : (existing?.layer ?? null),
     } as ReadNode);
 
 

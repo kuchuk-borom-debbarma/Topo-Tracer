@@ -1,5 +1,7 @@
 package dev.kuku.topotracer.sdk;
 
+import dev.kuku.topotracer.sdk.models.GroupLayer;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,6 +15,9 @@ public class TraceOptions {
     private boolean dynamicImportance = false;
     private String traceId;
     private String parentSpanId;
+    private String groupParentId;
+    private boolean groupParentExplicit = false;
+    private GroupLayer layer;
     private String nodeType;
     private String name;
     private final Map<String, String> data = new HashMap<>();
@@ -92,6 +97,23 @@ public class TraceOptions {
         return this;
     }
 
+    public TraceOptions groupParentId(String groupParentId) {
+        this.groupParentId = groupParentId;
+        this.groupParentExplicit = true;
+        return this;
+    }
+
+    public TraceOptions layer(String key, int order) {
+        return layer(key, key, order);
+    }
+
+    public TraceOptions layer(String key, String label, int order) {
+        this.layer = key == null || key.isBlank()
+            ? null
+            : new GroupLayer(key, label == null || label.isBlank() ? key : label, order);
+        return this;
+    }
+
     public TraceOptions nodeType(String nodeType) {
         this.nodeType = nodeType;
         return this;
@@ -143,6 +165,18 @@ public class TraceOptions {
 
     public String getParentSpanId() {
         return parentSpanId;
+    }
+
+    public String getGroupParentId() {
+        return groupParentId;
+    }
+
+    public boolean isGroupParentExplicit() {
+        return groupParentExplicit;
+    }
+
+    public GroupLayer getLayer() {
+        return layer;
     }
 
     public String getNodeType() {

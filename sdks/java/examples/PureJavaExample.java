@@ -63,6 +63,17 @@ public class PureJavaExample {
 
             }, TraceOptions.builder().nodeType(TopoNodeType.DB_CALL));
 
+            tracer.trace("payments-api", () -> {
+                Span paymentSpan = TraceContext.getActive();
+                paymentSpan.setAttribute("http.method", "POST");
+                paymentSpan.setAttribute("http.route", "/charge");
+                tracer.log("Payment service accepted charge", Map.of("status", "202"), 1);
+                sleep(30);
+            }, TraceOptions.builder()
+                .nodeType(TopoNodeType.REMOTE_CALL)
+                .groupParentId(null)
+                .layer("external-services", "External Services", 3));
+
             // 4. Thread-switching scenario: Propagating context to executor threads
             ExecutorService executor = Executors.newFixedThreadPool(2);
             // Wrap the executor so context is carried automatically to worker threads

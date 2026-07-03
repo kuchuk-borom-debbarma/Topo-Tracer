@@ -35,6 +35,18 @@ export interface TracerConfig {
   }[];
 }
 
+export interface GroupLayer {
+  key: string;
+  label: string;
+  order: number;
+}
+
+export interface GroupLayerInput {
+  key: string;
+  label?: string;
+  order: number;
+}
+
 export interface IngestTraceStart {
   traceId: string;
   name?: string;
@@ -51,6 +63,8 @@ export interface IngestNodeStart {
   startedAt: number;
   importanceLevel: number;
   name?: string; // Human-friendly code artifact identifier (e.g. "AuthController.login")
+  groupParentId?: string | null;
+  layer?: GroupLayer | null;
 }
 
 export interface IngestNodeEnd {
